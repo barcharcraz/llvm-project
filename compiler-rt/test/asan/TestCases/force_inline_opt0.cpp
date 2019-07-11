@@ -2,7 +2,9 @@
 // (before and after inlining)
 // RUN: %clangxx_asan -O1 %s -o %t && %run %t
 // RUN: %clangxx_asan -O0 %s -o %t && %run %t
-__attribute__((always_inline))
+#include "defines.h"
+
+ATTRIBUTE_ALWAYS_INLINE
 void foo(int *x) {
   *x = 0;
 }

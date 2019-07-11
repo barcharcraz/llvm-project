@@ -3,9 +3,9 @@
 // RUN: %clangxx_asan -O2 %s -o %t && not %run %t 2>&1 | FileCheck %s --check-prefix=CHECK-%os --check-prefix=CHECK
 // RUN: %clangxx_asan -O3 %s -o %t && not %run %t 2>&1 | FileCheck %s --check-prefix=CHECK-%os --check-prefix=CHECK
 // REQUIRES: stable-runtime
-
+#include "defines.h"
 #include <stdlib.h>
-__attribute__((noinline))
+ATTRIBUTE_NOINLINE
 static void LargeFunction(int *x, int zero) {
   x[0]++;
   x[1]++;

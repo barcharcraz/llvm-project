@@ -1,6 +1,6 @@
 // RUN: %clangxx_asan -O0 -mllvm -asan-instrument-dynamic-allocas %s -o %t
 // RUN: not %run %t 2>&1 | FileCheck %s
-//
+// UNSUPPORTED: msvc-host
 // REQUIRES: stable-runtime
 
 #include <assert.h>

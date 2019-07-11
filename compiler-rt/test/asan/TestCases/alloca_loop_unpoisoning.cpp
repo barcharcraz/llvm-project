@@ -5,11 +5,11 @@
 
 // This testcase checks that allocas and VLAs inside loop are correctly unpoisoned.
 
+#include "defines.h"
+#include "sanitizer/asan_interface.h"
 #include <assert.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include "sanitizer/asan_interface.h"
-
 // MSVC provides _alloca instead of alloca.
 #if defined(_MSC_VER) && !defined(alloca)
 # define alloca _alloca
@@ -21,14 +21,22 @@
 
 void *top, *bot;
 
-__attribute__((noinline)) void foo(int len) {
+ATTRIBUTE_NOINLINE void foo(int len) {
   char x;
   top = &x;
+#ifdef MSVC
+  char *array = (char *)alloca(len);
+#else
   char array[len];
+#endif
   assert(!(reinterpret_cast<uintptr_t>(array) & 31L));
   alloca(len);
   for (int i = 0; i < 32; ++i) {
+#ifdef MSVC
+    char *array = (char *)alloca(i);
+#else
     char array[i];
+#endif
     bot = alloca(i);
     assert(!(reinterpret_cast<uintptr_t>(bot) & 31L));
   }

@@ -4,10 +4,10 @@
 //
 // RUN: %clangxx_asan -O2 -fsanitize-address-use-after-scope %s -o %t && \
 // RUN:     not %run %t 2>&1 | FileCheck %s
-
+#include "defines.h"
 int *arr;
 
-__attribute__((always_inline))
+ATTRIBUTE_ALWAYS_INLINE
 void inlined(int arg) {
   int x[5];
   for (int i = 0; i < arg; i++) x[i] = i;

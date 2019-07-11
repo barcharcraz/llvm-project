@@ -5,7 +5,7 @@
 // RUN: %clang_cl_asan -fsanitize-coverage=func,trace-pc-guard -Od %p/dll_host.cpp -Fet.exe
 // RUN: %clang_cl_asan -fsanitize-coverage=func,trace-pc-guard -LD -Od %s -Fet.dll
 // RUN: %run ./t.exe t.dll 2>&1 | FileCheck %s
-
+// XFAIL: msvc-host
 #include <stdio.h>
 
 extern "C" __declspec(dllexport)

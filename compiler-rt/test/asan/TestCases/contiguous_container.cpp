@@ -1,12 +1,12 @@
 // RUN: %clangxx_asan -fexceptions -O %s -o %t && %run %t
 //
 // Test __sanitizer_annotate_contiguous_container.
-
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
+#include "defines.h"
 #include <assert.h>
 #include <sanitizer/asan_interface.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 void TestContainer(size_t capacity) {
   char *beg = new char[capacity];
@@ -47,10 +47,10 @@ void TestContainer(size_t capacity) {
   delete[] beg;
 }
 
-__attribute__((noinline))
+ATTRIBUTE_NOINLINE
 void Throw() { throw 1; }
 
-__attribute__((noinline))
+ATTRIBUTE_NOINLINE
 void ThrowAndCatch() {
   try {
     Throw();

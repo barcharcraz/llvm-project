@@ -4,12 +4,12 @@
 // REQUIRES: stable-runtime
 
 // This testcase checks correct interaction between VLAs and allocas.
-
+// UNSUPPORTED: msvc-host
+#include "defines.h"
+#include "sanitizer/asan_interface.h"
 #include <assert.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include "sanitizer/asan_interface.h"
-
 // MSVC provides _alloca instead of alloca.
 #if defined(_MSC_VER) && !defined(alloca)
 # define alloca _alloca
@@ -21,7 +21,7 @@
 
 #define RZ 32
 
-__attribute__((noinline)) void foo(int len) {
+ATTRIBUTE_NOINLINE void foo(int len) {
   char *top, *bot;
   // This alloca call should live until the end of foo.
   char *alloca1 = (char *)alloca(len);

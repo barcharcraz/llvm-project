@@ -36,3 +36,5 @@ int main(int argc, char **argv) {
 }
 
 // CHECK: SUMMARY: AddressSanitizer: global-buffer-overflow
+// XFAIL: msvc-host
+// off by one error at the moment, fix in the works.

@@ -3,13 +3,13 @@
 // RUN: not %run %t 1 2>&1 | FileCheck %s --check-prefix=CHECK1
 // RUN: not %run %t 2 2>&1 | FileCheck %s --check-prefix=CHECK2
 // RUN: not %run %t 3 2>&1 | FileCheck %s --check-prefix=CHECK3
+#include "defines.h"
 
-#define NOINLINE __attribute__((noinline))
 inline void break_optimization(void *arg) {
-  __asm__ __volatile__("" : : "r" (arg) : "memory");
+  ASM_CAUSE_SIDE_EFFECT(arg);
 }
 
-NOINLINE static void Frame0(int frame, char *a, char *b, char *c) {
+ATTRIBUTE_NOINLINE static void Frame0(int frame, char *a, char *b, char *c) {
   char s[4] = {0};
   char *d = s;
   break_optimization(&d);
@@ -20,15 +20,15 @@ NOINLINE static void Frame0(int frame, char *a, char *b, char *c) {
     case 0: d[5]++; break;
   }
 }
-NOINLINE static void Frame1(int frame, char *a, char *b) {
+ATTRIBUTE_NOINLINE static void Frame1(int frame, char *a, char *b) {
   char c[4] = {0}; Frame0(frame, a, b, c);
   break_optimization(0);
 }
-NOINLINE static void Frame2(int frame, char *a) {
+ATTRIBUTE_NOINLINE static void Frame2(int frame, char *a) {
   char b[4] = {0}; Frame1(frame, a, b);
   break_optimization(0);
 }
-NOINLINE static void Frame3(int frame) {
+ATTRIBUTE_NOINLINE static void Frame3(int frame) {
   char a[4] = {0}; Frame2(frame, a);
   break_optimization(0);
 }

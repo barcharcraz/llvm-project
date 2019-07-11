@@ -12,3 +12,5 @@ if root.host_os in ['Windows']:
   config.unsupported = False
 else:
   config.unsupported = True
+
+config.environment["INCLUDE"] += ";" + os.path.join( os.path.dirname(__file__), "..")

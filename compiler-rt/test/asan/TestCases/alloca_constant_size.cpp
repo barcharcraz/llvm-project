@@ -9,8 +9,12 @@
 #include <stdlib.h>
 
 // MSVC provides _alloca instead of alloca.
-#if defined(_MSC_VER) && !defined(alloca)
+#if (defined(_MSC_VER) && !defined(alloca)) || defined(MSVC)
 # define alloca _alloca
+#endif
+
+#if defined(MSVC)
+#include <malloc.h>
 #endif
 
 #if defined(__sun__) && defined(__svr4__)
@@ -28,7 +32,11 @@ void f1_alloca() {
 static const int kDynamicArraySize = 200;
 
 void f1_vla() {
+#ifdef MSVC
+  char *dynamic_buffer = (char *)alloca(kDynamicArraySize);
+#else
   char dynamic_buffer[kDynamicArraySize];
+#endif
   fprintf(stderr, "dynamic_buffer = %p\n", dynamic_buffer);
   memset(dynamic_buffer, 'y', kDynamicArraySize);
   return;

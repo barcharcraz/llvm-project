@@ -21,6 +21,18 @@
 #include "interception/interception.h"
 #include <stddef.h>
 
+// Need to include defintions for windows heap api functions,
+// these assume windows.h will also be included. This definition
+// fixes an error that's thrown if you only include heapapi.h
+#if defined(_M_IX86)
+#define _X86_
+#elif defined(_M_AMD64)
+#define _AMD64_
+#else
+#error "Missing arch or unsupported platform for Windows."
+#endif
+#include <heapapi.h>
+
 // Intentionally not including windows.h here, to avoid the risk of
 // pulling in conflicting declarations of these functions. (With mingw-w64,
 // there's a risk of windows.h pulling in stdint.h.)
@@ -35,8 +47,11 @@ constexpr unsigned long HEAP_REALLOC_IN_PLACE_ONLY = 0x00000010;
 constexpr unsigned long HEAP_ALLOCATE_SUPPORTED_FLAGS = (HEAP_ZERO_MEMORY);
 constexpr unsigned long HEAP_ALLOCATE_UNSUPPORTED_FLAGS =
     (~HEAP_ALLOCATE_SUPPORTED_FLAGS);
+constexpr unsigned long HEAP_FREE_SUPPORTED_FLAGS = (0);
 constexpr unsigned long HEAP_FREE_UNSUPPORTED_FLAGS =
     (~HEAP_ALLOCATE_SUPPORTED_FLAGS);
+constexpr unsigned long HEAP_REALLOC_SUPPORTED_FLAGS =
+    (HEAP_REALLOC_IN_PLACE_ONLY | HEAP_ZERO_MEMORY);
 constexpr unsigned long HEAP_REALLOC_UNSUPPORTED_FLAGS =
     (~HEAP_ALLOCATE_SUPPORTED_FLAGS);
 

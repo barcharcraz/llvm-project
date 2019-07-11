@@ -1,16 +1,16 @@
 // RUN: %clangxx_asan %s -o %t && %run %t
 // RUN: %clangxx_asan %s -o %t %linux_static_libstdcplusplus && %run %t
-
+#include "defines.h"
 // Investigate why it fails with NDK 21.
 // UNSUPPORTED: android
 
 #include <stdio.h>
 static volatile int zero = 0;
 inline void pretend_to_do_something(void *x) {
-  __asm__ __volatile__("" : : "r" (x) : "memory");
+  ASM_CAUSE_SIDE_EFFECT(x);
 }
 
-__attribute__((noinline))
+ATTRIBUTE_NOINLINE
 void ReallyThrow() {
   fprintf(stderr, "ReallyThrow\n");
   try {
@@ -22,7 +22,7 @@ void ReallyThrow() {
   }
 }
 
-__attribute__((noinline))
+ATTRIBUTE_NOINLINE
 void Throw() {
   int a, b, c, d, e;
   pretend_to_do_something(&a);
@@ -34,7 +34,7 @@ void Throw() {
   ReallyThrow();
 }
 
-__attribute__((noinline))
+ATTRIBUTE_NOINLINE
 void CheckStack() {
   int ar[100];
   pretend_to_do_something(ar);
@@ -51,4 +51,3 @@ int main(int argc, char** argv) {
   }
   CheckStack();
 }
-

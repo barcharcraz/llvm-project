@@ -1,7 +1,6 @@
 // If we have LLD, see that things more or less work.
 //
 // REQUIRES: lld-available
-//
 // RUN: %clangxx_asan -O2 %s -o %t.exe -g -gcodeview -fuse-ld=lld -Wl,-debug
 // RUN: not %run %t.exe 2>&1 | FileCheck %s
 
@@ -13,7 +12,7 @@ int main() {
   return x[5];
   // CHECK: heap-use-after-free
   // CHECK: free
-  // CHECK: main{{.*}}fuse-lld.cpp:[[@LINE-4]]:3
+  // CHECK: main{{.*}}fuse-lld.cpp:[[@LINE-4]]{{(:3)?}}
   // CHECK: malloc
-  // CHECK: main{{.*}}fuse-lld.cpp:[[@LINE-7]]:20
+  // CHECK: main{{.*}}fuse-lld.cpp:[[@LINE-7]]{{(:20)?}}
 }

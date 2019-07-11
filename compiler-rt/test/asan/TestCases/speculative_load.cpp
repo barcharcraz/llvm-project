@@ -5,7 +5,7 @@
 // RUN: %clangxx_asan -O3 %s -o %t && %run %t 2>&1
 
 #include <sanitizer/asan_interface.h>
-
+#include "defines.h"
 struct S {
   struct _long {
       void* _pad;
@@ -42,7 +42,7 @@ struct S {
 
 
 inline void side_effect(const void *arg) {
-  __asm__ __volatile__("" : : "r" (arg) : "memory");
+  ASM_CAUSE_SIDE_EFFECT(arg);
 }
 
 int main(int argc, char **argv) {

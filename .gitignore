@@ -49,6 +49,8 @@ autoconf/autom4te.cache
 /CMakeSettings.json
 # CLion project configuration
 /.idea
+#azure pipelines build config
+.azure-pipelines.yml
 
 #==============================================================================#
 # Directories to ignore (do not add trailing '/'s, they skip symlinks).

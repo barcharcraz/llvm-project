@@ -12,13 +12,14 @@ extern "C" void __sanitizer_cov_trace_pc_indir(void *callee) {
   last_callee = callee;
 }
 #else
+#include "defines.h"
 #include <stdio.h>
 #include <assert.h>
 extern int pc_count;
 extern void *last_callee;
 
-__attribute__((noinline)) void foo() { printf("foo\n"); }
-__attribute__((noinline)) void bar() { printf("bar\n"); }
+ATTRIBUTE_NOINLINE void foo() { printf("foo\n"); }
+ATTRIBUTE_NOINLINE void bar() { printf("bar\n"); }
 
 int main(int argc, char **argv) {
   void (*f)(void) = argc ? foo : bar;

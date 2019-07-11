@@ -27,12 +27,12 @@
 // RUN: %env_asan_opts=suppressions='"%t.supp"' %run %t
 
 // UNSUPPORTED: android
-
+#include "defines.h"
 #include <string.h>
 
 
 // Don't inline function otherwise stacktrace changes.
-__attribute__((noinline)) void bad_function() {
+ATTRIBUTE_NOINLINE void bad_function() {
   char buffer[] = "hello\0XXX";
   // CHECK: strncat-param-overlap: memory ranges
   // CHECK: [{{0x.*,[ ]*0x.*}}) and [{{0x.*,[ ]*0x.*}}) overlap

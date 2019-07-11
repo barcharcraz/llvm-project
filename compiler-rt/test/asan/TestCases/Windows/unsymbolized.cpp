@@ -6,10 +6,10 @@
 // RUN: %clangxx_asan -c -O2 %s -o %t.obj
 // RUN: link /nologo /OUT:%t.exe %t.obj %asan_lib %asan_cxx_lib
 // RUN: not %run %t.exe 2>&1 | FileCheck %s
-
-#include <stdlib.h>
+#include "defines.h"
 #include <stdio.h>
-int __attribute__((noinline)) do_uaf(void);
+#include <stdlib.h>
+int ATTRIBUTE_NOINLINE do_uaf(void);
 int main() {
   int r = do_uaf();
   printf("r: %d\n", r);

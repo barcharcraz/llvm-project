@@ -2,10 +2,15 @@
 // RUN: %run %t 2>&1
 //
 
+#include "defines.h"
 #include <assert.h>
-
-__attribute__((noinline)) void foo(int index, int len) {
-  volatile char str[len] __attribute__((aligned(32)));
+ATTRIBUTE_NOINLINE void foo(int index, int len) {
+ATTRIBUTE_ALIGNED(32)
+#ifdef MSVC
+  volatile char *str = (volatile char *)_alloca(len);
+#else
+  volatile char str[len];
+#endif
   assert(!(reinterpret_cast<long>(str) & 31L));
   str[index] = '1';
 }

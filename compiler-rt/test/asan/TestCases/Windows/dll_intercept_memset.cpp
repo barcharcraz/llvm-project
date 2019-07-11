@@ -23,7 +23,7 @@ int test_function() {
   memset(buff, 'c', 6);
 // CHECK: AddressSanitizer: stack-buffer-overflow on address [[ADDR:0x[0-9a-f]+]]
 // CHECK: WRITE of size 6 at [[ADDR]] thread T0
-// CHECK-NEXT:  __asan_memset
+// CHECK-NEXT:  {{__asan(_wrap)?_memset}}
 // CHECK-NEXT:  test_function {{.*}}dll_intercept_memset.cpp:[[@LINE-4]]
 // CHECK: Address [[ADDR]] is located in stack of thread T0 at offset {{.*}} in frame
 // CHECK-NEXT:  test_function {{.*}}dll_intercept_memset.cpp

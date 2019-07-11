@@ -8,6 +8,10 @@
 #include <windows.h>
 #endif
 
+#ifdef MSVC
+#define __builtin_trap() __asm ud2;
+#endif
+
 int main(int argc, char **argv) {
 #ifdef _WIN32
   // Sometimes on Windows this test generates a WER fault dialog. Suppress that.

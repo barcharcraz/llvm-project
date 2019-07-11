@@ -6,7 +6,7 @@
 // RUN: %clang_cl_asan -LD -Od -DDLL2 %s -Fe%t2.dll
 // RUN: %clang_cl_asan -Od -DEXE %s %t1.lib %t2.lib -Fe%t
 // RUN: not %run %t 2>&1 | FileCheck %s
-
+#include "defines.h"
 #include <malloc.h>
 #include <string.h>
 
@@ -22,7 +22,7 @@ int main() {
 #elif defined(DLL1)
 __declspec(dllexport) void foo1() {}
 #elif defined(DLL2)
-__attribute__((noinline))
+ATTRIBUTE_NOINLINE
 static void NullDeref(int *ptr) {
   // CHECK: ERROR: AddressSanitizer: access-violation on unknown address
   // CHECK:   {{0x0*000.. .*pc 0x.*}}

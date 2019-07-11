@@ -24,6 +24,6 @@ extern "C" __declspec(dllexport) int test_function() { return 0; }
 // CHECK: =={{[0-9:]+}}==ASan shadow was supposed to be located in the [0x2fff0000-0x3fffffff] range.
 // CHECK: =={{[0-9:]+}}==Dumping process modules
 
-// CHECK-DAG: {{0x30000000-0x300.....}} {{.*}}\shadow_conflict_32.cpp.tmp_dll.dll
+// CHECK-DAG: {{0x30000000-0x30......}} {{.*}}\shadow_conflict_32.cpp.tmp_dll.dll
 // CHECK-DAG: {{0x........-0x........}} {{.*}}\shadow_conflict_32.cpp.tmp.exe
 // CHECK-DAG: {{0x........-0x........}} {{.*}}\ntdll.dll

@@ -22,7 +22,11 @@
 
 int main(int argc, char **argv) {
   assert(argc >= 2);
+#if !defined(MSVC)
   enum { size = 100 };
+#else
+#define size 100
+#endif
   char fill = 'o';
   char s1[size];
   char s2[size];

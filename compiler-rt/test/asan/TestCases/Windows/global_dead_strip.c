@@ -14,7 +14,7 @@ int main() {
 // Check that our global registration scheme works with MSVC's linker dead
 // stripping (/OPT:REF).
 
-// NOSTRIP: Added Global{{.*}}name=dead_global
+// NOSTRIP: {{.*}}Added Global{{.*}}name=dead_global
 // NOSTRIP: Added Global{{.*}}name=live_global
 // NOSTRIP: main
 

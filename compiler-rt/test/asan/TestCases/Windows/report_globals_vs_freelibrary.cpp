@@ -20,20 +20,19 @@ int main(int argc, char **argv) {
   fflush(0);
 
 // On DLL load, the "in DLL\n" string is registered:
-// CHECK: Added Global{{.*}} size=19
+// CHECK: Added Global{{.*}} size=19{{.*}}
 // CHECK: in DLL(reason=1)
   HMODULE dll = LoadLibrary(dll_name);
   if (dll == NULL)
     return 3;
 
 // CHECK: in DLL(reason=0)
-// CHECK-NEXT: Removed Global{{.*}} size=19
+// CHECK-NEXT: Removed Global{{.*}} size=19{{.*}}
   if (!FreeLibrary(dll))
     return 4;
 
-// CHECK: bye!
-  printf("bye!\n");
   fflush(0);
+  return 0;
 }
 #elif defined(DLL)
 BOOL WINAPI DllMain(HMODULE, DWORD reason, LPVOID) {

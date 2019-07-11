@@ -1,21 +1,22 @@
 // RUN: %clangxx_asan %s -o %t && %run %t
 // http://code.google.com/p/address-sanitizer/issues/detail?id=147 (not fixed).
 // BROKEN: %clangxx_asan %s -o %t -static-libstdc++ && %run %t
-
+// XFAIL: msvc-host
+#include "defines.h"
 #include <stdio.h>
 static volatile int zero = 0;
 inline void pretend_to_do_something(void *x) {
-  __asm__ __volatile__("" : : "r" (x) : "memory");
+  ASM_CAUSE_SIDE_EFFECT(x);
 }
 
-__attribute__((noinline, no_sanitize_address))
+MULTIPLE_ATTRIBUTE_DECL(noinline, no_sanitize_address)
 void ReallyThrow() {
   fprintf(stderr, "ReallyThrow\n");
   if (zero == 0)
     throw 42;
 }
 
-__attribute__((noinline))
+ATTRIBUTE_NOINLINE
 void Throw() {
   int a, b, c, d, e, f, g, h;
   pretend_to_do_something(&a);
@@ -30,7 +31,7 @@ void Throw() {
   ReallyThrow();
 }
 
-__attribute__((noinline))
+ATTRIBUTE_NOINLINE
 void CheckStack() {
   int ar[100];
   pretend_to_do_something(ar);
