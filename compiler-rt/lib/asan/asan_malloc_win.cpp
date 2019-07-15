@@ -21,18 +21,6 @@
 #include "interception/interception.h"
 #include <stddef.h>
 
-// Need to include defintions for windows heap api functions,
-// these assume windows.h will also be included. This definition
-// fixes an error that's thrown if you only include heapapi.h
-#if defined(_M_IX86)
-#define _X86_
-#elif defined(_M_AMD64)
-#define _AMD64_
-#else
-#error "Missing arch or unsupported platform for Windows."
-#endif
-#include <heapapi.h>
-
 // Intentionally not including windows.h here, to avoid the risk of
 // pulling in conflicting declarations of these functions. (With mingw-w64,
 // there's a risk of windows.h pulling in stdint.h.)
