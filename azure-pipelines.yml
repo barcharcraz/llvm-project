@@ -6,8 +6,6 @@
 trigger:
 - master
 
-pool: "msvc-asan"
-
 name: llvm build
 jobs:
 
@@ -16,14 +14,12 @@ jobs:
       - group: msvc_secrets
       - name: LLVM_VERSION
         value: 9.0.0
-      - name: _CL_
-        value: /Zm200
+
     timeoutInMinutes: 360
     pool:
-      name: 'greenteampool'
+      name: 'msvc-asan'
       demands:
       - Cmake
-      - IsServer -equals True
 
     strategy:
       matrix:
@@ -67,7 +63,7 @@ jobs:
     - checkout: self
       clean: all
 
-    - script: git clone https://$(System.AccessToken)@sectools.visualstudio.com/DefaultCollection/AddressSanitizer/_git/unix_test_dependencies $(Build.ArtifactStagingDirectory)\unix 2>&1
+    - script: git clone https://$(sectools.token)@sectools.visualstudio.com/DefaultCollection/AddressSanitizer/_git/unix_test_dependencies $(Build.ArtifactStagingDirectory)\unix 2>&1
     - task: PowerShell@2
       inputs:
         targetType: 'inline'
@@ -171,11 +167,11 @@ jobs:
 
   - job: MSVC_Tests
     variables:
-      - group: msvc_secrets
       - name: LLVM_VERSION
         value: 9.0.0
       - name: UNIX_BIN_DIR
         value: $(Build.ArtifactStagingDirectory)\unix\cygwin64\bin
+    
     timeoutInMinutes: 360
     pool:
       name: 'greenteampool'
@@ -193,7 +189,7 @@ jobs:
         c:\python27\python.exe setup.py install
         popd
 
-    - script: git clone https://$(System.AccessToken)@sectools.visualstudio.com/DefaultCollection/AddressSanitizer/_git/unix_test_dependencies $(Build.ArtifactStagingDirectory)\unix 2>&1
+    - script: git clone https://$(sectools.token)@sectools.visualstudio.com/DefaultCollection/AddressSanitizer/_git/unix_test_dependencies $(Build.ArtifactStagingDirectory)\unix 2>&1
 
     - task: PowerShell@2
       inputs:
@@ -228,7 +224,6 @@ jobs:
         ASAN_RT_LIB_DIR: $(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\lib\windows\x86
         ASAN_RT_BIN_DIR: $(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\\bin
         SQL_TABLE_NAME: windows_static
-        GTDB_SECRET: $(GTDB_SECRET)
       continueOnError: 'true'
 
 
@@ -248,7 +243,6 @@ jobs:
         ASAN_RT_LIB_DIR: $(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\lib\windows\x86
         ASAN_RT_BIN_DIR: $(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\\bin
         SQL_TABLE_NAME: windows_dynamic
-        GTDB_SECRET: $(GTDB_SECRET)
       continueOnError: 'true'
 
     - script: |
@@ -266,7 +260,6 @@ jobs:
         ASAN_RT_LIB_DIR: $(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\lib\windows\x86
         ASAN_RT_BIN_DIR: $(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\\bin
         SQL_TABLE_NAME: asan_static
-        GTDB_SECRET: $(GTDB_SECRET)
       continueOnError: 'true'
 
     - script: |
@@ -284,6 +277,5 @@ jobs:
         ASAN_RT_LIB_DIR: $(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\lib\windows\x86
         ASAN_RT_BIN_DIR: $(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\\bin
         SQL_TABLE_NAME: asan_dynamic
-        GTDB_SECRET: $(GTDB_SECRET)
       continueOnError: 'true'
 
