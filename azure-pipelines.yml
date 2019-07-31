@@ -11,7 +11,6 @@ jobs:
 
   - job: Windows
     variables:
-      - group: msvc_secrets
       - name: LLVM_VERSION
         value: 9.0.0
 
