@@ -173,7 +173,7 @@ jobs:
     
     timeoutInMinutes: 360
     pool:
-      name: 'greenteampool'
+      name: 'msvc-asan'
     dependsOn: Windows
     steps:
     - task: DownloadBuildArtifacts@0
