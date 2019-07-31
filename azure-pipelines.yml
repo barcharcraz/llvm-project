@@ -8,11 +8,282 @@ trigger:
 
 pool: "msvc-asan"
 
-steps:
-- script: echo Hello, world!
-  displayName: 'Run a one-line script'
+name: llvm build
+jobs:
 
-- script: |
-    echo Add other tasks to build, test, and deploy your project.
-    echo See https://aka.ms/yaml
-  displayName: 'Run a multi-line script'
+  - job: Windows
+    variables:
+      - group: msvc_secrets
+      - name: LLVM_VERSION
+        value: 9.0.0
+      - name: _CL_
+        value: /Zm200
+    timeoutInMinutes: 360
+    pool:
+      name: 'greenteampool'
+      demands:
+      - Cmake
+      - IsServer -equals True
+
+    strategy:
+      matrix:
+        64-bit Debug:
+          BuildType: RelWithDebInfo
+          CMakeArgs: Visual Studio 15 2017 Win64
+          vcvars: vcvars64.bat
+          buildArch: x64
+          msdia_loc: x64\\msdia140.dll
+          additional_args: -Thost=x64
+          buildTag: ""
+
+        64-bit Release:
+          BuildType: Release
+          CMakeArgs: Visual Studio 15 2017 Win64
+          vcvars: vcvars64.bat
+          buildArch: x64
+          msdia_loc: x64\\msdia140.dll
+          additional_args: -Thost=x64
+          buildTag: ""
+
+        32-bit Debug:
+          BuildType: RelWithDebInfo
+          CMakeArgs: Visual Studio 15 2017
+          vcvars: vcvarsamd64_x86.bat
+          buildArch: x86
+          msdia_loc: msdia140.dll
+          additional_args: -Thost=x64
+          buildTag: ""
+
+        32-bit Release:
+          BuildType: Release
+          CMakeArgs: Visual Studio 15 2017
+          vcvars: vcvarsamd64_x86.bat
+          buildArch: x86
+          msdia_loc: msdia140.dll
+          additional_args: -Thost=x64
+          buildTag: ""
+
+    steps:
+    - checkout: self
+      clean: all
+
+    - script: git clone https://$(System.AccessToken)@sectools.visualstudio.com/DefaultCollection/AddressSanitizer/_git/unix_test_dependencies $(Build.ArtifactStagingDirectory)\unix 2>&1
+    - task: PowerShell@2
+      inputs:
+        targetType: 'inline'
+        script: $(Build.ArtifactStagingDirectory)\unix\gnuwin32\unzip.ps1
+    - task: PowerShell@2
+      inputs:
+        targetType: 'inline'
+        script: Expand-Archive $(Build.ArtifactStagingDirectory)\unix\cygwin64.zip $(Build.ArtifactStagingDirectory)\unix\
+
+    - script: |
+        set PATH=$(Build.ArtifactStagingDirectory)\unix\gnuwin32\bin;$(Build.ArtifactStagingDirectory)\unix\bin;$(Build.ArtifactStagingDirectory)\unix\cygwin64\bin;%PATH%
+        echo ##vso[task.prependpath]$(Build.ArtifactStagingDirectory)\unix\gnuwin32\bin;$(Build.ArtifactStagingDirectory)\unix\bin;$(Build.ArtifactStagingDirectory)\unix\cygwin64\bin
+        echo on
+        where cat
+        where awk
+        where sed
+        where grep
+
+    #- script: '@call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Enterprise\\VC\\Auxiliary\\Build\\$(vcvars)"'
+
+    - script: |
+        rd /s /q $(Build.BinariesDirectory)
+        mkdir $(Build.BinariesDirectory)
+        @call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Enterprise\\VC\\Auxiliary\\Build\\$(vcvars)"
+        echo set ASAN_SYMBOLIZER_PATH=$(Build.BinariesDirectory)\$(BuildType)\bin\llvm-symbolizer.exe
+        set ASAN_SYMBOLIZER_PATH=$(Build.BinariesDirectory)\$(BuildType)\bin\llvm-symbolizer.exe
+        pushd $(Build.BinariesDirectory) & echo on & cmake -G "$(CMakeArgs)" -DLLVM_ENABLE_PROJECTS="compiler-rt;lld;clang;polly" $(additional_args) $(Build.SourcesDirectory)\llvm & popd
+      displayName: Set ASAN symbolizer path
+
+
+    - task: MSBuild@1
+      inputs:
+        solution: '$(Build.BinariesDirectory)\tools\llvm-symbolizer\llvm-symbolizer.vcxproj'
+        msbuildArchitecture: 'x64'
+        platform: '$(buildArch)'
+        configuration: '$(BuildType)'
+        clean: true
+        maximumCpuCount: true
+
+
+    - task: PowerShell@2
+      inputs:
+        targetType: 'inline'
+        script: Copy-Item "C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Enterprise\\Common7\\Packages\\Debugger\\$(msdia_loc)" "$env:Build_BinariesDirectory\\$env:BuildType\\bin"
+
+    - task: PowerShell@2
+      inputs:
+        targetType: 'inline'
+        script: echo Copy-Item "C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Enterprise\\Common7\\Packages\\Debugger\\$(msdia_loc)" "$env:Build_BinariesDirectory\\build\\$env:BuildType\\bin"
+
+    - task: MSBuild@1
+      inputs:
+        solution: '$(Build.BinariesDirectory)\projects\compiler-rt\test\asan\check-asan.vcxproj'
+        msbuildArchitecture: 'x64'
+        platform: '$(buildArch)'
+        configuration: '$(BuildType)'
+        clean: true
+        maximumCpuCount: true
+
+    - task: MSBuild@1
+      inputs:
+        solution: '$(Build.BinariesDirectory)\projects\compiler-rt\test\asan\check-asan-dynamic.vcxproj'
+        msbuildArchitecture: 'x64'
+        platform: '$(buildArch)'
+        configuration: '$(BuildType)'
+        clean: true
+        maximumCpuCount: true
+
+
+    - script: |
+        echo on
+        mkdir $(Build.BinariesDirectory)\shipping_components
+        mkdir $(Build.BinariesDirectory)\shipping_components\lib\windows\x86
+        mkdir $(Build.BinariesDirectory)\shipping_components\include\sanitizer
+        mkdir $(Build.BinariesDirectory)\shipping_components\share
+        cp $(Build.BinariesDirectory)\$(BuildType)\lib\clang\$(LLVM_VERSION)\include\sanitizer\*  $(Build.BinariesDirectory)\shipping_components\include\sanitizer\
+        cp $(Build.BinariesDirectory)\$(BuildType)\lib\clang\$(LLVM_VERSION)\lib\windows\* $(Build.BinariesDirectory)\shipping_components\lib\windows\x86\
+        cp $(Build.BinariesDirectory)\$(BuildType)\lib\clang\$(LLVM_VERSION)\share\*  $(Build.BinariesDirectory)\shipping_components\share\
+        cp $(Build.SourcesDirectory)\compiler-rt\LICENSE.txt  $(Build.BinariesDirectory)\shipping_components\
+        cp $(Build.BinariesDirectory)\$(BuildType)\bin\llvm-symbolizer.exe   $(Build.BinariesDirectory)\shipping_components\
+        cp $(Build.BinariesDirectory)\$(BuildType)\bin\msdia140.dll $(Build.BinariesDirectory)\shipping_components\
+      failOnStderr: "True"
+
+
+    - task: PublishBuildArtifacts@1
+      inputs:
+        PathtoPublish: '$(Build.BinariesDirectory)\shipping_components'
+        ArtifactName: llvm_asan_$(BuildType)_$(buildArch)$(buildTag)
+        publishLocation: 'Container'
+
+    - script: |
+            echo on
+            mkdir $(Build.BinariesDirectory)\shipping_components\bin
+            cp $(Build.BinariesDirectory)\$(BuildType)\bin\* $(Build.BinariesDirectory)\shipping_components\bin\
+
+    - task: PublishBuildArtifacts@1
+      inputs:
+        PathtoPublish: '$(Build.BinariesDirectory)\shipping_components'
+        ArtifactName: llvm_asan_$(BuildType)_$(buildArch)$(buildTag)_bin
+        publishLocation: 'Container'
+
+  - job: MSVC_Tests
+    variables:
+      - group: msvc_secrets
+      - name: LLVM_VERSION
+        value: 9.0.0
+      - name: UNIX_BIN_DIR
+        value: $(Build.ArtifactStagingDirectory)\unix\cygwin64\bin
+    timeoutInMinutes: 360
+    pool:
+      name: 'greenteampool'
+    dependsOn: Windows
+    steps:
+    - task: DownloadBuildArtifacts@0
+      inputs:
+        buildType: 'current'
+        buildVersionToDownload: latest
+        artifactName: llvm_asan_Release_x86_bin
+        downloadType: 'single'
+        downloadPath: '$(System.ArtifactsDirectory)'
+    - script: |
+        pushd $(Build.SourcesDirectory)\llvm\utils\lit
+        c:\python27\python.exe setup.py install
+        popd
+
+    - script: git clone https://$(System.AccessToken)@sectools.visualstudio.com/DefaultCollection/AddressSanitizer/_git/unix_test_dependencies $(Build.ArtifactStagingDirectory)\unix 2>&1
+
+    - task: PowerShell@2
+      inputs:
+        targetType: 'inline'
+        script: $(Build.ArtifactStagingDirectory)\unix\gnuwin32\unzip.ps1
+    - task: PowerShell@2
+      inputs:
+        targetType: 'inline'
+        script: Expand-Archive $(Build.ArtifactStagingDirectory)\unix\cygwin64.zip $(Build.ArtifactStagingDirectory)\unix\
+
+    - script: |
+        set PATH=$(Build.ArtifactStagingDirectory)\unix\gnuwin32\bin;$(Build.ArtifactStagingDirectory)\unix\bin;$(Build.ArtifactStagingDirectory)\unix\cygwin64\bin;%PATH%
+        echo ##vso[task.prependpath]$(System.ArtifactsDirectory);$(Build.SourcesDirectory)\llvm\utils\lit;$(Build.SourcesDirectory)\llvm\utils\lit\lit;$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\\bin;$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\\lib\windows\x86;$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\\include;$(System.ArtifactsDirectory)\\bin
+        echo ##vso[task.prependpath]$(Build.ArtifactStagingDirectory)\unix\gnuwin32\bin;$(Build.ArtifactStagingDirectory)\unix\bin;$(Build.ArtifactStagingDirectory)\unix\cygwin64\bin
+        where cat
+        where awk
+        where sed
+        where grep
+    
+    - script: |
+        echo on
+        set ASAN_RT_SRC_ROOT=$(Build.SourcesDirectory)\compiler-rt
+        call %MSVC_SRC%\binaries\x86chk\setenv.cmd x86 %MSVC_SRC%\src
+        set INCLUDE=%INCLUDE%;$(Build.SourcesDirectory)\compiler-rt\include;
+        pushd $(Build.SourcesDirectory)\llvm\utils\lit\lit
+        c:\python27\python.exe $(Build.SourcesDirectory)\llvm\utils\lit\lit\msvc_main.py $(Build.SourcesDirectory)\compiler-rt\\test\\asan\TestCases\Windows x86 --write-sql-results -d pyodbc
+        popd
+      displayName: 'Run Windows specific tests default'
+      env:
+        TEST_OUTPUT_DIR: $(Build.BinariesDirectory)
+        TEST_C_COMPILER: cl.exe
+        ASAN_RT_LIB_DIR: $(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\lib\windows\x86
+        ASAN_RT_BIN_DIR: $(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\\bin
+        SQL_TABLE_NAME: windows_static
+        GTDB_SECRET: $(GTDB_SECRET)
+      continueOnError: 'true'
+
+
+    - script: |
+        echo on
+        set ASAN_RT_SRC_ROOT=$(Build.SourcesDirectory)\compiler-rt
+        call %MSVC_SRC%\binaries\x86chk\setenv.cmd x86 %MSVC_SRC%\src
+        set INCLUDE=%INCLUDE%;$(Build.SourcesDirectory)\compiler-rt\include;
+        pushd $(Build.SourcesDirectory)\llvm\utils\lit\lit
+        c:\python27\python.exe $(Build.SourcesDirectory)\llvm\utils\lit\lit\msvc_main.py $(Build.SourcesDirectory)\compiler-rt\\test\\asan\TestCases\Windows x86 --force-dynamic --write-sql-results -d pyodbc
+        popd
+
+      displayName: 'Run Windows specific tests dynamic'
+      env:
+        TEST_OUTPUT_DIR: $(Build.BinariesDirectory)
+        TEST_C_COMPILER: cl.exe
+        ASAN_RT_LIB_DIR: $(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\lib\windows\x86
+        ASAN_RT_BIN_DIR: $(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\\bin
+        SQL_TABLE_NAME: windows_dynamic
+        GTDB_SECRET: $(GTDB_SECRET)
+      continueOnError: 'true'
+
+    - script: |
+        echo on
+        set ASAN_RT_SRC_ROOT=$(Build.SourcesDirectory)\compiler-rt
+        call %MSVC_SRC%\binaries\x86chk\setenv.cmd x86 %MSVC_SRC%\src
+        set INCLUDE=%INCLUDE%;$(Build.SourcesDirectory)\compiler-rt\include;
+        pushd $(Build.SourcesDirectory)\llvm\utils\lit\lit
+        c:\python27\python.exe $(Build.SourcesDirectory)\llvm\utils\lit\lit\msvc_main.py $(Build.SourcesDirectory)\compiler-rt\\test\\asan\TestCases x86 --write-sql-results -d pyodbc
+        popd
+      displayName: 'Run asan tests static'
+      env:
+        TEST_OUTPUT_DIR: $(Build.BinariesDirectory)
+        TEST_C_COMPILER: cl.exe
+        ASAN_RT_LIB_DIR: $(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\lib\windows\x86
+        ASAN_RT_BIN_DIR: $(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\\bin
+        SQL_TABLE_NAME: asan_static
+        GTDB_SECRET: $(GTDB_SECRET)
+      continueOnError: 'true'
+
+    - script: |
+        echo on
+        set ASAN_RT_SRC_ROOT=$(Build.SourcesDirectory)\compiler-rt
+        call %MSVC_SRC%\binaries\x86chk\setenv.cmd x86 %MSVC_SRC%\src
+        set INCLUDE=%INCLUDE%;$(Build.SourcesDirectory)\compiler-rt\include;
+        pushd $(Build.SourcesDirectory)\llvm\utils\lit\lit
+        c:\python27\python.exe $(Build.SourcesDirectory)\llvm\utils\lit\lit\msvc_main.py $(Build.SourcesDirectory)\compiler-rt\\test\\asan\TestCases x86 --write-sql-results -d pyodbc --force-dynamic
+        popd
+      displayName: 'Run asan tests dynamic'
+      env:
+        TEST_OUTPUT_DIR: $(Build.BinariesDirectory)
+        TEST_C_COMPILER: cl.exe
+        ASAN_RT_LIB_DIR: $(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\lib\windows\x86
+        ASAN_RT_BIN_DIR: $(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\\bin
+        SQL_TABLE_NAME: asan_dynamic
+        GTDB_SECRET: $(GTDB_SECRET)
+      continueOnError: 'true'
+
