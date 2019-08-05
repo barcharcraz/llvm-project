@@ -153,6 +153,11 @@ jobs:
         ArtifactName: llvm_asan_$(BuildType)_$(buildArch)$(buildTag)
         publishLocation: 'Container'
 
+    - task: git-tag-on-release-task@6
+      inputs:
+        staticTagName: 'x86-release'
+        artifactIncludeList: 'llvm_asan_Release_x86_bin'
+
     - script: |
             echo on
             mkdir $(Build.BinariesDirectory)\shipping_components\bin
