@@ -169,6 +169,17 @@ jobs:
         ArtifactName: llvm_asan_$(BuildType)_$(buildArch)$(buildTag)_bin
         publishLocation: 'Container'
 
+    - script: git clone https://github.com/mcgov/Win32-AddressSanitizer-Utils.git $(Build.SourcesDirectory)\asan_utils
+
+    - task: NuGetCommand@2
+      inputs:
+        command: 'pack'
+        packagesToPack: '$(Build.SourcesDirectory)\asan_utils\asan.nuspec'
+        packDestination: '$(Build.BinariesDirectory)\shipping_components'
+        versioningScheme: 'byBuildNumber'
+        includeSymbols: true
+        basePath: '$(Build.BinariesDirectory)\shipping_components'
+
   - job: MSVC_Tests
     variables:
       - name: LLVM_VERSION
