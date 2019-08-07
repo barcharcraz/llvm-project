@@ -169,7 +169,7 @@ jobs:
         ArtifactName: llvm_asan_$(BuildType)_$(buildArch)$(buildTag)_bin
         publishLocation: 'Container'
 
-    - script: git clone https://github.com/mcgov/Win32-AddressSanitizer-Utils.git $(Build.SourcesDirectory)\asan_utils
+    - script: rd /s /q $(Build.SourcesDirectory)\asan_utils && git clone https://github.com/mcgov/Win32-AddressSanitizer-Utils.git $(Build.SourcesDirectory)\asan_utils
 
     - task: NuGetCommand@2
       inputs:
