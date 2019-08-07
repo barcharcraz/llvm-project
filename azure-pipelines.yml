@@ -176,7 +176,9 @@ jobs:
         command: 'pack'
         packagesToPack: '$(Build.SourcesDirectory)\asan_utils\asan.nuspec'
         packDestination: '$(Build.BinariesDirectory)\shipping_components'
-        versioningScheme: 'byBuildNumber'
+        majorVersion: '0'
+        minorVersion: '1'
+        patchVersion: '0'
         includeSymbols: true
         basePath: '$(Build.BinariesDirectory)\shipping_components'
 
