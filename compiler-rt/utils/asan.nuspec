@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
+    <metadata>
+        <id>LLVM.AddressSanitizer</id>
+        <version>$VERSION_NUMBER$</version>
+        <description>LLVM Release 9.0</description>
+        <authors>LLVM Project Maintainers</authors>
+        <projectUrl>https://github.com/llvm/llvm-project</projectUrl>
+        <license type="file">LICENSE.txt</license>
+        <iconUrl>https://llvm.org/img/DragonFull.png</iconUrl>
+        <title>AddressSanitizer (Win32 Libs)</title>
+    </metadata>
+    <files>
+         <file src="LICENSE.txt" target=""/>
+        <file src="llvm-symbolizer.exe" target=""/>
+        <file src="msdia140.dll" target=""/>
+        <file src="bin\sancov.exe" target=""/>
+        <file src="include\sanitizer\allocator_interface.h" target=""/>
+        <file src="include\sanitizer\asan_interface.h" target=""/>
+        <file src="include\sanitizer\common_interface_defs.h" target=""/>
+        <file src="include\sanitizer\coverage_interface.h" target=""/>
+        <file src="include\sanitizer\dfsan_interface.h" target=""/>
+        <file src="include\sanitizer\hwasan_interface.h" target=""/>
+        <file src="include\sanitizer\linux_syscall_hooks.h" target=""/>
+        <file src="include\sanitizer\lsan_interface.h" target=""/>
+        <file src="include\sanitizer\msan_interface.h" target=""/>
+        <file src="include\sanitizer\netbsd_syscall_hooks.h" target=""/>
+        <file src="include\sanitizer\scudo_interface.h" target=""/>
+        <file src="include\sanitizer\tsan_interface.h" target=""/>
+        <file src="include\sanitizer\tsan_interface_atomic.h" target=""/>
+        <file src="lib\windows\x86\clang_rt.asan-i386.lib" target=""/>
+        <file src="lib\windows\x86\clang_rt.asan-preinit-i386.lib" target=""/>
+        <file src="lib\windows\x86\clang_rt.asan_cxx-i386.lib" target=""/>
+        <file src="lib\windows\x86\clang_rt.asan_dll_thunk-i386.lib" target=""/>
+        <file src="lib\windows\x86\clang_rt.asan_dynamic-i386.dll" target=""/>
+        <file src="lib\windows\x86\clang_rt.asan_dynamic-i386.exp" target=""/>
+        <file src="lib\windows\x86\clang_rt.asan_dynamic-i386.lib" target=""/>
+        <file src="lib\windows\x86\clang_rt.asan_dynamic-i386.pdb" target=""/>
+        <file src="lib\windows\x86\clang_rt.asan_dynamic_runtime_thunk-i386.lib" target=""/>
+        <file src="lib\windows\x86\clang_rt.profile-i386.lib" target=""/>
+        <file src="share\asan_blacklist.txt" target=""/>
+    </files>
+</package>
