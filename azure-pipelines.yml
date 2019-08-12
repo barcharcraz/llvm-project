@@ -171,16 +171,6 @@ jobs:
 
     - script: rd /s /q $(Build.SourcesDirectory)\asan_utils && git clone https://github.com/mcgov/Win32-AddressSanitizer-Utils.git $(Build.SourcesDirectory)\asan_utils
 
-    - task: NuGetCommand@2
-      inputs:
-        command: 'pack'
-        packagesToPack: '$(Build.SourcesDirectory)\asan_utils\asan.nuspec'
-        packDestination: '$(Build.BinariesDirectory)\shipping_components'
-        majorVersion: '0'
-        minorVersion: '1'
-        patchVersion: '0'
-        includeSymbols: true
-        basePath: '$(Build.BinariesDirectory)\shipping_components'
 
   - job: MSVC_Tests
     variables:
