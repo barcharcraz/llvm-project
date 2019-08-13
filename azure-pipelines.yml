@@ -14,11 +14,13 @@ jobs:
       - name: LLVM_VERSION
         value: 9.0.0
 
+
     timeoutInMinutes: 360
     pool:
       name: 'msvc-asan'
       demands:
       - Cmake
+      - IsFast
 
     strategy:
       matrix:
