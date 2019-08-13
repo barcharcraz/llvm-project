@@ -184,7 +184,6 @@ jobs:
       name: 'msvc-asan'
     dependsOn: Windows
     steps:
-    -script: taskkill /f /t /im mspdbsrv.exe &  taskkill /f /t  /im msbuild.exe & taskkill /f /t  /im cl.exe & taskkill /f /t /im link.exe
 
     - task: DownloadBuildArtifacts@0
       inputs:
@@ -199,7 +198,7 @@ jobs:
         popd
 
     - script: git clone https://$(sectools.token)@sectools.visualstudio.com/DefaultCollection/AddressSanitizer/_git/unix_test_dependencies $(Build.ArtifactStagingDirectory)\unix 2>&1
-
+    
     - task: PowerShell@2
       inputs:
         targetType: 'inline'
@@ -208,6 +207,12 @@ jobs:
       inputs:
         targetType: 'inline'
         script: Expand-Archive $(Build.ArtifactStagingDirectory)\unix\cygwin64.zip $(Build.ArtifactStagingDirectory)\unix\
+
+    - script: |
+        taskkill /f /t /im mspdbsrv.exe
+        taskkill /f /t /im msbuild.exe
+        taskkill /f /t /im cl.exe 
+        taskkill /f /t /im link.exe
 
     - script: |
         set PATH=$(Build.ArtifactStagingDirectory)\unix\gnuwin32\bin;$(Build.ArtifactStagingDirectory)\unix\bin;$(Build.ArtifactStagingDirectory)\unix\cygwin64\bin;%PATH%
