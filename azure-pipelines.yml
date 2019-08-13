@@ -184,6 +184,8 @@ jobs:
       name: 'msvc-asan'
     dependsOn: Windows
     steps:
+    -script: taskkill /f /t /im mspdbsrv.exe &  taskkill /f /t  /im msbuild.exe & taskkill /f /t  /im cl.exe & taskkill /f /t /im link.exe
+
     - task: DownloadBuildArtifacts@0
       inputs:
         buildType: 'current'
