@@ -180,7 +180,9 @@ jobs:
         value: 9.0.0
       - name: UNIX_BIN_DIR
         value: $(Build.ArtifactStagingDirectory)\unix\cygwin64\bin
-    
+      - name: ASAN_SYMBOLIZER_PATH
+        value: $(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\\bin\llvm-symbolizer.exe
+
     timeoutInMinutes: 360
     pool:
       name: 'msvc-asan'
