@@ -194,6 +194,15 @@ jobs:
         artifactName: llvm_asan_Release_x86_bin
         downloadType: 'single'
         downloadPath: '$(System.ArtifactsDirectory)'
+ 
+    - script: |
+        taskkill /f /t /im mspdbsrv.exe
+        taskkill /f /t /im msbuild.exe
+        taskkill /f /t /im cl.exe 
+        taskkill /f /t /im link.exe
+        (exit /b 0)
+      continueOnError: true
+ 
     - script: |
         pushd $(Build.SourcesDirectory)\llvm\utils\lit
         c:\python27\python.exe setup.py install
@@ -209,12 +218,6 @@ jobs:
       inputs:
         targetType: 'inline'
         script: Expand-Archive $(Build.ArtifactStagingDirectory)\unix\cygwin64.zip $(Build.ArtifactStagingDirectory)\unix\
-
-    - script: |
-        taskkill /f /t /im mspdbsrv.exe
-        taskkill /f /t /im msbuild.exe
-        taskkill /f /t /im cl.exe 
-        taskkill /f /t /im link.exe
 
     - script: |
         set PATH=$(Build.ArtifactStagingDirectory)\unix\gnuwin32\bin;$(Build.ArtifactStagingDirectory)\unix\bin;$(Build.ArtifactStagingDirectory)\unix\cygwin64\bin;%PATH%
