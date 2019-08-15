@@ -48,10 +48,10 @@ jobs:
             echo on
             set SKIPENCDIFFS=1
             set _CL_= /d2ASAN /Zi $(CRT_FLAG)
-            if $(CRT_FLAG) EQU 
-            set _LINK_= /debug  /force:multiple
+
+            set _LINK_= /debug $(LINK_LIBS) /force:multiple
             pushd %MSVC_SRC%\src\qa\be\regress
-            rl -exe -all 
+            rl -exe -all -nodirs:"pogo;benchi"
             popd
             popd
             (exit /b 0)
