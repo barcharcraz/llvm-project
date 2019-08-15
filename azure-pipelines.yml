@@ -9,7 +9,7 @@ trigger:
         - master
   paths:
     exclude:
-      - azure-pipelines*.yaml
+      - azure-pipelines*.yml
 
 name: llvm build
 jobs:
