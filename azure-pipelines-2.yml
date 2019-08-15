@@ -5,7 +5,7 @@
 
 
 jobs:
-  - job: Regress Runs
+  - job: Regress
   
     pool: 
       name: 'msvc-asan'   
