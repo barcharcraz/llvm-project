@@ -6,7 +6,7 @@
 
 jobs:
   - job: Regress
-  
+    timeoutInMinutes: 360
     pool: 
       name: 'msvc-asan'   
       demands: IsFast
