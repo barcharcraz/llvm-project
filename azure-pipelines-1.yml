@@ -4,7 +4,13 @@
 # https://aka.ms/yaml
 
 trigger:
-- master
+  branches:
+      include:
+        - master
+  paths:
+    exclude:
+      - azure-pipelines*.yaml
+
 jobs:
   - job: MSVC_Tests
     variables:
