@@ -23,7 +23,8 @@ jobs:
 
     - task: DownloadBuildArtifacts@0
       inputs:
-        buildType: 'current'
+        buildType: specific
+        buildId: 11796
         buildVersionToDownload: latest
         artifactName: llvm_asan_Release_x86_bin
         downloadType: 'single'
