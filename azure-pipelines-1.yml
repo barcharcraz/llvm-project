@@ -43,6 +43,7 @@ jobs:
         pushd $(Build.SourcesDirectory)\llvm\utils\lit
         c:\python27\python.exe setup.py install
         popd
+        (exit /b 0)
 
     - script: git clone https://$(sectools.token)@sectools.visualstudio.com/DefaultCollection/AddressSanitizer/_git/unix_test_dependencies $(Build.ArtifactStagingDirectory)\unix 2>&1
     
