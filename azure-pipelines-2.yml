@@ -13,10 +13,12 @@ jobs:
     
     strategy:
       matrix:
-        win32_MT: 
-            CRT_FLAG: /MT 
+        win32_MT:
+          CRT_FLAG: /MT 
+          LINK_LIBS: /wholearchive:%ASAN_RT_LIB_DIR%\clang_rt.asan-i386.lib /wholearchive:%ASAN_RT_LIB_DIR%\clang_rt.asan_cxx-i386.lib
         win32_MD:
           CRT_FLAG: /MD 
+          LINK_LIBS: /wholearchive:%ASAN_RT_LIB_DIR%\clang_rt.asan_dynamic-i386.lib /wholearchive:%ASAN_RT_LIB_DIR%\clang_rt.asan_dynamic_runtime_thunk-i386.lib
 
     steps:
     - checkout: none
@@ -45,10 +47,11 @@ jobs:
             call %MSVC_SRC%\binaries\x86chk\setenv.cmd x86 %MSVC_SRC%\src
             echo on
             set SKIPENCDIFFS=1
-            set _CL_= /d2ASAN /Zi /MT
-            set _LINK_= /debug /wholearchive:%ASAN_RT_LIB_DIR%\clang_rt.asan-i386.lib /wholearchive:%ASAN_RT_LIB_DIR%\clang_rt.asan_cxx-i386.lib /force:multiple
+            set _CL_= /d2ASAN /Zi $(CRT_FLAG)
+            if $(CRT_FLAG) EQU 
+            set _LINK_= /debug  /force:multiple
             pushd %MSVC_SRC%\src\qa\be\regress
-            rl -exe -all -exeflags:"$(CRT_FLAG) /O2 /d2ASAN; $(CRT_FLAG) /Od /d2ASAN; $(CRT_FLAG) /O2 /GL /d2ASAN" -nodirs:"benchi,pogo"
+            rl -exe -all 
             popd
             popd
             (exit /b 0)
