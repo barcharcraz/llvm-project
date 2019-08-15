@@ -52,6 +52,12 @@ jobs:
             set _LINK_= /debug $(LINK_LIBS) /force:multiple
             pushd %MSVC_SRC%\src\qa\be\regress
             rl -exe -all -nodirs:"pogo;benchi"
+            copy rl.x86.*.log $(Build.ArtifactStagingDirectory)\
             popd
             popd
             (exit /b 0)
+    - task: PublishBuildArtifacts@1
+      inputs:
+        PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+        ArtifactName: 'regress_logs'
+        publishLocation: 'Container'
