@@ -3,13 +3,13 @@
 # Add steps that build, run tests, deploy, and more:
 # https://aka.ms/yaml
 
-trigger:
-  branches:
-      include:
-        - master
-  paths:
-    exclude:
-      - azure-pipelines*.yml
+#trigger:
+#  branches:
+#      include:
+#        - master
+#  paths:
+#    exclude:
+#      - azure-pipelines*.yml
 
 
 jobs:
@@ -79,7 +79,7 @@ jobs:
     - script: |
         echo on
         call %MSVC_SRC%\binaries\x86chk\setenv.cmd x86 %MSVC_SRC%\src
-        set PATH=%PATH%;$(Build.ArtifactStagingDirectory)\unix\gnuwin32\bin;$(Build.ArtifactStagingDirectory)\unix\bin;$(Build.ArtifactStagingDirectory)\unix\cygwin64\bin;$(Build.SourcesDirectory)\compiler-rt\\test\\asan\TestCases\
+        set PATH=$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\\lib\windows\x86;%PATH%;
         set INCLUDE=%INCLUDE%;$(Build.SourcesDirectory)\compiler-rt\include;$(Build.SourcesDirectory)\compiler-rt\\test\\asan\TestCases\defines.h
         pushd $(Build.SourcesDirectory)\llvm\utils\lit\lit
         c:\python27\python.exe $(Build.SourcesDirectory)\llvm\utils\lit\lit\msvc_main.py $(Build.SourcesDirectory)\compiler-rt\\test\\asan\TestCases\Windows x86 --write-sql-results -d pyodbc
@@ -99,7 +99,8 @@ jobs:
         echo on
         set ASAN_RT_SRC_ROOT=$(Build.SourcesDirectory)\compiler-rt
         call %MSVC_SRC%\binaries\x86chk\setenv.cmd x86 %MSVC_SRC%\src
-        set INCLUDE=%INCLUDE%;$(Build.SourcesDirectory)\compiler-rt\include;
+        set PATH=$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\\lib\windows\x86;%PATH%;
+        set INCLUDE=%INCLUDE%;$(Build.SourcesDirectory)\compiler-rt\include;$(Build.SourcesDirectory)\compiler-rt\\test\\asan\TestCases\defines.h
         pushd $(Build.SourcesDirectory)\llvm\utils\lit\lit
         c:\python27\python.exe $(Build.SourcesDirectory)\llvm\utils\lit\lit\msvc_main.py $(Build.SourcesDirectory)\compiler-rt\\test\\asan\TestCases\Windows x86 --force-dynamic --write-sql-results -d pyodbc
         popd
@@ -117,7 +118,8 @@ jobs:
         echo on
         set ASAN_RT_SRC_ROOT=$(Build.SourcesDirectory)\compiler-rt
         call %MSVC_SRC%\binaries\x86chk\setenv.cmd x86 %MSVC_SRC%\src
-        set INCLUDE=%INCLUDE%;$(Build.SourcesDirectory)\compiler-rt\include;
+        set PATH=$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\\lib\windows\x86;%PATH%;
+        set INCLUDE=%INCLUDE%;$(Build.SourcesDirectory)\compiler-rt\include;$(Build.SourcesDirectory)\compiler-rt\\test\\asan\TestCases\defines.h
         pushd $(Build.SourcesDirectory)\llvm\utils\lit\lit
         c:\python27\python.exe $(Build.SourcesDirectory)\llvm\utils\lit\lit\msvc_main.py $(Build.SourcesDirectory)\compiler-rt\\test\\asan\TestCases x86 --write-sql-results -d pyodbc
         popd
@@ -134,7 +136,8 @@ jobs:
         echo on
         set ASAN_RT_SRC_ROOT=$(Build.SourcesDirectory)\compiler-rt
         call %MSVC_SRC%\binaries\x86chk\setenv.cmd x86 %MSVC_SRC%\src
-        set INCLUDE=%INCLUDE%;$(Build.SourcesDirectory)\compiler-rt\include;
+        set PATH=$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\\lib\windows\x86;%PATH%;
+        set INCLUDE=%INCLUDE%;$(Build.SourcesDirectory)\compiler-rt\include;$(Build.SourcesDirectory)\compiler-rt\\test\\asan\TestCases\defines.h
         pushd $(Build.SourcesDirectory)\llvm\utils\lit\lit
         c:\python27\python.exe $(Build.SourcesDirectory)\llvm\utils\lit\lit\msvc_main.py $(Build.SourcesDirectory)\compiler-rt\\test\\asan\TestCases x86 --write-sql-results -d pyodbc --force-dynamic
         popd
