@@ -33,15 +33,15 @@ jobs:
         buildVersionToDownload: 'latest'
         allowPartiallySucceededBuilds: true
         downloadType: 'single'
-        downloadPath: '$(System.ArtifactsDirectory)'
+        downloadPath: '$(Build.BinariesDirectory)'
         artifactName: llvm_asan_Release_x86_bin
 
     - task: CmdLine@2
       inputs:
         script: |
-            set PATH=%PATH%;$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\bin;$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\lib\windows\x86;$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\include;
-            set ASAN_RT_LIB_DIR=$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\lib\windows\x86
-            set ASAN_RT_BIN_DIR=$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\bin
+            set PATH=%PATH%;$(Build.BinariesDirectory)\llvm_asan_Release_x86_bin\bin;$(Build.BinariesDirectory)\llvm_asan_Release_x86_bin\lib\windows\x86;$(Build.BinariesDirectory)\llvm_asan_Release_x86_bin\include;
+            set ASAN_RT_LIB_DIR=$(Build.BinariesDirectory)\llvm_asan_Release_x86_bin\lib\windows\x86
+            set ASAN_RT_BIN_DIR=$(Build.BinariesDirectory)\llvm_asan_Release_x86_bin\bin
             echo on
             pushd %MSVC_SRC%
             call %MSVC_SRC%\binaries\x86chk\setenv.cmd x86 %MSVC_SRC%\src
@@ -52,7 +52,8 @@ jobs:
             set _LINK_= /debug $(LINK_LIBS) /force:multiple
             pushd %MSVC_SRC%\src\qa\be\regress
             rl -exe -all -nodirs:"pogo;benchi"
-            copy rl.x86.*.log $(Build.ArtifactStagingDirectory)\
+            xcopy rl.*.log  $(Build.ArtifactStagingDirectory)\
+            dir rl.*.log
             popd
             popd
             (exit /b 0)
