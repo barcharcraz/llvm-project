@@ -69,7 +69,6 @@ jobs:
         script: Expand-Archive $(Build.ArtifactStagingDirectory)\unix\cygwin64.zip $(Build.ArtifactStagingDirectory)\unix\
 
     - script: |
-        set PATH=$(Build.ArtifactStagingDirectory)\unix\gnuwin32\bin;$(Build.ArtifactStagingDirectory)\unix\bin;$(Build.ArtifactStagingDirectory)\unix\cygwin64\bin;%PATH%
         echo ##vso[task.prependpath]$(System.ArtifactsDirectory);$(Build.SourcesDirectory)\llvm\utils\lit;$(Build.SourcesDirectory)\llvm\utils\lit\lit;$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\\bin;$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\\lib\windows\x86;$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\\include;$(System.ArtifactsDirectory)\\bin
         echo ##vso[task.prependpath]$(Build.ArtifactStagingDirectory)\unix\gnuwin32\bin;$(Build.ArtifactStagingDirectory)\unix\bin;$(Build.ArtifactStagingDirectory)\unix\cygwin64\bin
         where cat
@@ -79,9 +78,9 @@ jobs:
     
     - script: |
         echo on
-        set ASAN_RT_SRC_ROOT=$(Build.SourcesDirectory)\compiler-rt
         call %MSVC_SRC%\binaries\x86chk\setenv.cmd x86 %MSVC_SRC%\src
-        set INCLUDE=%INCLUDE%;$(Build.SourcesDirectory)\compiler-rt\include;
+        set PATH=%PATH%;$(Build.ArtifactStagingDirectory)\unix\gnuwin32\bin;$(Build.ArtifactStagingDirectory)\unix\bin;$(Build.ArtifactStagingDirectory)\unix\cygwin64\bin;$(Build.SourcesDirectory)\compiler-rt\\test\\asan\TestCases\
+        set INCLUDE=%INCLUDE%;$(Build.SourcesDirectory)\compiler-rt\include;$(Build.SourcesDirectory)\compiler-rt\\test\\asan\TestCases\defines.h
         pushd $(Build.SourcesDirectory)\llvm\utils\lit\lit
         c:\python27\python.exe $(Build.SourcesDirectory)\llvm\utils\lit\lit\msvc_main.py $(Build.SourcesDirectory)\compiler-rt\\test\\asan\TestCases\Windows x86 --write-sql-results -d pyodbc
         popd
@@ -92,6 +91,7 @@ jobs:
         ASAN_RT_LIB_DIR: $(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\lib\windows\x86
         ASAN_RT_BIN_DIR: $(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\\bin
         SQL_TABLE_NAME: windows_static
+        ASAN_RT_SRC_ROOT: $(Build.SourcesDirectory)\compiler-rt
       continueOnError: 'true'
 
 
