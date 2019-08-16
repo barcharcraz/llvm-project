@@ -52,8 +52,7 @@ jobs:
             set _LINK_= /debug $(LINK_LIBS) /force:multiple
             pushd %MSVC_SRC%\src\qa\be\regress
             rl -exe -all -nodirs:"pogo;benchi"
-            xcopy rl.*.log  $(Build.ArtifactStagingDirectory)\
-            dir rl.*.log
+            xcopy /i logs  $(Build.ArtifactStagingDirectory)\logs
             popd
             popd
             (exit /b 0)
