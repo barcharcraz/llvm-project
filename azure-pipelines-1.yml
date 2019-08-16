@@ -28,7 +28,7 @@ jobs:
     pool:
       name: 'msvc-asan'
       demands:
-        "Agent.Name -eq greenteam_002"
+        "Agent.Name -equals greenteam_002"
 
       
     steps:
