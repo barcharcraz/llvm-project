@@ -108,6 +108,7 @@ jobs:
         configuration: '$(BuildType)'
         clean: true
         maximumCpuCount: true
+        msbuildVersion: 15.0
 
 
     - task: PowerShell@2
@@ -128,6 +129,7 @@ jobs:
         configuration: '$(BuildType)'
         clean: true
         maximumCpuCount: true
+        msbuildVersion: 15.0
 
     - task: MSBuild@1
       inputs:
@@ -137,6 +139,7 @@ jobs:
         configuration: '$(BuildType)'
         clean: true
         maximumCpuCount: true
+        msbuildVersion: 15.0
 
 
     - script: |
