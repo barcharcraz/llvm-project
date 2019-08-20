@@ -27,6 +27,8 @@ jobs:
     timeoutInMinutes: 360
     pool:
       name: 'msvc-asan'
+      demands:
+        - "Agent.Name -equals greenteam_002"
  
 
       
