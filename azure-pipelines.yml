@@ -25,7 +25,6 @@ jobs:
       name: 'msvc-asan'
       demands:
       - Cmake
-      - IsFast
       - "Agent.Name -equals greenteam_002"
 
     strategy:
