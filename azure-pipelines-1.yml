@@ -70,10 +70,7 @@ jobs:
     - script: |
         echo ##vso[task.prependpath]$(System.ArtifactsDirectory);$(Build.SourcesDirectory)\llvm\utils\lit;$(Build.SourcesDirectory)\llvm\utils\lit\lit;$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\\bin;$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\\lib\windows\x86;$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\\include;$(System.ArtifactsDirectory)\\bin
         echo ##vso[task.prependpath]$(Build.ArtifactStagingDirectory)\unix\gnuwin32\bin;$(Build.ArtifactStagingDirectory)\unix\bin;$(Build.ArtifactStagingDirectory)\unix\cygwin64\bin
-        where cat
-        where awk
-        where sed
-        where grep
+
     
     - script: |
         echo on
