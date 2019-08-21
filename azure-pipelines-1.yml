@@ -21,14 +21,23 @@ jobs:
         value: $(Build.ArtifactStagingDirectory)\unix\cygwin64\bin
       - name: ASAN_SYMBOLIZER_PATH
         value: $(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\\bin\llvm-symbolizer.exe
+      - name: ASAN_RT_SRC_ROOT
+        value: $(Build.SourcesDirectory)\compiler-rt
+      - name: TEST_OUTPUT_DIR
+        value: $(Build.BinariesDirectory)
+      - name: TEST_C_COMPILER
+        value: cl.exe
+      - name: ASAN_RT_LIB_DIR
+        value: $(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\lib\windows\x86
+      - name: ASAN_RT_BIN_DIR
+        value: $(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\\bin
     
 
 
     timeoutInMinutes: 360
     pool:
       name: 'msvc-asan'
-      demands:
-        - "Agent.Name -equals greenteam_002"
+      
  
 
       
@@ -77,19 +86,14 @@ jobs:
     - script: |
         echo on
         call %MSVC_SRC%\binaries\x86chk\setenv.cmd x86 %MSVC_SRC%\src
-        set PATH=$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\\lib\windows\x86;%PATH%;
+        set PATH=$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\\lib\windows\x86;%PATH%;$(Build.SourcesDirectory)\compiler-rt\\test\\asan\TestCases\;
         set INCLUDE=%INCLUDE%;$(Build.SourcesDirectory)\compiler-rt\include;$(Build.SourcesDirectory)\compiler-rt\\test\\asan\TestCases\defines.h
         pushd $(Build.SourcesDirectory)\llvm\utils\lit\lit
         c:\python27\python.exe $(Build.SourcesDirectory)\llvm\utils\lit\lit\msvc_main.py $(Build.SourcesDirectory)\compiler-rt\\test\\asan\TestCases\Windows x86 --write-sql-results -d pyodbc
         popd
       displayName: 'Run Windows specific tests default'
       env:
-        TEST_OUTPUT_DIR: $(Build.BinariesDirectory)
-        TEST_C_COMPILER: cl.exe
-        ASAN_RT_LIB_DIR: $(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\lib\windows\x86
-        ASAN_RT_BIN_DIR: $(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\\bin
         SQL_TABLE_NAME: windows_static
-        ASAN_RT_SRC_ROOT: $(Build.SourcesDirectory)\compiler-rt
       continueOnError: 'true'
 
 
@@ -97,7 +101,7 @@ jobs:
         echo on
         set ASAN_RT_SRC_ROOT=$(Build.SourcesDirectory)\compiler-rt
         call %MSVC_SRC%\binaries\x86chk\setenv.cmd x86 %MSVC_SRC%\src
-        set PATH=$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\\lib\windows\x86;%PATH%;
+        set PATH=$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\\lib\windows\x86;%PATH%;$(Build.SourcesDirectory)\compiler-rt\\test\\asan\TestCases\;
         set INCLUDE=%INCLUDE%;$(Build.SourcesDirectory)\compiler-rt\include;$(Build.SourcesDirectory)\compiler-rt\\test\\asan\TestCases\defines.h
         pushd $(Build.SourcesDirectory)\llvm\utils\lit\lit
         c:\python27\python.exe $(Build.SourcesDirectory)\llvm\utils\lit\lit\msvc_main.py $(Build.SourcesDirectory)\compiler-rt\\test\\asan\TestCases\Windows x86 --force-dynamic --write-sql-results -d pyodbc
@@ -105,10 +109,6 @@ jobs:
 
       displayName: 'Run Windows specific tests dynamic'
       env:
-        TEST_OUTPUT_DIR: $(Build.BinariesDirectory)
-        TEST_C_COMPILER: cl.exe
-        ASAN_RT_LIB_DIR: $(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\lib\windows\x86
-        ASAN_RT_BIN_DIR: $(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\\bin
         SQL_TABLE_NAME: windows_dynamic
       continueOnError: 'true'
 
@@ -116,17 +116,13 @@ jobs:
         echo on
         set ASAN_RT_SRC_ROOT=$(Build.SourcesDirectory)\compiler-rt
         call %MSVC_SRC%\binaries\x86chk\setenv.cmd x86 %MSVC_SRC%\src
-        set PATH=$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\\lib\windows\x86;%PATH%;
+        set PATH=$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\\lib\windows\x86;%PATH%;$(Build.SourcesDirectory)\compiler-rt\\test\\asan\TestCases\;
         set INCLUDE=%INCLUDE%;$(Build.SourcesDirectory)\compiler-rt\include;$(Build.SourcesDirectory)\compiler-rt\\test\\asan\TestCases\defines.h
         pushd $(Build.SourcesDirectory)\llvm\utils\lit\lit
         c:\python27\python.exe $(Build.SourcesDirectory)\llvm\utils\lit\lit\msvc_main.py $(Build.SourcesDirectory)\compiler-rt\\test\\asan\TestCases x86 --write-sql-results -d pyodbc
         popd
       displayName: 'Run asan tests static'
       env:
-        TEST_OUTPUT_DIR: $(Build.BinariesDirectory)
-        TEST_C_COMPILER: cl.exe
-        ASAN_RT_LIB_DIR: $(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\lib\windows\x86
-        ASAN_RT_BIN_DIR: $(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\\bin
         SQL_TABLE_NAME: asan_static
       continueOnError: 'true'
 
@@ -134,17 +130,13 @@ jobs:
         echo on
         set ASAN_RT_SRC_ROOT=$(Build.SourcesDirectory)\compiler-rt
         call %MSVC_SRC%\binaries\x86chk\setenv.cmd x86 %MSVC_SRC%\src
-        set PATH=$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\\lib\windows\x86;%PATH%;
+        set PATH=$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\\lib\windows\x86;%PATH%;$(Build.SourcesDirectory)\compiler-rt\\test\\asan\TestCases\;
         set INCLUDE=%INCLUDE%;$(Build.SourcesDirectory)\compiler-rt\include;$(Build.SourcesDirectory)\compiler-rt\\test\\asan\TestCases\defines.h
         pushd $(Build.SourcesDirectory)\llvm\utils\lit\lit
         c:\python27\python.exe $(Build.SourcesDirectory)\llvm\utils\lit\lit\msvc_main.py $(Build.SourcesDirectory)\compiler-rt\\test\\asan\TestCases x86 --write-sql-results -d pyodbc --force-dynamic
         popd
       displayName: 'Run asan tests dynamic'
       env:
-        TEST_OUTPUT_DIR: $(Build.BinariesDirectory)
-        TEST_C_COMPILER: cl.exe
-        ASAN_RT_LIB_DIR: $(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\lib\windows\x86
-        ASAN_RT_BIN_DIR: $(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\\bin
         SQL_TABLE_NAME: asan_dynamic
       continueOnError: 'true'
 
