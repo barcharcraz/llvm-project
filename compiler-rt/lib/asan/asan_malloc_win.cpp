@@ -19,7 +19,6 @@
 #include "asan_internal.h"
 #include "asan_stack.h"
 #include "interception/interception.h"
-#include <stddef.h>
 
 // Intentionally not including windows.h here, to avoid the risk of
 // pulling in conflicting declarations of these functions. (With mingw-w64,
@@ -28,6 +27,10 @@ typedef int BOOL;
 typedef void *HANDLE;
 typedef const void *LPCVOID;
 typedef void *LPVOID;
+typedef HANDLE HWND;
+typedef HANDLE HGLOBAL;
+typedef HANDLE HLOCAL;
+typedef unsigned int UINT;
 
 typedef unsigned long DWORD;
 constexpr unsigned long HEAP_ZERO_MEMORY = 0x00000008;
@@ -43,15 +46,32 @@ constexpr unsigned long HEAP_REALLOC_SUPPORTED_FLAGS =
 constexpr unsigned long HEAP_REALLOC_UNSUPPORTED_FLAGS =
     (~HEAP_ALLOCATE_SUPPORTED_FLAGS);
 
+#define min(a, b) (((a) < (b)) ? (a) : (b))
 
 extern "C" {
 LPVOID WINAPI HeapAlloc(HANDLE hHeap, DWORD dwFlags, size_t dwBytes);
 LPVOID WINAPI HeapReAlloc(HANDLE hHeap, DWORD dwFlags, LPVOID lpMem,
-                         size_t dwBytes);
+                          size_t dwBytes);
 BOOL WINAPI HeapFree(HANDLE hHeap, DWORD dwFlags, LPVOID lpMem);
 size_t WINAPI HeapSize(HANDLE hHeap, DWORD dwFlags, LPCVOID lpMem);
 
 BOOL WINAPI HeapValidate(HANDLE hHeap, DWORD dwFlags, LPCVOID lpMem);
+HANDLE WINAPI GetProcessHeap();
+
+_declspec(dllimport) HGLOBAL WINAPI GlobalAlloc(UINT uFlags, SIZE_T dwBytes);
+_declspec(dllimport) HGLOBAL WINAPI GlobalFree(HGLOBAL hMem);
+_declspec(dllimport) HGLOBAL WINAPI GlobalSize(HGLOBAL hMem);
+_declspec(dllimport) HGLOBAL WINAPI
+    GlobalReAlloc(HGLOBAL hMem, SIZE_T dwBytes, UINT uFlags);
+_declspec(dllimport) HGLOBAL WINAPI GlobalLock(HGLOBAL hMem);
+_declspec(dllimport) HGLOBAL WINAPI GlobalUnlock(HGLOBAL hMem);
+_declspec(dllimport) HLOCAL WINAPI LocalAlloc(UINT uFlags, SIZE_T dwBytes);
+_declspec(dllimport) HLOCAL WINAPI LocalFree(HLOCAL hMem);
+_declspec(dllimport) HLOCAL WINAPI LocalSize(HLOCAL hMem);
+_declspec(dllimport) HLOCAL WINAPI
+    LocalReAlloc(HLOCAL hMem, size_t dwBytes, UINT uFlags);
+_declspec(dllimport) HLOCAL WINAPI LocalLock(HLOCAL hMem);
+_declspec(dllimport) HLOCAL WINAPI LocalUnlock(HLOCAL hMem);
 }
 
 using namespace __asan;
@@ -62,9 +82,9 @@ using namespace __asan;
 // so we have to intercept them before they are called for the first time.
 
 #if ASAN_DYNAMIC
-# define ALLOCATION_FUNCTION_ATTRIBUTE
+#define ALLOCATION_FUNCTION_ATTRIBUTE
 #else
-# define ALLOCATION_FUNCTION_ATTRIBUTE SANITIZER_INTERFACE_ATTRIBUTE
+#define ALLOCATION_FUNCTION_ATTRIBUTE SANITIZER_INTERFACE_ATTRIBUTE
 #endif
 
 extern "C" {
@@ -76,9 +96,7 @@ size_t _msize(void *ptr) {
 }
 
 ALLOCATION_FUNCTION_ATTRIBUTE
-size_t _msize_base(void *ptr) {
-  return _msize(ptr);
-}
+size_t _msize_base(void *ptr) { return _msize(ptr); }
 
 ALLOCATION_FUNCTION_ATTRIBUTE
 void free(void *ptr) {
@@ -87,14 +105,10 @@ void free(void *ptr) {
 }
 
 ALLOCATION_FUNCTION_ATTRIBUTE
-void _free_dbg(void *ptr, int) {
-  free(ptr);
-}
+void _free_dbg(void *ptr, int) { free(ptr); }
 
 ALLOCATION_FUNCTION_ATTRIBUTE
-void _free_base(void *ptr) {
-  free(ptr);
-}
+void _free_base(void *ptr) { free(ptr); }
 
 ALLOCATION_FUNCTION_ATTRIBUTE
 void *malloc(size_t size) {
@@ -103,13 +117,13 @@ void *malloc(size_t size) {
 }
 
 ALLOCATION_FUNCTION_ATTRIBUTE
-void *_malloc_base(size_t size) {
-  return malloc(size);
+void *_malloc_base(size_t size) { 
+  return malloc(size); 
 }
 
 ALLOCATION_FUNCTION_ATTRIBUTE
-void *_malloc_dbg(size_t size, int, const char *, int) {
-  return malloc(size);
+void *_malloc_dbg(size_t size, int, const char *, int) { 
+  return malloc(size); 
 }
 
 ALLOCATION_FUNCTION_ATTRIBUTE
@@ -119,8 +133,8 @@ void *calloc(size_t nmemb, size_t size) {
 }
 
 ALLOCATION_FUNCTION_ATTRIBUTE
-void *_calloc_base(size_t nmemb, size_t size) {
-  return calloc(nmemb, size);
+void *_calloc_base(size_t nmemb, size_t size) { 
+  return calloc(nmemb, size); 
 }
 
 ALLOCATION_FUNCTION_ATTRIBUTE
@@ -147,7 +161,7 @@ void *_realloc_dbg(void *ptr, size_t size, int) {
 
 ALLOCATION_FUNCTION_ATTRIBUTE
 void *_realloc_base(void *ptr, size_t size) {
-  return realloc(ptr, size);
+  return realloc(ptr, size); 
 }
 
 ALLOCATION_FUNCTION_ATTRIBUTE
@@ -189,18 +203,17 @@ void *_expand_dbg(void *memblock, size_t size) {
 // TODO(timurrrr): Might want to add support for _aligned_* allocation
 // functions to detect a bit more bugs.  Those functions seem to wrap malloc().
 
-int _CrtDbgReport(int, const char*, int,
-                  const char*, const char*, ...) {
+int _CrtDbgReport(int, const char *, int, const char *, const char *, ...) {
   ShowStatsAndAbort();
 }
 
-int _CrtDbgReportW(int reportType, const wchar_t*, int,
-                   const wchar_t*, const wchar_t*, ...) {
+int _CrtDbgReportW(int reportType, const wchar_t *, int, const wchar_t *,
+                   const wchar_t *, ...) {
   ShowStatsAndAbort();
 }
 
-int _CrtSetReportMode(int, int) {
-  return 0;
+int _CrtSetReportMode(int, int) { 
+  return 0; 
 }
 }  // extern "C"
 
@@ -342,8 +355,8 @@ void *SharedReAlloc(ReAllocFunction reallocFunc, SizeFunction heapSizeFunc,
       size_t old_usable_size = 0;
       if (replacement_alloc) {
         old_usable_size = asan_malloc_usable_size(lpMem, pc, bp);
-        REAL(memcpy)(replacement_alloc, lpMem,
-                     Min<size_t>(dwBytes, old_usable_size));
+        REAL(memcpy)
+        (replacement_alloc, lpMem, Min<size_t>(dwBytes, old_usable_size));
         asan_free(lpMem, &stack, FROM_MALLOC);
       }
       return replacement_alloc;
@@ -405,23 +418,21 @@ typedef unsigned long LOGICAL;
 
 // This function is documented as part of the Driver Development Kit but *not*
 // the Windows Development Kit.
-LOGICAL RtlFreeHeap(void* HeapHandle, DWORD Flags,
-                            void* BaseAddress);
+LOGICAL RtlFreeHeap(void *HeapHandle, DWORD Flags, void *BaseAddress);
 
 // This function is documented as part of the Driver Development Kit but *not*
 // the Windows Development Kit.
-void* RtlAllocateHeap(void* HeapHandle, DWORD Flags, size_t Size);
+void *RtlAllocateHeap(void *HeapHandle, DWORD Flags, size_t Size);
 
 // This function is completely undocumented.
-void*
-RtlReAllocateHeap(void* HeapHandle, DWORD Flags, void* BaseAddress,
-                  size_t Size);
+void *RtlReAllocateHeap(void *HeapHandle, DWORD Flags, void *BaseAddress,
+                        size_t Size);
 
 // This function is completely undocumented.
-size_t RtlSizeHeap(void* HeapHandle, DWORD Flags, void* BaseAddress);
+size_t RtlSizeHeap(void *HeapHandle, DWORD Flags, void *BaseAddress);
 
 INTERCEPTOR_WINAPI(size_t, RtlSizeHeap, HANDLE HeapHandle, DWORD Flags,
-                   void* BaseAddress) {
+                   void *BaseAddress) {
   if (!flags()->windows_hook_rtl_allocators ||
       UNLIKELY(!asan_inited || OWNED_BY_RTL(HeapHandle, BaseAddress))) {
     return REAL(RtlSizeHeap)(HeapHandle, Flags, BaseAddress);
@@ -432,7 +443,7 @@ INTERCEPTOR_WINAPI(size_t, RtlSizeHeap, HANDLE HeapHandle, DWORD Flags,
 }
 
 INTERCEPTOR_WINAPI(BOOL, RtlFreeHeap, HANDLE HeapHandle, DWORD Flags,
-                   void* BaseAddress) {
+                   void *BaseAddress) {
   // Heap allocations happen before this function is hooked, so we must fall
   // back to the original function if the pointer is not from the ASAN heap, or
   // unsupported flags are provided.
@@ -446,7 +457,7 @@ INTERCEPTOR_WINAPI(BOOL, RtlFreeHeap, HANDLE HeapHandle, DWORD Flags,
   return true;
 }
 
-INTERCEPTOR_WINAPI(void*, RtlAllocateHeap, HANDLE HeapHandle, DWORD Flags,
+INTERCEPTOR_WINAPI(void *, RtlAllocateHeap, HANDLE HeapHandle, DWORD Flags,
                    size_t Size) {
   // If the ASAN runtime is not initialized, or we encounter an unsupported
   // flag, fall back to the original allocator.
@@ -468,8 +479,8 @@ INTERCEPTOR_WINAPI(void*, RtlAllocateHeap, HANDLE HeapHandle, DWORD Flags,
   return p;
 }
 
-INTERCEPTOR_WINAPI(void*, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
-                   void* BaseAddress, size_t Size) {
+INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
+                   void *BaseAddress, size_t Size) {
   // If it's actually a heap block which was allocated before the ASAN runtime
   // came up, use the real RtlFreeHeap function.
   if (!flags()->windows_hook_rtl_allocators)
@@ -478,6 +489,286 @@ INTERCEPTOR_WINAPI(void*, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
   return SharedReAlloc(REAL(RtlReAllocateHeap), REAL(RtlSizeHeap),
                        REAL(RtlFreeHeap), REAL(RtlAllocateHeap), HeapHandle,
                        Flags, BaseAddress, Size);
+}
+
+// FIXED and ZEROINIT correspond to LMEM_FIXED/GMEM_FIXED
+// and LMEM_ZEROINIT/GMEM_ZEROINIT (as provided in the documentation).
+// In case, if these values change then FIXED and ZEROINIT
+// will have to be updated accordingly.
+#define FIXED 0x0000
+#define ZEROINIT 0x0040
+
+constexpr unsigned long SHARED_ALLOC_SUPPORTED_FLAGS = (FIXED | ZEROINIT);
+constexpr unsigned long SHARED_ALLOC_UNSUPPORTED_FLAGS =
+    (~SHARED_ALLOC_SUPPORTED_FLAGS);
+
+INTERCEPTOR_WINAPI(HGLOBAL, GlobalAlloc, UINT uFlags, SIZE_T dwBytes) {
+  // If we encounter an unsupported flag, then we fall
+  // back to the original allocator.
+  if (uFlags & SHARED_ALLOC_UNSUPPORTED_FLAGS) {
+    return REAL(GlobalAlloc)(uFlags, dwBytes);
+  }
+
+  GET_STACK_TRACE_MALLOC;
+  if (uFlags & ZEROINIT)
+    return asan_calloc(dwBytes, 1, &stack);
+  else
+    return asan_malloc(dwBytes, &stack);
+}
+
+INTERCEPTOR_WINAPI(HGLOBAL, GlobalFree, HGLOBAL hMem) {
+  // If the memory we are trying to free is not owned
+  // by ASan heap, then fall back to the original GlobalFree.
+  if (OWNED_BY_RTL(GetProcessHeap(), hMem)) {
+    return REAL(GlobalFree)(hMem);
+  }
+  GET_STACK_TRACE_FREE;
+  asan_free(hMem, &stack, FROM_MALLOC);
+  return nullptr;
+}
+
+INTERCEPTOR_WINAPI(SIZE_T, GlobalSize, HGLOBAL hMem) {
+  // We need to check whether the ASAN allocator owns the pointer
+  // we're about to use. Allocations might occur before interception
+  // takes place, so if it is not owned by RTL heap, the we can
+  // pass it to ASAN heap for inspection.
+  if (!asan_inited || OWNED_BY_RTL(GetProcessHeap(), hMem))
+    return REAL(GlobalSize)(hMem);
+
+  GET_CURRENT_PC_BP_SP;
+  (void)sp;
+  return asan_malloc_usable_size(hMem, pc, bp);
+}
+
+namespace __asan {
+using GlobalLocalAlloc = HANDLE(WINAPI *)(UINT, SIZE_T);
+using GlobalLocalRealloc = HANDLE(WINAPI *)(HANDLE, SIZE_T, UINT);
+using GlobalLocalSize = SIZE_T(WINAPI *)(HANDLE);
+using GlobalLocalFree = HANDLE(WINAPI *)(HANDLE);
+using GlobalLocalLock = LPVOID(WINAPI *)(HANDLE);
+using GlobalLocalUnlock = LPVOID(WINAPI *)(HANDLE);
+
+enum class AllocationOwnership {
+  OWNED_BY_UNKNOWN,
+  OWNED_BY_ASAN,
+  OWNED_BY_RTL,
+  OWNED_BY_GLOBAL_OR_LOCAL,
+  OWNED_BY_GLOBAL_OR_LOCAL_HANDLE,
+};
+
+void *RtlToAsan(void *mPtr, size_t old_size, size_t dwBytes,
+                GlobalLocalFree freeFunc, BufferedStackTrace *stack) {
+  // Transfer from RTL owned allocation to ASAN owned allocation
+  void *replacement_alloc;
+  replacement_alloc = asan_calloc(dwBytes, 1, stack);
+  if (replacement_alloc) {
+    if (old_size == ((SIZE_T)0) - 1) {
+      asan_free(replacement_alloc, stack, FROM_MALLOC);
+      return nullptr;
+    }
+    REAL(memcpy)(replacement_alloc, mPtr, old_size);
+    freeFunc((HANDLE)mPtr);
+  }
+  return replacement_alloc;
+}
+
+void *AsanToRtl(void *mPtr, UINT uFlags, SIZE_T dwBytes,
+                GlobalLocalAlloc allocFunc, GlobalLocalLock lockFunc,
+                GlobalLocalLock unlockFunc, BufferedStackTrace *stack, uptr pc,
+                uptr bp) {
+  // Transfer from ASAN owned allocation to RTL owned allocation
+  void *replacement_alloc;
+  HANDLE mem = allocFunc(uFlags, dwBytes);
+  // GlobalLock/LocalLock return a pointer to the memory owned by the mem
+  // handle. We need the pointer to copy the data over from the ASAN owned
+  // memory.
+  replacement_alloc = (void *)lockFunc(mem);
+  size_t old_usable_size = 0;
+  if (replacement_alloc) {
+    old_usable_size = asan_malloc_usable_size(mPtr, pc, bp);
+    REAL(memcpy)(replacement_alloc, mPtr, min(dwBytes, old_usable_size));
+    asan_free(mPtr, stack, FROM_MALLOC);
+  }
+  unlockFunc(mem);
+  return replacement_alloc;
+}
+
+void *ReAllocToAsan(UINT uFlags, void *mPtr, size_t dwBytes, uptr pc, uptr bp,
+                    BufferedStackTrace *stack) {
+  // GlobalAlloc, LocalAlloc, GlocalReAlloc and LocalReAlloc all
+  // accept 0 sized allocations. Passing a zero size into asan_realloc will
+  // free the allocation. To avoid this and keep behavior consistent, fudge
+  // the size if zero (asan_malloc already does this).
+  if (dwBytes == 0)
+    dwBytes = 1;
+
+  size_t old_size;
+  if (uFlags & ZEROINIT)
+    old_size = asan_malloc_usable_size(mPtr, pc, bp);
+
+  void *ptr = asan_realloc(mPtr, dwBytes, stack);
+  if (ptr == nullptr)
+    return nullptr;
+
+  if (uFlags & ZEROINIT) {
+    size_t new_size = asan_malloc_usable_size(ptr, pc, bp);
+    if (old_size < new_size)
+      REAL(memset)(((u8 *)ptr) + old_size, 0, new_size - old_size);
+  }
+  return ptr;
+}
+
+AllocationOwnership CheckGlobalLocalHeapOwnership(
+    HANDLE hMem, GlobalLocalLock lockFunc, GlobalLocalUnlock unlockFunc) {
+  /*  To figure the validity of hMem, we use GlobalLock/LocalLock. Those two
+   * functions can return three things: (1) the pointer that's passed in, in
+   * which case it is a pointer owned by the Global/Local heap (2) the pointer
+   * to the allocated object if it's a Global/Local heap HANDLE (3) nullptr if it's
+   * a pointer which does not belong to the Global/Local heap Using these three
+   * return types, we figure out if the pointer is TYPE_VALID_PTR or TYPE_HANDLE
+   * or TYPE_UNKNOWN_PTR
+   *
+   * NOTE: As an implementation detail, movable memory objects also live on the
+   * heap. HeapValidate will return true if given a moveable memory handle.
+   *
+   */
+
+  // Do this first to avoid expensive checks if the pointer is owned by ASAN.
+  if (__sanitizer_get_ownership(hMem)) {
+    return AllocationOwnership::OWNED_BY_ASAN;
+  }
+
+  // It is not safe to pass wild pointers to GlobalLock/LocalLock.
+  if (HeapValidate(GetProcessHeap(), 0, hMem)) {
+    void *ptr = lockFunc(hMem);
+    // We don't care whether ptr is moved after this point as we're just trying
+    // to determine where it came from.
+    unlockFunc(hMem);
+    if (ptr == hMem) {
+      return AllocationOwnership::OWNED_BY_GLOBAL_OR_LOCAL;
+    } else if (ptr != nullptr) {
+      return AllocationOwnership::OWNED_BY_GLOBAL_OR_LOCAL_HANDLE;
+    }
+  }
+  return AllocationOwnership::OWNED_BY_UNKNOWN;
+}
+
+void *ReAllocGlobalLocal(GlobalLocalRealloc reallocFunc,
+                         GlobalLocalSize sizeFunc, GlobalLocalFree freeFunc,
+                         GlobalLocalAlloc allocFunc, GlobalLocalLock lockFunc,
+                         GlobalLocalUnlock unlockFunc, HANDLE hMem,
+                         DWORD dwBytes, UINT uFlags) {
+  CHECK(reallocFunc && sizeFunc && freeFunc && allocFunc);
+  GET_STACK_TRACE_MALLOC;
+  GET_CURRENT_PC_BP_SP;
+  (void)sp;
+
+  bool only_asan_supported_flags =
+      (SHARED_ALLOC_UNSUPPORTED_FLAGS & uFlags) == 0;
+
+  AllocationOwnership ownershipState =
+      CheckGlobalLocalHeapOwnership(hMem, lockFunc, unlockFunc);
+
+  // If this global block which was allocated before the ASAN
+  // runtime came up OR if mPtr is invalid, use the real GlobalReAlloc function.
+  if (UNLIKELY(!asan_inited) ||
+      ownershipState == AllocationOwnership::OWNED_BY_GLOBAL_OR_LOCAL_HANDLE) {
+    return reallocFunc(hMem, dwBytes, uFlags);
+  }
+
+  // Since hMem is not a handle to moveable memory we may safely cast it to
+  // pointer.
+  void *mPtr = (void *)hMem;
+
+  if (ownershipState == AllocationOwnership::OWNED_BY_GLOBAL_OR_LOCAL ||
+      (ownershipState == AllocationOwnership::OWNED_BY_UNKNOWN &&
+       !only_asan_supported_flags)) {
+    if (only_asan_supported_flags) {
+      // if this is a conversion to ASAN supported flags, transfer this
+      // allocation to the ASAN allocator
+      return RtlToAsan(mPtr, sizeFunc(mPtr), dwBytes, freeFunc, &stack);
+    } else {
+      // owned by this heap or neither with unsupported ASAN flags,
+      // just pass back to original allocator
+      CHECK(ownershipState == AllocationOwnership::OWNED_BY_GLOBAL_OR_LOCAL ||
+            ownershipState == AllocationOwnership::OWNED_BY_UNKNOWN);
+      CHECK(!only_asan_supported_flags);
+      return reallocFunc(mPtr, dwBytes, uFlags);
+    }
+  }
+
+  if (ownershipState == AllocationOwnership::OWNED_BY_ASAN &&
+      !only_asan_supported_flags) {
+    // Conversion to unsupported flags allocation,
+    // transfer this allocation back to the original allocator.
+    return AsanToRtl(mPtr, uFlags, dwBytes, allocFunc, lockFunc, unlockFunc,
+                     &stack, pc, bp);
+  }
+
+  CHECK((ownershipState == AllocationOwnership::OWNED_BY_ASAN ||
+         ownershipState == AllocationOwnership::OWNED_BY_RTL ||
+         ownershipState == AllocationOwnership::OWNED_BY_UNKNOWN) &&
+        only_asan_supported_flags);
+
+  return ReAllocToAsan(uFlags, mPtr, dwBytes, pc, bp, &stack);
+}
+}  // namespace __asan
+
+INTERCEPTOR_WINAPI(HGLOBAL, GlobalReAlloc, HGLOBAL hMem, DWORD dwBytes,
+                   UINT uFlags) {
+  return ReAllocGlobalLocal(
+      (GlobalLocalRealloc)REAL(GlobalReAlloc),
+      (GlobalLocalSize)REAL(GlobalSize), (GlobalLocalFree)REAL(GlobalFree),
+      (GlobalLocalAlloc)REAL(GlobalAlloc), (GlobalLocalLock)GlobalLock,
+      (GlobalLocalUnlock)GlobalUnlock, (HANDLE)hMem, dwBytes, uFlags);
+}
+
+INTERCEPTOR_WINAPI(HLOCAL, LocalAlloc, UINT uFlags, SIZE_T uBytes) {
+  // If we encounter an unsupported flag, then we fall
+  // back to the original allocator.
+  if (uFlags & SHARED_ALLOC_UNSUPPORTED_FLAGS) {
+    return REAL(LocalAlloc)(uFlags, uBytes);
+  }
+
+  GET_STACK_TRACE_MALLOC;
+  if (uFlags & ZEROINIT)
+    return asan_calloc(uBytes, 1, &stack);
+  else
+    return asan_malloc(uBytes, &stack);
+}
+
+INTERCEPTOR_WINAPI(HLOCAL, LocalFree, HGLOBAL hMem) {
+  // If the memory we are trying to free is not owned
+  // ASan heap, then fall back to the original LocalFree.
+  if (OWNED_BY_RTL(GetProcessHeap(), hMem)) {
+    return REAL(LocalFree)(hMem);
+  }
+
+  GET_STACK_TRACE_FREE;
+  asan_free(hMem, &stack, FROM_MALLOC);
+  return nullptr;
+}
+
+INTERCEPTOR_WINAPI(SIZE_T, LocalSize, HGLOBAL hMem) {
+  // We need to check whether the ASAN allocator owns the pointer
+  // we're about to use. Allocations might occur before interception
+  // takes place, so if it is not owned by RTL heap, the we can
+  // pass it to ASAN heap for inspection.
+  if (!asan_inited || OWNED_BY_RTL(GetProcessHeap(), hMem))
+    return REAL(LocalSize)(hMem);
+
+  GET_CURRENT_PC_BP_SP;
+  (void)sp;
+  return asan_malloc_usable_size(hMem, pc, bp);
+}
+
+INTERCEPTOR_WINAPI(HLOCAL, LocalReAlloc, HGLOBAL hMem, DWORD dwBytes,
+                   UINT uFlags) {
+  return ReAllocGlobalLocal(
+      (GlobalLocalRealloc)REAL(LocalReAlloc), (GlobalLocalSize)REAL(LocalSize),
+      (GlobalLocalFree)REAL(LocalFree), (GlobalLocalAlloc)REAL(LocalAlloc),
+      (GlobalLocalLock)LocalLock, (GlobalLocalUnlock)LocalUnlock, (HANDLE)hMem,
+      dwBytes, uFlags);
 }
 
 namespace __asan {
@@ -511,6 +802,15 @@ void ReplaceSystemMalloc() {
   TryToOverrideFunction("_expand_base", (uptr)_expand);
 
   if (flags()->windows_hook_rtl_allocators) {
+    INTERCEPT_FUNCTION(GlobalAlloc);
+    INTERCEPT_FUNCTION(GlobalFree);
+    INTERCEPT_FUNCTION(GlobalSize);
+    INTERCEPT_FUNCTION(GlobalReAlloc);
+    INTERCEPT_FUNCTION(LocalAlloc);
+    INTERCEPT_FUNCTION(LocalFree);
+    INTERCEPT_FUNCTION(LocalSize);
+    INTERCEPT_FUNCTION(LocalReAlloc);
+
     INTERCEPT_FUNCTION(HeapSize);
     INTERCEPT_FUNCTION(HeapFree);
     INTERCEPT_FUNCTION(HeapReAlloc);

@@ -28,6 +28,14 @@
 // IMPORT: __asan_wrap_HeapFree
 // IMPORT: __asan_wrap_HeapReAlloc
 // IMPORT: __asan_wrap_HeapSize
+// IMPORT: __asan_wrap_GlobalAlloc
+// IMPORT: __asan_wrap_GlobalFree
+// IMPORT: __asan_wrap_GlobalReAlloc
+// IMPORT: __asan_wrap_GlobalSize
+// IMPORT: __asan_wrap_LocalAlloc
+// IMPORT: __asan_wrap_LocalFree
+// IMPORT: __asan_wrap_LocalReAlloc
+// IMPORT: __asan_wrap_LocalSize
 // IMPORT: __asan_wrap_CreateThread
 // IMPORT: __asan_wrap_RaiseException
 // IMPORT: __asan_wrap_RtlRaiseException
