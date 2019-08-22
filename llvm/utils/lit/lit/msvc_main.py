@@ -628,25 +628,35 @@ for testObj in tests_to_run:
     else:
     """
     threads.append(t)
-    t.start()
-    print "running test " + testObj[0]
+started = []
 
+max_active = 0
+if opts.numThreads:
+    max_active = opts.numThreads
+else:
+    max_active = int(os.environ["NUMBER_OF_PROCESSORS"])
+
+current_active = 0
 threads = set(threads)
 waiting_on_count = len(threads)
 while waiting_on_count > 0:
     remove_threads = set([])
     for thread in threads:
+        if current_active < max_active and thread not in started:
+            started.append(thread)
+            thread.start()
         if thread.is_alive():
             continue
         else:
             thread.join()
             waiting_on_count -= 1
+            current_active -= 1
             remove_threads |= {thread}
             print "\rWaiting on %d threads..."%waiting_on_count,
-            time.sleep(0.01)
     print "\rWaiting on %d threads..."%waiting_on_count,
     threads = set(threads) - remove_threads
     time.sleep(.1)
+
 
 
 """
