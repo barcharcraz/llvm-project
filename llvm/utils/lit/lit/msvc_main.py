@@ -646,7 +646,8 @@ while waiting_on_count > 0:
             started.append(thread)
             thread.start()
             current_active += 1
-        if thread.is_alive():
+            continue
+        if thread not in started or thread.is_alive():
             continue
         else:
             thread.join()
