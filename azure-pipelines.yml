@@ -10,6 +10,7 @@ trigger:
   paths:
     exclude:
       - azure-pipelines*.yml
+      - llvm/utils/lit/lit/msvc_main.py
 
 name: llvm build
 jobs:
