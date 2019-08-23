@@ -471,6 +471,7 @@ cc_files = filter(lambda x: ".c" in x[-4:] and ".cfg" not in x[-4:], files)
 #print cc_files
 tests_to_run = []
 results = {}
+results_lock = threading.Lock()
 
 def slashsan(stri):
     return stri.replace("\\","\\\\")
@@ -482,7 +483,9 @@ def RunTest(tester,testObj):
     #print _config.environment['PATH']
     result = tester.executeShTest(_test,_config,True)
     _test.setResult(result)
+    results_lock.acquire()
     results[_name] = result
+    results_lock.release()
 
 
 for cc_file in cc_files:
@@ -647,15 +650,18 @@ while waiting_on_count > 0:
             thread.start()
             current_active += 1
             continue
-        if thread not in started or thread.is_alive():
+        if thread not in started:
             continue
         else:
-            thread.join()
+            thread.join(30.0)
+            if thread.is_alive():
+                print "thread join timeout"
+                
             waiting_on_count -= 1
             current_active -= 1
             remove_threads |= {thread}
-            print "\rWaiting on %d threads..."%waiting_on_count,
-    print "\rWaiting on %d threads..."%waiting_on_count,
+            print "\rWaiting on %d threads, %d active..."%(waiting_on_count,current_active)
+    print "\rWaiting on %d threads, %d active..."%(waiting_on_count,current_active)
     threads = set(threads) - remove_threads
     time.sleep(.1)
 
