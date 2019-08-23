@@ -645,6 +645,7 @@ while waiting_on_count > 0:
         if current_active < max_active and thread not in started:
             started.append(thread)
             thread.start()
+            current_active += 1
         if thread.is_alive():
             continue
         else:
