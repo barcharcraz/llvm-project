@@ -654,14 +654,16 @@ while waiting_on_count > 0:
             started.append(thread)
             thread.start()
             current_active += 1
+            time.sleep(.2)
             continue
         if thread not in started:
             continue
         else:
-            thread.join(30.0)
+            thread.join(1.0)
             if thread.is_alive():
-                print "thread join timeout"
-                
+                print "thread join timed out "
+                continue
+
             waiting_on_count -= 1
             current_active -= 1
             remove_threads |= {thread}
