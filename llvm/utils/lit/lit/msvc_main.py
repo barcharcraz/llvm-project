@@ -628,7 +628,8 @@ for cc_file in cc_files:
 threads = []
 run_single_tests = []
 for testObj in tests_to_run:
-    t = threading.Thread(target=RunTest,args=(lit.TestRunner,testObj,))
+    t = threading.Thread(target=RunTest, args=(lit.TestRunner, testObj,))
+    t.setName(testObj[0])
     """
     if "dll" in testObj[0]:
         run_single_tests.append((testObj[0],t))
@@ -642,7 +643,7 @@ max_active = 0
 if opts.numThreads:
     max_active = opts.numThreads
 else:
-    max_active = int(os.environ["NUMBER_OF_PROCESSORS"])
+    max_active = 2 * int(os.environ["NUMBER_OF_PROCESSORS"])
 
 current_active = 0
 threads = set(threads)
@@ -661,7 +662,8 @@ while waiting_on_count > 0:
         else:
             thread.join(1.0)
             if thread.is_alive():
-                print "thread join timed out "
+                print "thread join timed out for %s" % (thread.getName())
+                time.sleep(.2)
                 continue
 
             waiting_on_count -= 1
@@ -670,7 +672,7 @@ while waiting_on_count > 0:
             print "\rWaiting on %d threads, %d active..."%(waiting_on_count,current_active)
     print "\rWaiting on %d threads, %d active..."%(waiting_on_count,current_active)
     threads = set(threads) - remove_threads
-    time.sleep(.1)
+    time.sleep(.2)
 
 
 
