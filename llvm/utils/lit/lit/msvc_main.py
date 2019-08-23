@@ -393,7 +393,9 @@ optimization_subs = {
         ("/O0", "/Od"),
         ("-O1","/O1i-"),
         ("-O2","/O2i-"),
-        ("-O3","/O2i-"),
+        ("-O3", "/O2i-"),
+          ("-Od", "/Od"),
+          ("-O ", "/O2 "),
 }
 if opts.disable_opt:
     optimization_subs = {
@@ -401,7 +403,9 @@ if opts.disable_opt:
          ("/O0", "/Od"),
         ("-O1","/Od"),
         ("-O2","/Od"),
-        ("-O3","/Od"),
+        ("-O3", "/Od"),
+        ("-Od", "/Od"),
+        ("-O ", "/Od "),
     }
 
 subsitute_obj = lit.TestingConfig.SubstituteCaptures("/Fe:%t\g<1>")
@@ -568,7 +572,8 @@ for cc_file in cc_files:
                 ("%asan_cxx_lib", __litConfig.compiler_rt_libdir + "\\clang_rt.asan_cxx-i386.lib"),
             }
         if "seh.cpp" in cc_file:
-            __litConfig.environment["_CL_"] =  __litConfig.environment["_CL_"].replace("/EHs", "/EHa")
+            __litConfig.environment["_CL_"] = __litConfig.environment["_CL_"].replace("/EHs", "/EHa")
+            __litConfig.substitutions.add(("/EHs","/EHa"))
 
 
 
