@@ -475,7 +475,7 @@ cc_files = filter(lambda x: ".c" in x[-4:] and ".cfg" not in x[-4:], files)
 #print cc_files
 tests_to_run = []
 results = {}
-results_lock = threading.Lock()
+
 
 def slashsan(stri):
     return stri.replace("\\","\\\\")
@@ -487,9 +487,8 @@ def RunTest(tester,testObj):
     #print _config.environment['PATH']
     result = tester.executeShTest(_test,_config,True)
     _test.setResult(result)
-    results_lock.acquire()
     results[_name] = result
-    results_lock.release()
+
 
 
 for cc_file in cc_files:
@@ -648,31 +647,25 @@ else:
 current_active = 0
 threads = set(threads)
 waiting_on_count = len(threads)
-while waiting_on_count > 0:
-    remove_threads = set([])
-    for thread in threads:
-        if current_active < max_active and thread not in started:
-            started.append(thread)
-            thread.start()
-            current_active += 1
-            time.sleep(.3)
-            continue
-        if thread not in started:
-            continue
-        else:
-            thread.join(0.3)
-            if thread.is_alive():
-                print "thread join timed out for %s" % (thread.getName())
-                time.sleep(.2)
-                continue
+started_threads = []
 
-            waiting_on_count -= 1
+while waiting_on_count > 0:
+
+    while current_active < max_active and len(threads) > 0:
+        thread = threads.pop()
+        started_threads.append(thread)
+        thread.start()
+        time.sleep(.1)
+        current_active += 1
+    for thread in started_threads:
+        thread.join(.1)
+        if thread.is_alive():
+            print "\rwaiting on %03d threads."%(waiting_on_count),
+        else:
             current_active -= 1
-            remove_threads |= {thread}
-            print "\rWaiting on %d threads, %d active..."%(waiting_on_count,current_active)
-    print "\rWaiting on %d threads, %d active..."%(waiting_on_count,current_active)
-    threads = set(threads) - remove_threads
-    time.sleep(.2)
+            waiting_on_count -= 1
+            started_threads.remove(thread)
+
 
 
 
