@@ -38,7 +38,7 @@ jobs:
 
 
 
-    timeoutInMinutes: 360
+    timeoutInMinutes: 60
     pool:
       name: 'msvc-asan'
       
