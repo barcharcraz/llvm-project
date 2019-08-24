@@ -3,13 +3,18 @@
 # Add steps that build, run tests, deploy, and more:
 # https://aka.ms/yaml
 
-#trigger:
-#  branches:
-#      include:
-#        - master
-#  paths:
-#    exclude:
-#      - azure-pipelines*.yml
+trigger:
+  branches:
+      include:
+        - master
+  paths:
+    exclude:
+      - azure-pipelines.yml
+      - azure-pipelines-1.yml
+      - azure-pipelines-2.yml
+      - azure-pipelines-3.yml
+      - llvm/utils/lit/lit/msvc_main.py
+
 
 
 jobs:
