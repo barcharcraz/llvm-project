@@ -9,8 +9,12 @@ trigger:
         - master
   paths:
     exclude:
-      - azure-pipelines*.yml
+      - azure-pipelines.yml
+      - azure-pipelines-1.yml
+      - azure-pipelines-2.yml
+      - azure-pipelines-3.yml
       - llvm/utils/lit/lit/msvc_main.py
+
 
 name: llvm build
 jobs:
