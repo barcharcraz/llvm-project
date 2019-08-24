@@ -655,12 +655,12 @@ while waiting_on_count > 0:
             started.append(thread)
             thread.start()
             current_active += 1
-            time.sleep(.2)
+            time.sleep(.3)
             continue
         if thread not in started:
             continue
         else:
-            thread.join(1.0)
+            thread.join(0.3)
             if thread.is_alive():
                 print "thread join timed out for %s" % (thread.getName())
                 time.sleep(.2)
