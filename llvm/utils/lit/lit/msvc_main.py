@@ -518,8 +518,8 @@ for cc_file in cc_files:
             __litConfig.environment["_CL_"] = " /Zi "
             __litConfig.environment["_LINK_"] = "/debug /incremental:no "
             __litConfig.substitutions.remove(truncated_cl_asan_sub)
-            __litConfig.substitutions.add(("%clang_cl_asan(.*)dll_host.cc", lit.TestingConfig.SubstituteCaptures("cl.exe \g<1>dll_host.cc ")))
-            dll_combined = "cl.exe " + default_flags + " /d2ASAN \g<1> -Fe\g<2>.dll " + __litConfig.compiler_rt_libdir.replace("\\","\\\\") + "\clang_rt.asan-i386.lib " + "\g<3>"
+            __litConfig.substitutions.add(("%clang_cl_asan(.*)dll_host.cc", lit.TestingConfig.SubstituteCaptures(__litConfig.environment["TEST_C_COMPILER"] + " \g<1>dll_host.cc ")))
+            dll_combined = __litConfig.environment["TEST_C_COMPILER"] + " " + default_flags + " /d2ASAN \g<1> -Fe\g<2>.dll " + __litConfig.compiler_rt_libdir.replace("\\","\\\\") + "\clang_rt.asan-i386.lib " + "\g<3>"
             #this will work for most tests. There are some that require special cases.
             heap_alloc_capture = "%clang_cl_asan(.*)\.lib(.*)[/-]Fe(.*) -MT"
             heap_alloc_replace = slashsan(__litConfig.clang) + default_flags + " \g<1>.lib \g<2>/Fe\g<3> -MT"
@@ -548,7 +548,7 @@ for cc_file in cc_files:
                         "\\clang_rt.asan_cxx-i386.lib "))))
             elif "heapalloc_dll" in cc_file or "dll_unload" in cc_file:
                 __litConfig.substitutions.add(("%clang_cl_asan(.*)[-/]Fe(.*)\.dll(.*)", lit.TestingConfig.SubstituteCaptures(\
-                    "cl.exe " + default_flags + " /d2ASAN \g<1> -Fe\g<2>.dll "  + "\g<3>" + __litConfig.compiler_rt_libdir.replace("\\","\\\\") + "\clang_rt.asan_dynamic-i386.lib ")))
+                    __litConfig.environment["TEST_C_COMPILER"] + " " + default_flags + " /d2ASAN \g<1> -Fe\g<2>.dll "  + "\g<3>" + __litConfig.compiler_rt_libdir.replace("\\","\\\\") + "\clang_rt.asan_dynamic-i386.lib ")))
             else:
                 __litConfig.substitutions.add(("%clang_cl_asan(.*)[-/]Fe(.*)\.dll(.*)", lit.TestingConfig.SubstituteCaptures(dll_combined)))
 
@@ -650,21 +650,24 @@ waiting_on_count = len(threads)
 started_threads = []
 
 while waiting_on_count > 0:
-
     while current_active < max_active and len(threads) > 0:
         thread = threads.pop()
         started_threads.append(thread)
         thread.start()
         time.sleep(.1)
         current_active += 1
+    remove_temp = []
     for thread in started_threads:
+
         thread.join(.1)
         if thread.is_alive():
             print "\rwaiting on %03d threads."%(waiting_on_count),
         else:
             current_active -= 1
             waiting_on_count -= 1
-            started_threads.remove(thread)
+            remove_temp.append(thread)
+    for thread in remove_temp:
+        started_threads.remove(thread)
 
 
 
