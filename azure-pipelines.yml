@@ -49,7 +49,7 @@ jobs:
           vcvars: vcvars64.bat
           buildArch: x64
           msdia_loc: x64\\msdia140.dll
-          additional_args: -Thost=x64
+          additional_args: -Thost=x64 
           buildTag: ""
 
         32-bit Debug:
@@ -101,7 +101,7 @@ jobs:
         @call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Enterprise\\VC\\Auxiliary\\Build\\$(vcvars)"
         echo set ASAN_SYMBOLIZER_PATH=$(Build.BinariesDirectory)\$(BuildType)\bin\llvm-symbolizer.exe
         set ASAN_SYMBOLIZER_PATH=$(Build.BinariesDirectory)\$(BuildType)\bin\llvm-symbolizer.exe
-        pushd $(Build.BinariesDirectory) & echo on & cmake -G "$(CMakeArgs)" -DLLVM_ENABLE_PROJECTS="compiler-rt;lld;clang;polly" -DCMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION=10.0.17134.0 $(additional_args) $(Build.SourcesDirectory)\llvm & popd
+        pushd $(Build.BinariesDirectory) & echo on & cmake -G "$(CMakeArgs)" -DLLVM_ENABLE_PROJECTS="compiler-rt;lld;clang;polly" -DCMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION=10.0.17134.0 -DCMAKE_C_FLAGS="/wd4200 /wd4206" $(additional_args) $(Build.SourcesDirectory)\llvm & popd
       displayName: Set ASAN symbolizer path
 
 
