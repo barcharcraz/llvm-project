@@ -18,7 +18,7 @@ trigger:
 
 jobs:
   - job: Regress
-    timeoutInMinutes: 360
+    timeoutInMinutes: 420
     pool: 
       name: 'msvc-asan'   
       demands: IsFast
