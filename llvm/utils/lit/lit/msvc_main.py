@@ -411,6 +411,8 @@ if opts.disable_opt:
 subsitute_obj = lit.TestingConfig.SubstituteCaptures("/Fe:%t\g<1>")
 
 litConfig.substitutions = {
+                            ("-fsanitize-coverage=func (.*)", lit.TestingConfig.SubstituteCaptures("/d2Sancov \g<1> /link /wholearchive:" + litConfig.compiler_rt_libdir + "\\clang_rt.fuzzer-i386.lib")),
+                            ("%sancov", "sancov.exe"),
                             truncated_cl_asan_sub,
                             truncated_cxx_asan_sub,
                             ("%clang_asan", litConfig.clang +  default_flags + " /d2ASAN "),
