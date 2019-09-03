@@ -395,7 +395,7 @@ optimization_subs = {
         ("-O2","/O2i-"),
         ("-O3", "/O2i-"),
           ("-Od", "/Od"),
-          ("-O ", "/O2 "),
+          (" -O ", " /O2 "),
 }
 if opts.disable_opt:
     optimization_subs = {
@@ -405,7 +405,7 @@ if opts.disable_opt:
         ("-O2","/Od"),
         ("-O3", "/Od"),
         ("-Od", "/Od"),
-        ("-O ", "/Od "),
+        (" -O ", " /Od "),
     }
 
 subsitute_obj = lit.TestingConfig.SubstituteCaptures("/Fe:%t\g<1>")

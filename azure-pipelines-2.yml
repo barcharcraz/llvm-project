@@ -14,36 +14,35 @@ trigger:
       - azure-pipelines-2.yml
       - azure-pipelines-3.yml
       - llvm/utils/lit/lit/msvc_main.py
-
+      - nonship-RegLogProcess.py
 
 jobs:
   - job: Regress
     timeoutInMinutes: 420
-    pool: 
-      name: 'msvc-asan'   
-      demands: IsFast
-    
+    pool:
+      name: 'msvc-asan'
+
     strategy:
       matrix:
         win32_MT_ASAN:
-          CRT_FLAG: /MT 
+          CRT_FLAG: /MT
           LINK_LIBS: /wholearchive:%ASAN_RT_LIB_DIR%\clang_rt.asan-i386.lib /wholearchive:%ASAN_RT_LIB_DIR%\clang_rt.asan_cxx-i386.lib
           ASAN_FLAG: /d2ASAN
           ARTIFACT_ID: win32_MT_ASAN
         win32_MD_ASAN:
-          CRT_FLAG: /MD 
+          CRT_FLAG: /MD
           LINK_LIBS: /wholearchive:%ASAN_RT_LIB_DIR%\clang_rt.asan_dynamic-i386.lib /wholearchive:%ASAN_RT_LIB_DIR%\clang_rt.asan_dynamic_runtime_thunk-i386.lib
           ASAN_FLAG: /d2ASAN
           ARTIFACT_ID: win32_MD_ASAN
         win32_MT_NOASAN:
-          CRT_FLAG: /MT 
-          LINK_LIBS: 
-          ASAN_FLAG: 
+          CRT_FLAG: /MT
+          LINK_LIBS:
+          ASAN_FLAG:
           ARTIFACT_ID: win32_MT_NOASAN
         win32_MD_NOASAN:
-          CRT_FLAG: /MD 
-          LINK_LIBS: 
-          ASAN_FLAG: 
+          CRT_FLAG: /MD
+          LINK_LIBS:
+          ASAN_FLAG:
           ARTIFACT_ID: win32_MD_NOASAN
     steps:
     - checkout: none
@@ -85,3 +84,48 @@ jobs:
         PathtoPublish: '$(Build.ArtifactStagingDirectory)'
         ArtifactName: $(ARTIFACT_ID)
         publishLocation: 'Container'
+    
+  - job: LogProcess
+    dependsOn: Regress
+    timeoutInMinutes: 30
+    pool: 
+      name: msvc-asan
+      
+    steps:
+    - task: DownloadBuildArtifacts@0
+      inputs:
+        buildType: 'current'
+        downloadType: 'single'
+        downloadPath: '$(System.ArtifactsDirectory)'
+        artifactName: win32_MT_ASAN
+    - task: DownloadBuildArtifacts@0
+      inputs:
+        buildType: 'current'
+        downloadType: 'single'
+        downloadPath: '$(System.ArtifactsDirectory)'
+        artifactName: win32_MD_NOASAN
+
+    - task: DownloadBuildArtifacts@0
+      inputs:
+        buildType: 'current'
+        downloadType: 'single'
+        downloadPath: '$(System.ArtifactsDirectory)'
+        artifactName: win32_MT_NOASAN
+    - task: DownloadBuildArtifacts@0
+      inputs:
+        buildType: 'current'
+        downloadType: 'single'
+        downloadPath: '$(System.ArtifactsDirectory)'
+        artifactName: win32_MD_ASAN
+    - task: PythonScript@0
+      inputs:
+        workingDirectory: $(Build.SourcesDirectory)
+        scriptSource: 'filePath'
+        scriptPath: 'nonship-RegLogProcess.py'
+        pythonInterpreter: c:\python37\python.exe
+        arguments: $(System.ArtifactsDirectory)\win32_MD_ASAN\logs\rl.x86.exe.results.log $(System.ArtifactsDirectory)\win32_MD_NOASAN\logs\rl.x86.exe.results.log $(System.ArtifactsDirectory)\win32_MT_ASAN\logs\rl.x86.exe.results.log $(System.ArtifactsDirectory)\win32_MT_NOASAN\logs\rl.x86.exe.results.log nonship-faillist.txt nonship-ignorelist.txt
+
+
+
+
+

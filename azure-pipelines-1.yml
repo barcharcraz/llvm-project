@@ -14,25 +14,26 @@ trigger:
       - azure-pipelines-2.yml
       - azure-pipelines-3.yml
       - llvm/utils/lit/lit/msvc_main.py
+      - nonship-RegLogProcess.py
 
 
 
 jobs:
   - job: MSVC_Tests
     variables:
-    - name: UNIX_BIN_DIR 
+    - name: UNIX_BIN_DIR
       value: $(System.ArtifactsDirectory)\unix\cygwin64\bin
-    - name: ASAN_SYMBOLIZER_PATH 
+    - name: ASAN_SYMBOLIZER_PATH
       value: $(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\bin\llvm-symbolizer.exe
-    - name: ASAN_RT_SRC_ROOT 
+    - name: ASAN_RT_SRC_ROOT
       value: $(Build.SourcesDirectory)\compiler-rt
-    - name: TEST_OUTPUT_DIR 
+    - name: TEST_OUTPUT_DIR
       value: $(Build.BinariesDirectory)
-    - name: TEST_C_COMPILER 
+    - name: TEST_C_COMPILER
       value: cl.exe
-    - name: ASAN_RT_LIB_DIR 
+    - name: ASAN_RT_LIB_DIR
       value: $(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\lib\windows\x86
-    - name: ASAN_RT_BIN_DIR 
+    - name: ASAN_RT_BIN_DIR
       value: $(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\bin
 
 
@@ -41,10 +42,10 @@ jobs:
     timeoutInMinutes: 60
     pool:
       name: 'msvc-asan'
-      
- 
 
-      
+
+
+
     steps:
 
     - task: DownloadBuildArtifacts@0
@@ -56,15 +57,15 @@ jobs:
         artifactName: llvm_asan_Release_x86_bin
         downloadType: 'specific'
         downloadPath: '$(System.ArtifactsDirectory)'
- 
+
     - script: |
         taskkill /f /t /im mspdbsrv.exe
         taskkill /f /t /im msbuild.exe
-        taskkill /f /t /im cl.exe 
+        taskkill /f /t /im cl.exe
         taskkill /f /t /im link.exe
         (exit /b 0)
       continueOnError: true
- 
+
     - script: |
         pushd $(Build.SourcesDirectory)\llvm\utils\lit
         c:\python27\python.exe setup.py install
@@ -72,7 +73,7 @@ jobs:
         (exit /b 0)
 
     - script: git clone https://$(sectools.token)@sectools.visualstudio.com/DefaultCollection/AddressSanitizer/_git/unix_test_dependencies $(Build.ArtifactStagingDirectory)\unix 2>&1
-    
+
     - task: PowerShell@2
       inputs:
         targetType: 'inline'
@@ -82,7 +83,7 @@ jobs:
         targetType: 'inline'
         script: Expand-Archive $(Build.ArtifactStagingDirectory)\unix\cygwin64.zip $(Build.ArtifactStagingDirectory)\unix\
 
-    
+
     - script: |
         echo on
         set PATH=%PATH%;$(System.ArtifactsDirectory)\unix\gnuwin32\bin;$(System.ArtifactsDirectory)\unix\bin;$(System.ArtifactsDirectory)\unix\cygwin64\bin;$(System.ArtifactsDirectory);$(Build.SourcesDirectory)\llvm\utils\lit;$(Build.SourcesDirectory)\llvm\utils\lit\lit;$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\bin;$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\lib\windows\x86;$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\include;$(System.ArtifactsDirectory)\bin;
@@ -144,4 +145,3 @@ jobs:
       env:
         SQL_TABLE_NAME: asan_dynamic
       continueOnError: 'true'
-

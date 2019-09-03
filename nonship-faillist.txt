@@ -1,0 +1,110 @@
+# failures list (regex matching)
+GS \(dev10-906588.cpp
+GS \(shadow_localbuffer_byrefclass.cpp
+GS \(shadow_localclass_byrefstruct.cpp
+GS \(shadow_nestedstruct_ptrfxn.c
+GS \(struct_004.cpp
+GS \(init_001.cpp
+GS \(struct_001.cpp
+GS \(gsopt-safe-inlinee.cpp
+GS \(alloca_003.cpp
+GS \(cstring_sprintf_001.cpp
+GS \(cppeh.cpp
+GS \(cstring_strcpy_001.cpp
+GS \(cstring_fgetc_001.cpp
+GS \(cstring_getchar_001.cpp
+GS \(mult_rets_001.cpp
+GS \(init_005.cpp
+GS \(fpointer_001.cpp
+GS \(udt_general_t1.cpp
+GS \(udt_multiple_t1.cpp
+GS \(udt_single_t1.cpp
+warbird\WarbirdStress
+warbird\winut
+warbird\VMExec
+dev11 \(tfs184850.cpp
+whidbey\\qfe4707 \(rl.mak
+whidbey \(t141351.cpp
+GS \(declspec
+cilreader\\P0145R3 \(eval17.cpp.*/Od
+intrin \(alloca.c
+intrin \(alloca3.cpp
+intrin \(alloca4.cpp
+intrin \(t23609a.c
+dolphin \(t14290.c
+guard \(SP1Variants.cpp
+orcas \(t74417.cpp
+DirectXMath\\math3 \(DirectXCorrectness-all
+DirectXMath\\math3 \(DirectXCorrectness-ni
+gopt\\range \(range40.c
+dev10 \(winmo7_152512.cpp
+dev10 \(tfs536147.cpp
+dev14 \(vso241892.cpp
+GS \(shadow_localbuffer_byrefclass.cpp
+spec2k6\\gcc.*/Od
+#legit read heap overflow (weirdly once it's optimized, our inlined version is safer)
+spec2k6\\astar.*/MD.*/Od
+#lots of lame bugs, null ptr derefs and wild derefences.
+..\\..\\external\\regress\\spec2k6\\namd.*/MD
+spec2k6\\h264ref.*/Od
+# actual stack buffer overflow
+
+spec2k\\vortex
+# actual stack buffer overflow
+
+spec2017\\gcc.*/MD
+# /MD version has a multiply defined symbol strerror that overlaps with the dynamic runtimes version. /force:multiple would fix this
+
+spec2017\\blender.*/MD
+# incorrect DEFINES for MD linkage, SPEC should always be set on MD so that GLAPI resolves to extern
+tfs721007.cpp
+# legit asan failure
+rtcs.cpp
+# legit asan failure
+spec2k6\\perlbench
+# legit asan failure
+cxx \(rl\.mak.*/MT
+inline\\import-test[13].*/MT
+# linking problem, see bug 160 and 161 https://sectools.visualstudio.com/AddressSanitizer/_workitems/edit/161
+vc70 .*dotest.*/MT
+# linking problem
+spec2k6\\omnetpp.*(/MT|/MD +/Od)
+spec2017\\omnetpp
+# new delete type mismatch
+spec2k6\\povray
+# new delete type mismatch
+guard-import.*/MT
+custom-memset\.c.*/MT
+# fixed with patch to runtime
+STLContainers\.cpp
+## huge allocation incompatible with ASAN
+guard\\import.*/MT
+# will always fail with MT
+unwind_fh3_fh4.*/MD
+#test designed for MT only
+fh4_dll_test .*/MT
+fh4_dll_test_eha .*/MT
+# test is incompatible with ASAN+/MT
+vect \(vso771099\.cpp
+# legitimate off by one error. >= in a loop? REALLY come on.
+
+winrt \(refcounting\.cpp.*/MT
+winrt \(vso(692648|536777)\.cpp.*/MT
+cilreader\\P0145R3 \(vso750177\.cpp.*(/MT.*/O[2d]|/MD.*/O2)
+cilreader\\P0145R3 \(vso767055\.cpp.*/MT
+#invalid flag combinations on these settings
+spec2017\\imagick
+# bug in dynamic verison of imagick, needs source fix to test
+# profiling\\profileinstr \(gh_2.*/MT
+# link conflict issue with MT runtime and custom new and delete operators. /force:multiple allows successful run
+
+dev14 \(tfs1088920\.cpp.*/MD +/O2
+# will fail /MD /O2 even without ASAN
+stack \(t573502\.c
+# RTC reports that it catches corrupted alloca metadata
+#RTC not supported.
+dev11\\rtc \(rtcsa\.c
+dev11\\rtc \(rtcall\.cpp
+# alloca metadata misalignment with RTC and ASAN
+stack \(t573502\.c
+#RTC not supported

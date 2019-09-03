@@ -14,7 +14,7 @@ trigger:
       - azure-pipelines-2.yml
       - azure-pipelines-3.yml
       - llvm/utils/lit/lit/msvc_main.py
-
+      - nonship-RegLogProcess.py
 
 name: llvm build
 jobs:
@@ -31,7 +31,7 @@ jobs:
       demands:
       - Cmake
       - IsFast
-      
+
     strategy:
       matrix:
         64-bit Debug:
@@ -49,7 +49,7 @@ jobs:
           vcvars: vcvars64.bat
           buildArch: x64
           msdia_loc: x64\\msdia140.dll
-          additional_args: -Thost=x64 
+          additional_args: -Thost=x64
           buildTag: ""
 
         32-bit Debug:
@@ -185,4 +185,3 @@ jobs:
         publishLocation: 'Container'
 
     #- script: rd /s /q $(Build.SourcesDirectory)\asan_utils && git clone https://github.com/mcgov/Win32-AddressSanitizer-Utils.git $(Build.SourcesDirectory)\asan_utils
-
