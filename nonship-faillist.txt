@@ -21,12 +21,12 @@ GS \(udt_multiple_t1.cpp
 GS \(udt_single_t1.cpp
 warbird\WarbirdStress
 warbird\winut
-warbird\VMExec
 dev11 \(tfs184850.cpp
 whidbey\\qfe4707 \(rl.mak
 whidbey \(t141351.cpp
 GS \(declspec
 cilreader\\P0145R3 \(eval17.cpp.*/Od
+# useless out of bounds access is optimized out, since it's never touched. Who wrote this??
 intrin \(alloca.c
 intrin \(alloca3.cpp
 intrin \(alloca4.cpp
@@ -95,8 +95,7 @@ cilreader\\P0145R3 \(vso767055\.cpp.*/MT
 #invalid flag combinations on these settings
 spec2017\\imagick
 # bug in dynamic verison of imagick, needs source fix to test
-# profiling\\profileinstr \(gh_2.*/MT
-# link conflict issue with MT runtime and custom new and delete operators. /force:multiple allows successful run
+
 
 dev14 \(tfs1088920\.cpp.*/MD +/O2
 # will fail /MD /O2 even without ASAN
