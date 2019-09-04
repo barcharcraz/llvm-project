@@ -90,8 +90,15 @@ jobs:
     timeoutInMinutes: 30
     pool: 
       name: msvc-asan
+    
+
       
     steps:
+    - checkout: self
+      persistCredentials: true
+      fetchDepth: 2
+      clean: false
+
     - task: DownloadBuildArtifacts@0
       inputs:
         buildType: 'current'
