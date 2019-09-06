@@ -26,12 +26,12 @@ jobs:
       matrix:
         win32_MT_ASAN:
           CRT_FLAG: /MT
-          LINK_LIBS: /wholearchive:%ASAN_RT_LIB_DIR%\clang_rt.asan-i386.lib /wholearchive:%ASAN_RT_LIB_DIR%\clang_rt.asan_cxx-i386.lib
+          LINK_LIBS: /include:___asan_globals_start /include:___asan_init  %ASAN_RT_LIB_DIR%\clang_rt.asan-i386.lib %ASAN_RT_LIB_DIR%\clang_rt.asan_cxx-i386.lib
           ASAN_FLAG: /d2ASAN
           ARTIFACT_ID: win32_MT_ASAN
         win32_MD_ASAN:
           CRT_FLAG: /MD
-          LINK_LIBS: /wholearchive:%ASAN_RT_LIB_DIR%\clang_rt.asan_dynamic-i386.lib /wholearchive:%ASAN_RT_LIB_DIR%\clang_rt.asan_dynamic_runtime_thunk-i386.lib
+          LINK_LIBS: /include:___asan_globals_start /include:___asan_init %ASAN_RT_LIB_DIR%\clang_rt.asan_dynamic-i386.lib %ASAN_RT_LIB_DIR%\clang_rt.asan_dynamic_runtime_thunk-i386.lib
           ASAN_FLAG: /d2ASAN
           ARTIFACT_ID: win32_MD_ASAN
         win32_MT_NOASAN:
