@@ -63,6 +63,7 @@ jobs:
     - task: CmdLine@2
       inputs:
         script: |
+            xcopy %MSVC_SRC%\binaries\x86ret\bin\i386\pgort140.dll %MSVC_SRC%\binaries\x86chk\bin\i386\pgort140.dll 
             set PATH=%PATH%;$(Build.BinariesDirectory)\llvm_asan_Release_x86_bin\bin;$(Build.BinariesDirectory)\llvm_asan_Release_x86_bin\lib\windows\x86;$(Build.BinariesDirectory)\llvm_asan_Release_x86_bin\include;
             set ASAN_RT_LIB_DIR=$(Build.BinariesDirectory)\llvm_asan_Release_x86_bin\lib\windows\x86
             set ASAN_RT_BIN_DIR=$(Build.BinariesDirectory)\llvm_asan_Release_x86_bin\bin
