@@ -133,7 +133,11 @@ jobs:
         pythonInterpreter: c:\python37\python.exe
         arguments: $(System.ArtifactsDirectory)\win32_MD_ASAN\logs\rl.x86.exe.results.log $(System.ArtifactsDirectory)\win32_MD_NOASAN\logs\rl.x86.exe.results.log $(System.ArtifactsDirectory)\win32_MT_ASAN\logs\rl.x86.exe.results.log $(System.ArtifactsDirectory)\win32_MT_NOASAN\logs\rl.x86.exe.results.log nonship-faillist.txt nonship-ignorelist.txt
 
-
+    - task: PublishBuildArtifacts@1
+      inputs:
+        PathtoPublish: '$(Build.SourcesDirectory)\\data-viz.xlsx'
+        ArtifactName: 'LogProcess-$(System.AgentName)-$(Build.BuildId)'
+        publishLocation: 'Container'
 
 
 
