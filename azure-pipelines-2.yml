@@ -136,7 +136,7 @@ jobs:
     - task: PublishBuildArtifacts@1
       inputs:
         PathtoPublish: '$(Build.SourcesDirectory)\\data-viz.xlsx'
-        ArtifactName: 'LogProcess-$(System.AgentName)-$(Build.BuildId)'
+        ArtifactName: 'LogProcess-$(Build.AgentName)-$(Build.BuildId)'
         publishLocation: 'Container'
 
 
