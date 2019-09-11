@@ -21,6 +21,10 @@ jobs:
     timeoutInMinutes: 420
     pool:
       name: 'msvc-asan'
+    
+    variables:
+      - name: ASAN_OPTIONS
+        value: halt_on_error=false
 
     strategy:
       matrix:
