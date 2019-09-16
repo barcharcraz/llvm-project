@@ -20,33 +20,41 @@ trigger:
 
 jobs:
   - job: MSVC_Tests
-    variables:
-    - name: UNIX_BIN_DIR
-      value: $(System.ArtifactsDirectory)\unix\cygwin64\bin
-    - name: ASAN_SYMBOLIZER_PATH
-      value: $(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\bin\llvm-symbolizer.exe
-    - name: ASAN_RT_SRC_ROOT
-      value: $(Build.SourcesDirectory)\compiler-rt
-    - name: TEST_OUTPUT_DIR
-      value: $(Build.BinariesDirectory)
-    - name: TEST_C_COMPILER
-      value: cl.exe
-    - name: ASAN_RT_LIB_DIR
-      value: $(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\lib\windows\x86
-    - name: ASAN_RT_BIN_DIR
-      value: $(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\bin
-
-
-
 
     timeoutInMinutes: 60
     pool:
       name: 'msvc-asan'
 
-
+    strategy:
+      matrix:
+        Win_x86:
+          LlvmArtifactID: llvm_asan_Release_x86_bin
+          MsvcTargetArch: x86
+          VcVars: vcvars32.bat
+          MsvcHostArch: x86chk
+          UNIX_BIN_DIR: $(System.ArtifactsDirectory)\unix\cygwin64\bin
+          ASAN_SYMBOLIZER_PATH: $(System.ArtifactsDirectory)\$(LlvmArtifactID)\bin\llvm-symbolizer.exe
+          ASAN_RT_SRC_ROOT: $(Build.SourcesDirectory)\compiler-rt
+          TEST_OUTPUT_DIR: $(Build.BinariesDirectory)
+          TEST_C_COMPILER: cl.exe
+          ASAN_RT_LIB_DIR: $(System.ArtifactsDirectory)\$(LlvmArtifactID)\lib\windows\x86
+          ASAN_RT_BIN_DIR: $(System.ArtifactsDirectory)\$(LlvmArtifactID)\bin
+        Win_x64_x86:
+          LlvmArtifactID: llvm_asan_Release_x86_bin
+          MsvcTargetArch: x86
+          VcVars: vcvarsamd64_x86.bat
+          MsvcHostArch: amd64chk
+          UNIX_BIN_DIR: $(System.ArtifactsDirectory)\unix\cygwin64\bin
+          ASAN_SYMBOLIZER_PATH: $(System.ArtifactsDirectory)\$(LlvmArtifactID)\bin\llvm-symbolizer.exe
+          ASAN_RT_SRC_ROOT: $(Build.SourcesDirectory)\compiler-rt
+          TEST_OUTPUT_DIR: $(Build.BinariesDirectory)
+          TEST_C_COMPILER: cl.exe
+          ASAN_RT_LIB_DIR: $(System.ArtifactsDirectory)\$(LlvmArtifactID)\lib\windows\x86
+          ASAN_RT_BIN_DIR: $(System.ArtifactsDirectory)\$(LlvmArtifactID)\bin
 
 
     steps:
+     
 
     - task: DownloadBuildArtifacts@0
       inputs:
@@ -54,7 +62,7 @@ jobs:
         project: '0bdbc590-a062-4c3f-b0f6-9383f67865ee'
         pipeline: '11796'
         buildVersionToDownload: 'latest'
-        artifactName: llvm_asan_Release_x86_bin
+        artifactName: $(LlvmArtifactID)
         downloadType: 'specific'
         downloadPath: '$(System.ArtifactsDirectory)'
 
@@ -86,13 +94,13 @@ jobs:
 
     - script: |
         echo on
-        set PATH=%PATH%;$(System.ArtifactsDirectory)\unix\gnuwin32\bin;$(System.ArtifactsDirectory)\unix\bin;$(System.ArtifactsDirectory)\unix\cygwin64\bin;$(System.ArtifactsDirectory);$(Build.SourcesDirectory)\llvm\utils\lit;$(Build.SourcesDirectory)\llvm\utils\lit\lit;$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\bin;$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\lib\windows\x86;$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\include;$(System.ArtifactsDirectory)\bin;
-        call %MSVC_SRC%\binaries\x86chk\setenv.cmd x86 %MSVC_SRC%\src
-        set PATH=$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\lib\windows\x86;%PATH%;
-        set LIB=$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\lib\windows\x86;%LIB%;
+        set PATH=%PATH%;$(System.ArtifactsDirectory)\unix\gnuwin32\bin;$(System.ArtifactsDirectory)\unix\bin;$(System.ArtifactsDirectory)\unix\cygwin64\bin;$(System.ArtifactsDirectory);$(Build.SourcesDirectory)\llvm\utils\lit;$(Build.SourcesDirectory)\llvm\utils\lit\lit;$(System.ArtifactsDirectory)\$(LlvmArtifactID)\bin;$(System.ArtifactsDirectory)\$(LlvmArtifactID)\lib\windows\x86;$(System.ArtifactsDirectory)\$(LlvmArtifactID)\include;$(System.ArtifactsDirectory)\bin;
+        call %MSVC_SRC%\binaries\$(MsvcHostArch)\setenv.cmd $(MsvcTargetArch) %MSVC_SRC%\src
+        set PATH=$(System.ArtifactsDirectory)\$(LlvmArtifactID)\lib\windows\$(MsvcTargetArch);%PATH%;
+        set LIB=$(System.ArtifactsDirectory)\$(LlvmArtifactID)\lib\windows\$(MsvcTargetArch);%LIB%;
         set INCLUDE=%INCLUDE%;$(Build.SourcesDirectory)\compiler-rt\include;$(Build.SourcesDirectory)\compiler-rt\test\asan\TestCases\defines.h
         pushd $(Build.SourcesDirectory)\llvm\utils\lit\lit
-        c:\python27\python.exe $(Build.SourcesDirectory)\llvm\utils\lit\lit\msvc_main.py $(Build.SourcesDirectory)\compiler-rt\test\asan\TestCases\Windows x86 --write-sql-results -d pyodbc
+        c:\python27\python.exe $(Build.SourcesDirectory)\llvm\utils\lit\lit\msvc_main.py $(Build.SourcesDirectory)\compiler-rt\test\asan\TestCases\Windows $(MsvcTargetArch) --write-sql-results -d pyodbc
         popd
       displayName: 'Run Windows specific tests default'
       env:
@@ -102,13 +110,13 @@ jobs:
 
     - script: |
         echo on
-        set PATH=%PATH%;$(System.ArtifactsDirectory)\unix\gnuwin32\bin;$(System.ArtifactsDirectory)\unix\bin;$(System.ArtifactsDirectory)\unix\cygwin64\bin;$(System.ArtifactsDirectory);$(Build.SourcesDirectory)\llvm\utils\lit;$(Build.SourcesDirectory)\llvm\utils\lit\lit;$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\bin;$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\lib\windows\x86;$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\include;$(System.ArtifactsDirectory)\bin;
-        call %MSVC_SRC%\binaries\x86chk\setenv.cmd x86 %MSVC_SRC%\src
-        set PATH=$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\lib\windows\x86;%PATH%;
-        set LIB=$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\lib\windows\x86;%LIB%;
+        set PATH=%PATH%;$(System.ArtifactsDirectory)\unix\gnuwin32\bin;$(System.ArtifactsDirectory)\unix\bin;$(System.ArtifactsDirectory)\unix\cygwin64\bin;$(System.ArtifactsDirectory);$(Build.SourcesDirectory)\llvm\utils\lit;$(Build.SourcesDirectory)\llvm\utils\lit\lit;$(System.ArtifactsDirectory)\$(LlvmArtifactID)\bin;$(System.ArtifactsDirectory)\$(LlvmArtifactID)\lib\windows\$(MsvcTargetArch);$(System.ArtifactsDirectory)\$(LlvmArtifactID)\include;$(System.ArtifactsDirectory)\bin;
+        call %MSVC_SRC%\binaries\$(MsvcHostArch)\setenv.cmd $(MsvcTargetArch) %MSVC_SRC%\src
+        set PATH=$(System.ArtifactsDirectory)\$(LlvmArtifactID)\lib\windows\$(MsvcTargetArch);%PATH%;
+        set LIB=$(System.ArtifactsDirectory)\$(LlvmArtifactID)\lib\windows\$(MsvcTargetArch);%LIB%;
         set INCLUDE=%INCLUDE%;$(Build.SourcesDirectory)\compiler-rt\include;$(Build.SourcesDirectory)\compiler-rt\test\asan\TestCases\defines.h
         pushd $(Build.SourcesDirectory)\llvm\utils\lit\lit
-        c:\python27\python.exe $(Build.SourcesDirectory)\llvm\utils\lit\lit\msvc_main.py $(Build.SourcesDirectory)\compiler-rt\test\asan\TestCases\Windows x86 --force-dynamic --write-sql-results -d pyodbc
+        c:\python27\python.exe $(Build.SourcesDirectory)\llvm\utils\lit\lit\msvc_main.py $(Build.SourcesDirectory)\compiler-rt\test\asan\TestCases\Windows $(MsvcTargetArch) --force-dynamic --write-sql-results -d pyodbc
         popd
 
       displayName: 'Run Windows specific tests dynamic'
@@ -118,13 +126,13 @@ jobs:
 
     - script: |
         echo on
-        set PATH=%PATH%;$(System.ArtifactsDirectory)\unix\gnuwin32\bin;$(System.ArtifactsDirectory)\unix\bin;$(System.ArtifactsDirectory)\unix\cygwin64\bin;$(System.ArtifactsDirectory);$(Build.SourcesDirectory)\llvm\utils\lit;$(Build.SourcesDirectory)\llvm\utils\lit\lit;$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\bin;$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\lib\windows\x86;$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\include;$(System.ArtifactsDirectory)\bin;
-        call %MSVC_SRC%\binaries\x86chk\setenv.cmd x86 %MSVC_SRC%\src
-        set PATH=$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\lib\windows\x86;%PATH%;
-        set LIB=$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\lib\windows\x86;%LIB%;
+        set PATH=%PATH%;$(System.ArtifactsDirectory)\unix\gnuwin32\bin;$(System.ArtifactsDirectory)\unix\bin;$(System.ArtifactsDirectory)\unix\cygwin64\bin;$(System.ArtifactsDirectory);$(Build.SourcesDirectory)\llvm\utils\lit;$(Build.SourcesDirectory)\llvm\utils\lit\lit;$(System.ArtifactsDirectory)\$(LlvmArtifactID)\bin;$(System.ArtifactsDirectory)\$(LlvmArtifactID)\lib\windows\$(MsvcTargetArch);$(System.ArtifactsDirectory)\$(LlvmArtifactID)\include;$(System.ArtifactsDirectory)\bin;
+        call %MSVC_SRC%\binaries\$(MsvcHostArch)\setenv.cmd $(MsvcTargetArch) %MSVC_SRC%\src
+        set PATH=$(System.ArtifactsDirectory)\$(LlvmArtifactID)\lib\windows\$(MsvcTargetArch);%PATH%;
+        set LIB=$(System.ArtifactsDirectory)\$(LlvmArtifactID)\lib\windows\$(MsvcTargetArch);%LIB%;
         set INCLUDE=%INCLUDE%;$(Build.SourcesDirectory)\compiler-rt\include;$(Build.SourcesDirectory)\compiler-rt\test\asan\TestCases\defines.h
         pushd $(Build.SourcesDirectory)\llvm\utils\lit\lit
-        c:\python27\python.exe $(Build.SourcesDirectory)\llvm\utils\lit\lit\msvc_main.py $(Build.SourcesDirectory)\compiler-rt\test\asan\TestCases x86 --write-sql-results -d pyodbc
+        c:\python27\python.exe $(Build.SourcesDirectory)\llvm\utils\lit\lit\msvc_main.py $(Build.SourcesDirectory)\compiler-rt\test\asan\TestCases $(MsvcTargetArch) --write-sql-results -d pyodbc
         popd
       displayName: 'Run asan tests static'
       env:
@@ -133,13 +141,13 @@ jobs:
 
     - script: |
         echo on
-        set PATH=%PATH%;$(System.ArtifactsDirectory)\unix\gnuwin32\bin;$(System.ArtifactsDirectory)\unix\bin;$(System.ArtifactsDirectory)\unix\cygwin64\bin;$(System.ArtifactsDirectory);$(Build.SourcesDirectory)\llvm\utils\lit;$(Build.SourcesDirectory)\llvm\utils\lit\lit;$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\bin;$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\lib\windows\x86;$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\include;$(System.ArtifactsDirectory)\bin;
-        call %MSVC_SRC%\binaries\x86chk\setenv.cmd x86 %MSVC_SRC%\src
-        set PATH=$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\lib\windows\x86;%PATH%;
-        set LIB=$(System.ArtifactsDirectory)\llvm_asan_Release_x86_bin\lib\windows\x86;%LIB%;
+        set PATH=%PATH%;$(System.ArtifactsDirectory)\unix\gnuwin32\bin;$(System.ArtifactsDirectory)\unix\bin;$(System.ArtifactsDirectory)\unix\cygwin64\bin;$(System.ArtifactsDirectory);$(Build.SourcesDirectory)\llvm\utils\lit;$(Build.SourcesDirectory)\llvm\utils\lit\lit;$(System.ArtifactsDirectory)\$(LlvmArtifactID)\bin;$(System.ArtifactsDirectory)\$(LlvmArtifactID)\lib\windows\$(MsvcTargetArch);$(System.ArtifactsDirectory)\$(LlvmArtifactID)\include;$(System.ArtifactsDirectory)\bin;
+        call %MSVC_SRC%\binaries\$(MsvcHostArch)\setenv.cmd $(MsvcTargetArch) %MSVC_SRC%\src
+        set PATH=$(System.ArtifactsDirectory)\$(LlvmArtifactID)\lib\windows\$(MsvcTargetArch);%PATH%;
+        set LIB=$(System.ArtifactsDirectory)\$(LlvmArtifactID)\lib\windows\$(MsvcTargetArch);%LIB%;
         set INCLUDE=%INCLUDE%;$(Build.SourcesDirectory)\compiler-rt\include;$(Build.SourcesDirectory)\compiler-rt\test\asan\TestCases\defines.h
         pushd $(Build.SourcesDirectory)\llvm\utils\lit\lit
-        c:\python27\python.exe $(Build.SourcesDirectory)\llvm\utils\lit\lit\msvc_main.py $(Build.SourcesDirectory)\compiler-rt\test\asan\TestCases x86 --write-sql-results -d pyodbc --force-dynamic
+        c:\python27\python.exe $(Build.SourcesDirectory)\llvm\utils\lit\lit\msvc_main.py $(Build.SourcesDirectory)\compiler-rt\test\asan\TestCases $(MsvcTargetArch) --write-sql-results -d pyodbc --force-dynamic
         popd
       displayName: 'Run asan tests dynamic'
       env:
