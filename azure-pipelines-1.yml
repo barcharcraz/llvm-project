@@ -59,10 +59,10 @@ jobs:
         downloadPath: '$(System.ArtifactsDirectory)'
 
     - script: |
-        taskkill /f /t /im mspdbsrv.exe
-        taskkill /f /t /im msbuild.exe
-        taskkill /f /t /im cl.exe
-        taskkill /f /t /im link.exe
+        taskkill /f /t /im mspdbsrv.exe 2>&1
+        taskkill /f /t /im msbuild.exe 2>&1
+        taskkill /f /t /im cl.exe 2>&1
+        taskkill /f /t /im link.exe 2>&1
         (exit /b 0)
       continueOnError: true
 
