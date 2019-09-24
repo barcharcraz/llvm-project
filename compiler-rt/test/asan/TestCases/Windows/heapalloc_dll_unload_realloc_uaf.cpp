@@ -32,7 +32,7 @@ BOOL WINAPI DllMain(HMODULE, DWORD reason, LPVOID) {
 
 // CHECK: in DLL(reason=1)
 // CHECK: in DLL(reason=0)
-// CHECK: AddressSanitizer: nested bug in the same thread, aborting.
+// CHECK: AddressSanitizer: {{(nested bug in the same thread, aborting.|attempting double-free)}}
 
 #else
 #error oops!

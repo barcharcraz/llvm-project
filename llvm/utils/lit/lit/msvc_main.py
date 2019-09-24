@@ -422,7 +422,7 @@ litConfig.substitutions = {
                             ("%asan_dll_lib", litConfig.compiler_rt_libdir + "\\clang_rt.asan_dynamic-i386.lib"),
                             ("%asan_dll ", litConfig.compiler_rt_libdir + "\\clang_rt.asan_dynamic-i386.dll "),
                             ("(%env_asan_opts=)(([a-zA-Z0-9_]+=(?:[0-9]{1,4}|true|[a-zA-Z]{1,6}|false|\'\"[%\/a-zA-Z0-9\\\-_:=\. ]{1,50}\"\')[:  ]?){1,5})", lit.TestingConfig.SubstituteCaptures("cmd /v /c \"set ASAN_OPTIONS=\g<2> && ") ),
-                            ("-Fe","/Fe: "),
+                            ("-Fe","/Fe:"),
                             ("-o %t.obj","/Fo:%t.obj"),
                             ("-o %t( |)",subsitute_obj),
                             ("%run"," cmd /c "),
@@ -597,6 +597,14 @@ for cc_file in cc_files:
             __litConfig.environment['_LINK_'] ="/debug /wholearchive:" + litConfig.compiler_rt_libdir + "\\clang_rt.asan-i386.lib /wholearchive:"+litConfig.compiler_rt_libdir+"\\clang_rt.asan_cxx-i386.lib /incremental:no  "
         if "global_dead_strip" in cc_file and "dll" not in cc_file and opts.force_dynamic:
             pass
+        if "dll_heap_allocation" in cc_file and not opts.force_dynamic:
+            __litConfig.environment['_CL_'] = __litConfig.environment['_CL_'].replace("/MT".strip()," ")
+            __litConfig.environment['_link_'] += __litConfig.compiler_rt_libdir +  "\\clang_rt.asan-i386.lib "
+        
+        if "user-exception" in cc_file:
+            __litConfig.substitutions |= {
+                ("env ASAN_OPTIONS=([\w=0-9]+) ",lit.TestingConfig.SubstituteCaptures("set ASAN_OPTIONS=\g<1> && "))
+            }
 
         __litConfig.environment['_CL_'] += " /Fd" + cc_file + ".pdb " + selected_runtime + " "
         __litConfig.environment['_LINK_'] += " /force:multiple "
