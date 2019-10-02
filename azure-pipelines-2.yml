@@ -73,7 +73,7 @@ jobs:
             set ASAN_RT_BIN_DIR=$(Build.BinariesDirectory)\llvm_asan_Release_x86_bin\bin
             echo on
             pushd %CD:~0,3%msvc_binaries
-            set MSVC_SRC=<%CD:~0,3%\msvc_src_location.txt
+            set MSVC_SRC=<%CD:~0,3%msvc_src_location.txt
             call %CD:~0,3%msvc_binaries\x86chk\setenv.cmd x86 %MSVC_SRC%
             echo on
             set SKIPENCDIFFS=1
