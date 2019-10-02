@@ -67,14 +67,14 @@ jobs:
     - task: CmdLine@2
       inputs:
         script: |
-            xcopy%CD:~1,3%msvc_binaries\binaries\x86ret\bin\i386\pgort140.dll%CD:~1,3%msvc_binaries\binaries\x86chk\bin\i386\pgort140.dll 
+            xcopy %CD:~1,3%msvc_binaries\binaries\x86ret\bin\i386\pgort140.dll %CD:~1,3%msvc_binaries\binaries\x86chk\bin\i386\pgort140.dll 
             set PATH=%PATH%;$(Build.BinariesDirectory)\llvm_asan_Release_x86_bin\bin;$(Build.BinariesDirectory)\llvm_asan_Release_x86_bin\lib\windows\x86;$(Build.BinariesDirectory)\llvm_asan_Release_x86_bin\include;
             set ASAN_RT_LIB_DIR=$(Build.BinariesDirectory)\llvm_asan_Release_x86_bin\lib\windows\x86
             set ASAN_RT_BIN_DIR=$(Build.BinariesDirectory)\llvm_asan_Release_x86_bin\bin
             echo on
-            pushd%CD:~1,3%msvc_binaries
+            pushd %CD:~1,3%msvc_binaries
             set MSVC_SRC=<%~d0\msvc_src_location.txt
-            call%CD:~1,3%msvc_binaries\x86chk\setenv.cmd x86 %MSVC_SRC%
+            call %CD:~1,3%msvc_binaries\x86chk\setenv.cmd x86 %MSVC_SRC%
             echo on
             set SKIPENCDIFFS=1
             set _CL_= $(ASAN_FLAG) /Zi $(CRT_FLAG)
