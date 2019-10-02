@@ -72,20 +72,14 @@ def populate_sheet(dataset, workbook, worksheet):
 
     # Iterate over the data and write it out row by row.
     for dirname in (dataset.runs):
-        worksheet.write(row + 1, col, dirname)
-        saved_row = row + 1
-        saved_col = col
-        row += 2
-        col += 1
         failure_count = 0
         for filename in dataset.runs[dirname]:
-            worksheet.write(row, col, filename)
-            worksheet.set_row(row, None, None, {'level': 1, 'hidden': True})
-            saved_internal_row = row
-            row += 1
-            col += 1
-            internal_failure_count = 0
             for variations in dataset.runs[dirname][filename]:
+                worksheet.write(row, col, dirname)
+                worksheet.write(row, col+1, filename)
+                row += 1
+                col += 1
+                internal_failure_count = 0
                 status = str(variations[1])
                 expected_status = str(variations[2])
                 expected_failure = status == "failed" and  expected_status == "expected_failure"
@@ -108,16 +102,13 @@ def populate_sheet(dataset, workbook, worksheet):
                         failure_count -= 1
                         internal_failure_count -=1
 
-                worksheet.write(row, col, dirname + " " + "(" + filename + " " + str(variations[0]) + ")", fmt)
-                worksheet.write(row, col + 1, status, fmt)
-                worksheet.write(row, col + 2, expected_status, fmt)
-                worksheet.set_row(row, None, None, {'level': 2, 'hidden': True})
+                worksheet.write(row, col + 2, dirname + " " + "(" + filename + " " + str(variations[0]) + ")", fmt)
+                worksheet.write(row, col + 3, status, fmt)
+                worksheet.write(row, col + 4, expected_status, fmt)
                 row += 1
-            worksheet.write(saved_internal_row, col + 4, internal_failure_count)
-            col -= 1
-        worksheet.set_row(row, None, None, {'collapsed': True})    
+            worksheet.write(row, col + 5, internal_failure_count)  
         col -= 1
-        worksheet.write(saved_row, saved_col + 6, failure_count)
+        worksheet.write(row, saved_col + 6, failure_count)
 
 
 def generate_datasheet():
