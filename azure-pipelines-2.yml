@@ -67,20 +67,19 @@ jobs:
     - task: CmdLine@2
       inputs:
         script: |
-            xcopy %CD:~0,3%msvc_binaries\binaries\x86ret\bin\i386\pgort140.dll %CD:~0,3%msvc_binaries\binaries\x86chk\bin\i386\pgort140.dll 
+            set MSVC_ROOT=%CD:~0,3%msvc_copy
+            xcopy %MSVC_ROOT%\binaries\x86ret\bin\i386\pgort140.dll %MSVC_ROOT%\binaries\x86chk\bin\i386\pgort140.dll 
             set PATH=%PATH%;$(Build.BinariesDirectory)\llvm_asan_Release_x86_bin\bin;$(Build.BinariesDirectory)\llvm_asan_Release_x86_bin\lib\windows\x86;$(Build.BinariesDirectory)\llvm_asan_Release_x86_bin\include;
             set ASAN_RT_LIB_DIR=$(Build.BinariesDirectory)\llvm_asan_Release_x86_bin\lib\windows\x86
             set ASAN_RT_BIN_DIR=$(Build.BinariesDirectory)\llvm_asan_Release_x86_bin\bin
             echo on
-            chdir pushd %CD:~0,3%
-            set /p MSVC_SRC=<msvc_src_location.txt
-            pushd %CD:~0,3%msvc_binaries
-            call %CD:~0,3%msvc_binaries\x86chk\setenv.cmd x86 %MSVC_SRC%
+            pushd %MSVC_ROOT%
+            call %MSVC_ROOT%\binaries\x86chk\setenv.cmd x86 %MSVC_ROOT%
             echo on
             set SKIPENCDIFFS=1
             set _CL_= $(ASAN_FLAG) /Zi $(CRT_FLAG)
             set _LINK_= /debug $(LINK_LIBS) /force:multiple
-            pushd %MSVC_SRC%\msvc_binaries\src\qa\be\regress
+            pushd %MSVC_ROOT%\binaries\src\qa\be\regress
             rl -exe -all
             xcopy /i logs  $(Build.ArtifactStagingDirectory)\logs
             popd
