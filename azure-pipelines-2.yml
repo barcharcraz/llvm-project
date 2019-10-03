@@ -68,7 +68,7 @@ jobs:
       inputs:
         script: |
             set MSVC_ROOT=%CD:~0,3%msvc_copy
-            xcopy %MSVC_ROOT%\binaries\x86ret\bin\i386\pgort140.dll %MSVC_ROOT%\binaries\x86chk\bin\i386\pgort140.dll 
+            xcopy %MSVC_ROOT%\binaries\x86ret\bin\i386\pgort140.dll %MSVC_ROOT%\binaries\x86chk\bin\i386\pgort140.dll /y
             set PATH=%PATH%;$(Build.BinariesDirectory)\llvm_asan_Release_x86_bin\bin;$(Build.BinariesDirectory)\llvm_asan_Release_x86_bin\lib\windows\x86;$(Build.BinariesDirectory)\llvm_asan_Release_x86_bin\include;
             set ASAN_RT_LIB_DIR=$(Build.BinariesDirectory)\llvm_asan_Release_x86_bin\lib\windows\x86
             set ASAN_RT_BIN_DIR=$(Build.BinariesDirectory)\llvm_asan_Release_x86_bin\bin
