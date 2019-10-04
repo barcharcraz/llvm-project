@@ -74,12 +74,12 @@ jobs:
             set ASAN_RT_BIN_DIR=$(Build.BinariesDirectory)\llvm_asan_Release_x86_bin\bin
             echo on
             pushd %MSVC_ROOT%
-            call %MSVC_ROOT%\binaries\x86chk\setenv.cmd x86 %MSVC_ROOT%
+            call %MSVC_ROOT%\binaries\x86chk\setenv.cmd x86 %MSVC_ROOT%\src
             echo on
             set SKIPENCDIFFS=1
             set _CL_= $(ASAN_FLAG) /Zi $(CRT_FLAG)
             set _LINK_= /debug $(LINK_LIBS) /force:multiple
-            pushd %MSVC_ROOT%\binaries\src\qa\be\regress
+            pushd %MSVC_ROOT%\src\qa\be\regress
             rl -exe -all
             xcopy /i logs  $(Build.ArtifactStagingDirectory)\logs
             popd
