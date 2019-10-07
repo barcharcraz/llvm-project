@@ -75,10 +75,10 @@ def populate_sheet(dataset, workbook, worksheet):
         failure_count = 0
         for filename in dataset.runs[dirname]:
             for variations in dataset.runs[dirname][filename]:
+                col = 0
                 worksheet.write(row, col, dirname)
                 worksheet.write(row, col+1, filename)
                 row += 1
-                col += 1
                 internal_failure_count = 0
                 status = str(variations[1])
                 expected_status = str(variations[2])
@@ -107,7 +107,6 @@ def populate_sheet(dataset, workbook, worksheet):
                 worksheet.write(row, col + 4, expected_status, fmt)
                 row += 1
             worksheet.write(row, col + 5, internal_failure_count)  
-        col -= 1
         worksheet.write(row, col + 6, failure_count)
 
 
