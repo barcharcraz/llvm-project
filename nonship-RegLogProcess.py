@@ -108,7 +108,7 @@ def populate_sheet(dataset, workbook, worksheet):
                 row += 1
             worksheet.write(row, col + 5, internal_failure_count)  
         col -= 1
-        worksheet.write(row, saved_col + 6, failure_count)
+        worksheet.write(row, col + 6, failure_count)
 
 
 def generate_datasheet():
