@@ -78,7 +78,6 @@ def populate_sheet(dataset, workbook, worksheet):
                 col = 0
                 worksheet.write(row, col, dirname)
                 worksheet.write(row, col+1, filename)
-                row += 1
                 internal_failure_count = 0
                 status = str(variations[1])
                 expected_status = str(variations[2])
@@ -108,7 +107,6 @@ def populate_sheet(dataset, workbook, worksheet):
                 row += 1
             worksheet.write(row, col + 5, internal_failure_count)  
         worksheet.write(row, col + 6, failure_count)
-
 
 def generate_datasheet():
     workbook = xlsxwriter.Workbook('data-viz.xlsx')
