@@ -411,7 +411,7 @@ if opts.disable_opt:
 subsitute_obj = lit.TestingConfig.SubstituteCaptures("/Fe:%t\g<1>")
 
 litConfig.substitutions = {
-                            ("-fsanitize-coverage=func (.*)", lit.TestingConfig.SubstituteCaptures("/d2Sancov \g<1> /link /wholearchive:" + litConfig.compiler_rt_libdir + "\\clang_rt.fuzzer-i386.lib")),
+                            ("-fsanitize-coverage=func ", lit.TestingConfig.SubstituteCaptures("/d2Sancov " )),
                             ("%sancov", "sancov.exe"),
                             truncated_cl_asan_sub,
                             truncated_cxx_asan_sub,
@@ -605,6 +605,11 @@ for cc_file in cc_files:
             __litConfig.substitutions |= {
                 ("env ASAN_OPTIONS=([\w=0-9]+) ",lit.TestingConfig.SubstituteCaptures("set ASAN_OPTIONS=\g<1> && "))
             }
+
+        if "coverage" in cc_file:
+            __litConfig.environment["_LINK_"] = "/wholearchive:" + litConfig.compiler_rt_libdir + "\\clang_rt.fuzzer_no_main-i386.lib /wholearchive:" + litConfig.compiler_rt_libdir + "\\libsancov.lib" + \
+            " /wholearchive:" + litConfig.compiler_rt_libdir + "\\clang_rt.profile-i386.lib"
+            
 
         __litConfig.environment['_CL_'] += " /Fd" + cc_file + ".pdb " + selected_runtime + " "
         __litConfig.environment['_LINK_'] += " /force:multiple "
