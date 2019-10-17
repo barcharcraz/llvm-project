@@ -150,11 +150,11 @@ jobs:
     - script: |
         echo on
         mkdir $(Build.BinariesDirectory)\shipping_components
-        mkdir $(Build.BinariesDirectory)\shipping_components\lib\windows\x86
+        mkdir $(Build.BinariesDirectory)\shipping_components\lib\windows\$(buildArch)
         mkdir $(Build.BinariesDirectory)\shipping_components\include\sanitizer
         mkdir $(Build.BinariesDirectory)\shipping_components\share
         cp $(Build.BinariesDirectory)\$(BuildType)\lib\clang\$(LLVM_VERSION)\include\sanitizer\*  $(Build.BinariesDirectory)\shipping_components\include\sanitizer\
-        cp $(Build.BinariesDirectory)\$(BuildType)\lib\clang\$(LLVM_VERSION)\lib\windows\* $(Build.BinariesDirectory)\shipping_components\lib\windows\x86\
+        cp $(Build.BinariesDirectory)\$(BuildType)\lib\clang\$(LLVM_VERSION)\lib\windows\* $(Build.BinariesDirectory)\shipping_components\lib\windows\$(buildArch)\
         cp $(Build.BinariesDirectory)\$(BuildType)\lib\clang\$(LLVM_VERSION)\share\*  $(Build.BinariesDirectory)\shipping_components\share\
         cp $(Build.SourcesDirectory)\compiler-rt\LICENSE.txt  $(Build.BinariesDirectory)\shipping_components\
         cp $(Build.BinariesDirectory)\$(BuildType)\bin\llvm-symbolizer.exe   $(Build.BinariesDirectory)\shipping_components\
@@ -170,8 +170,8 @@ jobs:
 
     - task: git-tag-on-release-task@6
       inputs:
-        staticTagName: 'x86-release'
-        artifactIncludeList: 'llvm_asan_Release_x86_bin'
+        staticTagName: '$(buildArch)-release'
+        artifactIncludeList: 'llvm_asan_Release_$(buildArch)_bin'
 
     - script: |
             echo on
