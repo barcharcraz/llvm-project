@@ -501,15 +501,14 @@ else ()
 endif ()
 
 if( MSVC )
+  set(SHLIBEXT ".lib")
+  set(stricmp "_stricmp")
+  set(strdup "_strdup")
   if (FORCE_MSDIA_AVAILABILITY)
     set(LLVM_ENABLE_DIA_SDK 1)
     set(HAVE_DIA_SDK 1)
     set(MSVC_DIA_SDK_DIR "${MSDIA_FORCE_LOCATION}")
   else()
-    set(SHLIBEXT ".lib")
-    set(stricmp "_stricmp")
-    set(strdup "_strdup")
-
     # Allow setting clang-cl's /winsysroot flag.
     set(LLVM_WINSYSROOT "" CACHE STRING
       "If set, argument to clang-cl's /winsysroot")
