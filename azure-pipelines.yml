@@ -165,13 +165,8 @@ jobs:
     - task: PublishBuildArtifacts@1
       inputs:
         PathtoPublish: '$(Build.BinariesDirectory)\shipping_components'
-        ArtifactName: llvm_asan_$(BuildType)_$(buildArch)$(buildTag)
+        ArtifactName: llvm_asan_$(BuildType)_$(buildArch)
         publishLocation: 'Container'
-
-    - task: git-tag-on-release-task@6
-      inputs:
-        staticTagName: '$(buildArch)-release'
-        artifactIncludeList: 'llvm_asan_Release_$(buildArch)_bin'
 
     - script: |
             echo on
@@ -181,7 +176,7 @@ jobs:
     - task: PublishBuildArtifacts@1
       inputs:
         PathtoPublish: '$(Build.BinariesDirectory)\shipping_components'
-        ArtifactName: llvm_asan_$(BuildType)_$(buildArch)$(buildTag)_bin
+        ArtifactName: llvm_asan_$(BuildType)_$(buildArch)_bin
         publishLocation: 'Container'
 
     #- script: rd /s /q $(Build.SourcesDirectory)\asan_utils && git clone https://github.com/mcgov/Win32-AddressSanitizer-Utils.git $(Build.SourcesDirectory)\asan_utils
