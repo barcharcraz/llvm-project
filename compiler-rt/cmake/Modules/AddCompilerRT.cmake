@@ -338,6 +338,7 @@ function(add_compiler_rt_runtime name type)
         DESTINATION ${install_dir_${libname}}
         ${COMPONENT_OPTION})
     else()
+      message(STATUS ${libname} ${sources_${libname}})
       add_library(${libname} ${type} ${sources_${libname}})
       set_target_compile_flags(${libname} ${extra_cflags_${libname}})
       set_target_link_flags(${libname} ${extra_link_flags_${libname}})
@@ -401,6 +402,95 @@ function(add_compiler_rt_runtime name type)
     add_dependencies(${LIB_PARENT_TARGET} ${libnames})
   endif()
 endfunction()
+
+
+# create the many different versions needed to support Windows' many runtimes.
+# create_multiple_windows_obj_libs(<name>
+#                                  OS <os names>
+#                                  ARCHS <architectures>
+#                                  SOURCES <source files>
+#                                  CFLAGS <compile flags>
+#                                  DEFS <compile definitions>
+#                                  DEPS <dependencies>
+#                                  ADDITIONAL_HEADERS <header files>)
+function(create_multiple_windows_obj_libs name rt_types)
+  cmake_parse_arguments(WINLIB "" "" "OS;ARCHS;SOURCES;CFLAGS;DEFS;DEPS;ADDITIONAL_HEADERS"
+    ${ARGN})
+
+  foreach(rt_type ${rt_types})
+    list(APPEND ${name}_CFLAGS_${rt_type} ${WINLIB_CFLAGS} -${rt_type} )
+    message(STATUS ${name}_${rt_type})
+    message(STATUS ${${name}_CFLAGS_${rt_type}} )
+    add_compiler_rt_object_libraries(
+          ${name}_${rt_type}
+          ARCHS ${WINLIB_ARCHS}
+          OS ${WINLIB_OS}
+          SOURCES ${WINLIB_SOURCES}
+          CFLAGS ${${name}_CFLAGS_${rt_type}}
+          DEFS ${WINLIB_COMPILE_DEFINITIONS}
+          DEPS ${WINLIB_DEPS}
+          ADDITIONAL_HEADERS ${WINLIB_ADDITIONAL_HEADERS}
+        )
+  endforeach()
+endfunction()
+
+function(create_multiple_windows_rt_targets name rt_type)
+  cmake_parse_arguments(LIB
+    ""
+    "PARENT_TARGET"
+    "OS;ARCHS;SOURCES;CFLAGS;LINK_FLAGS;DEFS;LINK_LIBS;OBJECT_LIBS;ADDITIONAL_HEADERS"
+    ${ARGN})
+  foreach( rt_type ${rt_types} )
+    set(CFLAGS_${rt_type} ${CFLAGS} -${rt_type} )
+    add_compiler_rt_runtime(
+      name
+      ARCHS ${ARCHS}
+      OS ${OS}
+      SOURCES ${SOURCES}
+      CFLAGS ${CFLAGS_${rt_type}}
+      LINK_FLAGS ${LINK_FLAGS}
+      DEFS ${COMPILE_DEFINITIONS}
+      LINK_LIBS ${LINK_LIBS}
+      OBJECT_LIBS ${OBJECT_LIBS}
+      PARENT_TARGET ${PARENT_TARGET}
+      ADDITIONAL_HEADERS ${ADDITIONAL_HEADERS}
+    )
+  endforeach()
+
+endfunction()
+
+# when cross compiling, COMPILER_RT_TEST_COMPILER_CFLAGS help
+# in compilation and linking of unittests.
+string(REPLACE " " ";" COMPILER_RT_UNITTEST_CFLAGS "${COMPILER_RT_TEST_COMPILER_CFLAGS}")
+set(COMPILER_RT_UNITTEST_LINK_FLAGS ${COMPILER_RT_UNITTEST_CFLAGS})
+
+# Unittests support.
+set(COMPILER_RT_GTEST_PATH ${LLVM_MAIN_SRC_DIR}/utils/unittest/googletest)
+set(COMPILER_RT_GTEST_SOURCE ${COMPILER_RT_GTEST_PATH}/src/gtest-all.cc)
+set(COMPILER_RT_GTEST_CFLAGS
+  -DGTEST_NO_LLVM_SUPPORT=1
+  -DGTEST_HAS_RTTI=0
+  -I${COMPILER_RT_GTEST_PATH}/include
+  -I${COMPILER_RT_GTEST_PATH}
+)
+
+# Mocking support.
+set(COMPILER_RT_GMOCK_PATH ${LLVM_MAIN_SRC_DIR}/utils/unittest/googlemock)
+set(COMPILER_RT_GMOCK_SOURCE ${COMPILER_RT_GMOCK_PATH}/src/gmock-all.cc)
+set(COMPILER_RT_GMOCK_CFLAGS
+  -DGTEST_NO_LLVM_SUPPORT=1
+  -DGTEST_HAS_RTTI=0
+  -I${COMPILER_RT_GMOCK_PATH}/include
+  -I${COMPILER_RT_GMOCK_PATH}
+)
+
+append_list_if(COMPILER_RT_DEBUG -DSANITIZER_DEBUG=1 COMPILER_RT_UNITTEST_CFLAGS)
+append_list_if(COMPILER_RT_HAS_WCOVERED_SWITCH_DEFAULT_FLAG -Wno-covered-switch-default COMPILER_RT_UNITTEST_CFLAGS)
+
+if(MSVC)
+  # gtest use a lot of stuff marked as deprecated on Windows.
+  list(APPEND COMPILER_RT_GTEST_CFLAGS -Wno-deprecated-declarations)
+endif()
 
 # Compile and register compiler-rt tests.
 # generate_compiler_rt_tests(<output object files> <test_suite> <test_name>
