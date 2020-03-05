@@ -345,17 +345,18 @@ if("${COMPILER_RT_DEFAULT_TARGET_ARCH}" MATCHES "s390x")
 endif()
 
 if(MSVC)
-  # Strip any definitions of MTd? or MDd?, these will be placed per-target
-  # to avoid definition mismatches at link time.
-  # Create a project global master list of supported windows runtimes
-  set(COMPILER_RT_WINDOWS_RT_VERSIONS MT MD MTd MDd)
+  # Replace the /M[DT][d] flags with /MT, and strip any definitions of _DEBUG,
+  # which cause definition mismatches at link time.
+  # FIXME: In fact, sanitizers should support both /MT and /MD, see PR20214.
   if(COMPILER_RT_HAS_MT_FLAG)
     foreach(flag_var
       CMAKE_C_FLAGS CMAKE_C_FLAGS_DEBUG CMAKE_C_FLAGS_RELEASE
       CMAKE_C_FLAGS_MINSIZEREL CMAKE_C_FLAGS_RELWITHDEBINFO
       CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE
       CMAKE_CXX_FLAGS_MINSIZEREL CMAKE_CXX_FLAGS_RELWITHDEBINFO)
-      string(REGEX REPLACE "/M[TD]d" "" ${flag_var} "${${flag_var}}")
+      string(REGEX REPLACE "/M[DT]d" "/MT" ${flag_var} "${${flag_var}}")
+      string(REGEX REPLACE "/MD" "/MT" ${flag_var} "${${flag_var}}")
+      string(REGEX REPLACE "/D_DEBUG" "" ${flag_var} "${${flag_var}}")
     endforeach()
   endif()
   append_list_if(COMPILER_RT_HAS_Oy_FLAG /Oy- SANITIZER_COMMON_CFLAGS)

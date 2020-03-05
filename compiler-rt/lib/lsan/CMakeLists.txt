@@ -43,15 +43,6 @@ add_compiler_rt_object_libraries(RTLSanCommon
     ADDITIONAL_HEADERS ${LSAN_HEADERS}
     CFLAGS ${LSAN_CFLAGS})
 
-if (MSVC)
-  create_multiple_windows_obj_libs(RTLSanCommon
-    "${COMPILER_RT_WINDOWS_RT_VERSIONS}"
-      OS ${SANITIZER_COMMON_SUPPORTED_OS}
-      ARCHS ${LSAN_COMMON_SUPPORTED_ARCH}
-      SOURCES ${LSAN_COMMON_SOURCES}
-      ADDITIONAL_HEADERS ${LSAN_HEADERS}
-      CFLAGS ${LSAN_CFLAGS})
-endif()
 if(COMPILER_RT_HAS_LSAN)
   add_compiler_rt_component(lsan)
   if(APPLE)

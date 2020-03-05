@@ -25,22 +25,12 @@ if(NOT CLANG_CL)
   append_list_if(COMPILER_RT_HAS_EXTERNAL_FLAG "/experimental:external /external:W0 /external:anglebrackets" INTERCEPTION_CFLAGS)
 endif()
 
-if (MSVC)
-  create_multiple_windows_obj_libs(RTInterception 
-  "${COMPILER_RT_WINDOWS_RT_VERSIONS}"
+add_compiler_rt_object_libraries(RTInterception
     OS ${SANITIZER_COMMON_SUPPORTED_OS}
     ARCHS ${SANITIZER_COMMON_SUPPORTED_ARCH}
     SOURCES ${INTERCEPTION_SOURCES}
     ADDITIONAL_HEADERS ${INTERCEPTION_HEADERS}
     CFLAGS ${INTERCEPTION_CFLAGS})
-endif()
-
-  add_compiler_rt_object_libraries(RTInterception
-      OS ${SANITIZER_COMMON_SUPPORTED_OS}
-      ARCHS ${SANITIZER_COMMON_SUPPORTED_ARCH}
-      SOURCES ${INTERCEPTION_SOURCES}
-      ADDITIONAL_HEADERS ${INTERCEPTION_HEADERS}
-      CFLAGS ${INTERCEPTION_CFLAGS})
 
 if(COMPILER_RT_INCLUDE_TESTS)
   add_subdirectory(tests)
