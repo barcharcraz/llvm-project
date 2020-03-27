@@ -34,35 +34,18 @@ jobs:
 
     strategy:
       matrix:
-        64-bit Debug:
-          BuildType: RelWithDebInfo
-          CMakeArgs: Visual Studio 15 2017 Win64
-          vcvars: vcvars64.bat
-          buildArch: x64
-          msdia_loc: x64\\msdia140.dll
-          additional_args: -Thost=x64
-          buildTag: ""
 
         64-bit Release:
-          BuildType: Release
+          BuildType: RelWithDebInfo
           CMakeArgs: Visual Studio 15 2017 Win64
           vcvars: vcvars64.bat
           buildArch: x64
           msdia_loc: x64\\msdia140.dll
-          additional_args: -Thost=x64
-          buildTag: ""
-
-        32-bit Debug:
-          BuildType: RelWithDebInfo
-          CMakeArgs: Visual Studio 15 2017
-          vcvars: vcvarsamd64_x86.bat
-          buildArch: x86
-          msdia_loc: msdia140.dll
           additional_args: -Thost=x64
           buildTag: ""
 
         32-bit Release:
-          BuildType: Release
+          BuildType: RelWithDebInfo
           CMakeArgs: Visual Studio 15 2017
           vcvars: vcvarsamd64_x86.bat
           buildArch: x86
