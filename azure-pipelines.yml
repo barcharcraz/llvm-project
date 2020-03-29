@@ -90,7 +90,7 @@ jobs:
 
     - task: CmdLine@2
       inputs:
-        script: call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Enterprise\\VC\\Auxiliary\\Build\\$(vcvars)" && ninja llvm-symbolizer
+        script: call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Enterprise\\VC\\Auxiliary\\Build\\$(vcvars)" && chdir $env:Build_BinariesDirectory && ninja llvm-symbolizer
 
 
     - task: PowerShell@2
@@ -101,14 +101,14 @@ jobs:
     - task: PowerShell@2
       inputs:
         targetType: 'inline'
-        script: echo Copy-Item "C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Enterprise\\Common7\\Packages\\Debugger\\$(msdia_loc)" "$env:Build_BinariesDirectory\\build\\bin"
+        script: echo Copy-Item "C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Enterprise\\Common7\\Packages\\Debugger\\$(msdia_loc)" "$env:Build_BinariesDirectory\\build\\"
     - task: CmdLine@2
       inputs:
-        script: ninja check-asan
+        script: call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Enterprise\\VC\\Auxiliary\\Build\\$(vcvars)" && chdir $env:Build_BinariesDirectory && ninja check-asan
 
     - task: CmdLine@2
       inputs:
-        script: ninja check-asan-dynamic
+        script: call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Enterprise\\VC\\Auxiliary\\Build\\$(vcvars)" && chdir $env:Build_BinariesDirectory && ninja check-asan-dynamic
 
     - script: |
         echo on
