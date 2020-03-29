@@ -41,7 +41,7 @@ jobs:
           vcvars: vcvars64.bat
           buildArch: x64
           msdia_loc: x64\\msdia140.dll
-          additional_args: -Thost=x64
+          additional_args: 
           buildTag: ""
 
         32-bit Release:
@@ -50,7 +50,7 @@ jobs:
           vcvars: vcvarsamd64_x86.bat
           buildArch: x86
           msdia_loc: msdia140.dll
-          additional_args: -Thost=x64
+          additional_args: 
           buildTag: ""
 
     steps:
