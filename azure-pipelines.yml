@@ -84,51 +84,31 @@ jobs:
         @call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Enterprise\\VC\\Auxiliary\\Build\\$(vcvars)"
         echo set ASAN_SYMBOLIZER_PATH=$(Build.BinariesDirectory)\$(BuildType)\bin\llvm-symbolizer.exe
         set ASAN_SYMBOLIZER_PATH=$(Build.BinariesDirectory)\$(BuildType)\bin\llvm-symbolizer.exe
-        pushd $(Build.BinariesDirectory) & echo on & cmake -G "$(CMakeArgs)" -A $(buildArch) -DLLVM_ENABLE_PROJECTS="compiler-rt;lld;clang;polly" -DCMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION=10.0.17134.0 -DCOMPILER_RT_BUILD_LIBFUZZER=ON -DCMAKE_C_FLAGS="/wd4200 /wd4206" $(additional_args) $(Build.SourcesDirectory)\llvm & popd
+        pushd $(Build.BinariesDirectory) & echo on & cmake -G "Ninja" -A $(buildArch) -DLLVM_ENABLE_PROJECTS="compiler-rt;lld;clang;polly" -DCMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION=10.0.17134.0 -DCOMPILER_RT_BUILD_LIBFUZZER=ON -DCMAKE_C_FLAGS="/wd4200 /wd4206" $(additional_args) $(Build.SourcesDirectory)\llvm & popd
       displayName: Set ASAN symbolizer path
 
 
-    - task: MSBuild@1
+    - task: CmdLine@2
       inputs:
-        solution: '$(Build.BinariesDirectory)\tools\llvm-symbolizer\llvm-symbolizer.vcxproj'
-        msbuildArchitecture: 'x64'
-        platform: '$(buildArch)'
-        configuration: '$(BuildType)'
-        clean: true
-        maximumCpuCount: true
-        msbuildVersion: 15.0
+        script: ninja llvm-symbolizer
 
 
     - task: PowerShell@2
       inputs:
         targetType: 'inline'
-        script: Copy-Item "C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Enterprise\\Common7\\Packages\\Debugger\\$(msdia_loc)" "$env:Build_BinariesDirectory\\$env:BuildType\\bin"
+        script: Copy-Item "C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Enterprise\\Common7\\Packages\\Debugger\\$(msdia_loc)" "$env:Build_BinariesDirectory\\bin"
 
     - task: PowerShell@2
       inputs:
         targetType: 'inline'
-        script: echo Copy-Item "C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Enterprise\\Common7\\Packages\\Debugger\\$(msdia_loc)" "$env:Build_BinariesDirectory\\build\\$env:BuildType\\bin"
-
-    - task: MSBuild@1
+        script: echo Copy-Item "C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Enterprise\\Common7\\Packages\\Debugger\\$(msdia_loc)" "$env:Build_BinariesDirectory\\build\\bin"
+    - task: CmdLine@2
       inputs:
-        solution: '$(Build.BinariesDirectory)\projects\compiler-rt\test\asan\check-asan.vcxproj'
-        msbuildArchitecture: 'x64'
-        platform: '$(buildArch)'
-        configuration: '$(BuildType)'
-        clean: true
-        maximumCpuCount: true
-        msbuildVersion: 15.0
+        script: ninja check-asan
 
-    - task: MSBuild@1
+    - task: CmdLine@2
       inputs:
-        solution: '$(Build.BinariesDirectory)\projects\compiler-rt\test\asan\check-asan-dynamic.vcxproj'
-        msbuildArchitecture: 'x64'
-        platform: '$(buildArch)'
-        configuration: '$(BuildType)'
-        clean: true
-        maximumCpuCount: true
-        msbuildVersion: 15.0
-
+        script: ninja check-asan-dynamic
 
     - script: |
         echo on
