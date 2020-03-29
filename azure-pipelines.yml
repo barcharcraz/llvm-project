@@ -81,34 +81,35 @@ jobs:
     - script: |
         rd /s /q $(Build.BinariesDirectory)
         mkdir $(Build.BinariesDirectory)
+        mkdir $(Build.BinariesDirectory)\bin
         @call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Enterprise\\VC\\Auxiliary\\Build\\$(vcvars)"
-        echo set ASAN_SYMBOLIZER_PATH=$(Build.BinariesDirectory)\$(BuildType)\bin\llvm-symbolizer.exe
-        set ASAN_SYMBOLIZER_PATH=$(Build.BinariesDirectory)\$(BuildType)\bin\llvm-symbolizer.exe
+        echo set ASAN_SYMBOLIZER_PATH=$(Build.BinariesDirectory)\bin\llvm-symbolizer.exe
+        set ASAN_SYMBOLIZER_PATH=$(Build.BinariesDirectory)\bin\llvm-symbolizer.exe
         pushd $(Build.BinariesDirectory) & echo on & cmake -G Ninja -DLLVM_ENABLE_PROJECTS="compiler-rt;lld;clang;polly" -DCMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION=10.0.17134.0 -DCOMPILER_RT_BUILD_LIBFUZZER=ON -DCMAKE_C_FLAGS="/wd4200 /wd4206" $(additional_args) $(Build.SourcesDirectory)\llvm & popd
       displayName: Set ASAN symbolizer path
 
 
     - task: CmdLine@2
       inputs:
-        script: call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Enterprise\\VC\\Auxiliary\\Build\\$(vcvars)" && chdir $env:Build_BinariesDirectory && ninja llvm-symbolizer
+        script: call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Enterprise\\VC\\Auxiliary\\Build\\$(vcvars)" && chdir $(Build.BinariesDirectory) && ninja llvm-symbolizer
 
 
     - task: PowerShell@2
       inputs:
         targetType: 'inline'
-        script: Copy-Item "C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Enterprise\\Common7\\Packages\\Debugger\\$(msdia_loc)" "$env:Build_BinariesDirectory\\bin"
+        script: Copy-Item "C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Enterprise\\Common7\\Packages\\Debugger\\$(msdia_loc)" "$(Build.BinariesDirectory)\\bin"
 
     - task: PowerShell@2
       inputs:
         targetType: 'inline'
-        script: echo Copy-Item "C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Enterprise\\Common7\\Packages\\Debugger\\$(msdia_loc)" "$env:Build_BinariesDirectory\\build\\"
+        script: echo Copy-Item "C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Enterprise\\Common7\\Packages\\Debugger\\$(msdia_loc)" "$(Build.BinariesDirectory)\\"
     - task: CmdLine@2
       inputs:
-        script: call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Enterprise\\VC\\Auxiliary\\Build\\$(vcvars)" && chdir $env:Build_BinariesDirectory && ninja check-asan
+        script: call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Enterprise\\VC\\Auxiliary\\Build\\$(vcvars)" && chdir $(Build.BinariesDirectory) && ninja check-asan
 
     - task: CmdLine@2
       inputs:
-        script: call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Enterprise\\VC\\Auxiliary\\Build\\$(vcvars)" && chdir $env:Build_BinariesDirectory && ninja check-asan-dynamic
+        script: call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Enterprise\\VC\\Auxiliary\\Build\\$(vcvars)" && chdir $(Build.BinariesDirectory) && ninja check-asan-dynamic
 
     - script: |
         echo on
@@ -116,12 +117,12 @@ jobs:
         mkdir $(Build.BinariesDirectory)\shipping_components\lib\windows\$(buildArch)
         mkdir $(Build.BinariesDirectory)\shipping_components\include\sanitizer
         mkdir $(Build.BinariesDirectory)\shipping_components\share
-        cp $(Build.BinariesDirectory)\$(BuildType)\lib\clang\$(LLVM_VERSION)\include\sanitizer\*  $(Build.BinariesDirectory)\shipping_components\include\sanitizer\
-        cp $(Build.BinariesDirectory)\$(BuildType)\lib\clang\$(LLVM_VERSION)\lib\windows\* $(Build.BinariesDirectory)\shipping_components\lib\windows\$(buildArch)\
-        cp $(Build.BinariesDirectory)\$(BuildType)\lib\clang\$(LLVM_VERSION)\share\*  $(Build.BinariesDirectory)\shipping_components\share\
+        cp $(Build.BinariesDirectory)\lib\clang\$(LLVM_VERSION)\include\sanitizer\*  $(Build.BinariesDirectory)\shipping_components\include\sanitizer\
+        cp $(Build.BinariesDirectory)\lib\clang\$(LLVM_VERSION)\lib\windows\* $(Build.BinariesDirectory)\shipping_components\lib\windows\$(buildArch)\
+        cp $(Build.BinariesDirectory)\lib\clang\$(LLVM_VERSION)\share\*  $(Build.BinariesDirectory)\shipping_components\share\
         cp $(Build.SourcesDirectory)\compiler-rt\LICENSE.txt  $(Build.BinariesDirectory)\shipping_components\
-        cp $(Build.BinariesDirectory)\$(BuildType)\bin\llvm-symbolizer.exe   $(Build.BinariesDirectory)\shipping_components\
-        cp $(Build.BinariesDirectory)\$(BuildType)\bin\msdia140.dll $(Build.BinariesDirectory)\shipping_components\
+        cp $(Build.BinariesDirectory)\bin\llvm-symbolizer.exe   $(Build.BinariesDirectory)\shipping_components\
+        cp $(Build.BinariesDirectory)\bin\msdia140.dll $(Build.BinariesDirectory)\shipping_components\
       failOnStderr: "True"
 
 
@@ -134,7 +135,7 @@ jobs:
     - script: |
             echo on
             mkdir $(Build.BinariesDirectory)\shipping_components\bin
-            cp $(Build.BinariesDirectory)\$(BuildType)\bin\* $(Build.BinariesDirectory)\shipping_components\bin\
+            cp $(Build.BinariesDirectory)\bin\* $(Build.BinariesDirectory)\shipping_components\bin\
 
     - task: PublishBuildArtifacts@1
       inputs:
