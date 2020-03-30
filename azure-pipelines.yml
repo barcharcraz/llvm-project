@@ -112,7 +112,9 @@ jobs:
     - task: CmdLine@2
       displayName: Check-Asan-Dynamic
       inputs:
-        script: call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\$(vcvars)" && chdir $(Build.BinariesDirectory) && ninja check-asan-dynamic
+        script: |
+          chdir $(Build.BinariesDirectory)
+          ninja check-asan-dynamic
         
     - script: |
         echo on
