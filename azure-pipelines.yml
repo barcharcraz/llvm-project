@@ -76,13 +76,13 @@ jobs:
         where sed
         where grep
 
-    #- script: '@call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Enterprise\\VC\\Auxiliary\\Build\\$(vcvars)"'
+    #- script: '@call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\$(vcvars)"'
 
     - script: |
         rd /s /q $(Build.BinariesDirectory)
         mkdir $(Build.BinariesDirectory)
         mkdir $(Build.BinariesDirectory)\bin
-        @call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Enterprise\\VC\\Auxiliary\\Build\\$(vcvars)"
+        @call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\$(vcvars)"
         echo set ASAN_SYMBOLIZER_PATH=$(Build.BinariesDirectory)\bin\llvm-symbolizer.exe
         set ASAN_SYMBOLIZER_PATH=$(Build.BinariesDirectory)\bin\llvm-symbolizer.exe
         pushd $(Build.BinariesDirectory) & echo on & cmake -G Ninja -DLLVM_ENABLE_PROJECTS="compiler-rt;lld;clang;polly" -DCMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION=10.0.17134.0 -DCOMPILER_RT_BUILD_LIBFUZZER=ON -DCMAKE_C_FLAGS="/wd4200 /wd4206" $(additional_args) $(Build.SourcesDirectory)\llvm & popd
@@ -91,25 +91,25 @@ jobs:
 
     - task: CmdLine@2
       inputs:
-        script: call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Enterprise\\VC\\Auxiliary\\Build\\$(vcvars)" && chdir $(Build.BinariesDirectory) && ninja llvm-symbolizer
+        script: call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\$(vcvars)" && chdir $(Build.BinariesDirectory) && ninja llvm-symbolizer
 
 
     - task: PowerShell@2
       inputs:
         targetType: 'inline'
-        script: Copy-Item "C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Enterprise\\Common7\\Packages\\Debugger\\$(msdia_loc)" "$(Build.BinariesDirectory)\\bin"
+        script: Copy-Item "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\Common7\\Packages\\Debugger\\$(msdia_loc)" "$(Build.BinariesDirectory)\\bin"
 
     - task: PowerShell@2
       inputs:
         targetType: 'inline'
-        script: echo Copy-Item "C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Enterprise\\Common7\\Packages\\Debugger\\$(msdia_loc)" "$(Build.BinariesDirectory)\\"
+        script: echo Copy-Item "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\Common7\\Packages\\Debugger\\$(msdia_loc)" "$(Build.BinariesDirectory)\\"
     - task: CmdLine@2
       inputs:
-        script: call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Enterprise\\VC\\Auxiliary\\Build\\$(vcvars)" && chdir $(Build.BinariesDirectory) && ninja check-asan
+        script: call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\$(vcvars)" && chdir $(Build.BinariesDirectory) && ninja check-asan
 
     - task: CmdLine@2
       inputs:
-        script: call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Enterprise\\VC\\Auxiliary\\Build\\$(vcvars)" && chdir $(Build.BinariesDirectory) && ninja check-asan-dynamic
+        script: call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\$(vcvars)" && chdir $(Build.BinariesDirectory) && ninja check-asan-dynamic
 
     - script: |
         echo on
