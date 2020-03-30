@@ -90,6 +90,7 @@ jobs:
 
 
     - task: CmdLine@2
+      displayName: build llvm-symbolizer
       inputs:
         script: call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\$(vcvars)" && chdir $(Build.BinariesDirectory) && ninja llvm-symbolizer
 
@@ -104,13 +105,15 @@ jobs:
         targetType: 'inline'
         script: echo Copy-Item "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\Common7\\Packages\\Debugger\\$(msdia_loc)" "$(Build.BinariesDirectory)\\"
     - task: CmdLine@2
+      displayName: Check-Asan-Dynamic
       inputs:
         script: call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\$(vcvars)" && chdir $(Build.BinariesDirectory) && ninja check-asan
 
     - task: CmdLine@2
+      displayName: Check-Asan-Dynamic
       inputs:
         script: call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\$(vcvars)" && chdir $(Build.BinariesDirectory) && ninja check-asan-dynamic
-
+        
     - script: |
         echo on
         mkdir $(Build.BinariesDirectory)\shipping_components
