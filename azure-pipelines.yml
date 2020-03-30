@@ -113,7 +113,11 @@ jobs:
       displayName: Check-Asan-Dynamic
       inputs:
         script: |
-          chdir $(Build.BinariesDirectory)
+          @call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\$(vcvars)"
+          set ASAN_SYMBOLIZER_PATH=$(Build.BinariesDirectory)\bin\llvm-symbolizer.exe
+          pushd $(Build.BinariesDirectory)
+          echo on
+          set PATH=$(Build.ArtifactStagingDirectory)\unix\gnuwin32\bin;$(Build.ArtifactStagingDirectory)\unix\bin;$(Build.ArtifactStagingDirectory)\unix\cygwin64\bin;%PATH%
           ninja check-asan-dynamic
         
     - script: |
