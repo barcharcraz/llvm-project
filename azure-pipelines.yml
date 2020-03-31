@@ -68,8 +68,8 @@ jobs:
         script: Expand-Archive $(Build.ArtifactStagingDirectory)\unix\cygwin64.zip $(Build.ArtifactStagingDirectory)\unix\
 
     - script: |
-        set PATH=$(Build.ArtifactStagingDirectory)\unix\gnuwin32\bin;$(Build.ArtifactStagingDirectory)\unix\bin;$(Build.ArtifactStagingDirectory)\unix\cygwin64\bin;%PATH%
-        echo ##vso[task.prependpath]$(Build.ArtifactStagingDirectory)\unix\gnuwin32\bin;$(Build.ArtifactStagingDirectory)\unix\bin;$(Build.ArtifactStagingDirectory)\unix\cygwin64\bin
+        set PATH=%PATH%;$(Build.ArtifactStagingDirectory)\unix\gnuwin32\bin;$(Build.ArtifactStagingDirectory)\unix\bin;$(Build.ArtifactStagingDirectory)\unix\cygwin64\bin;
+        //echo ##vso[task.prependpath]$(Build.ArtifactStagingDirectory)\unix\gnuwin32\bin;$(Build.ArtifactStagingDirectory)\unix\bin;$(Build.ArtifactStagingDirectory)\unix\cygwin64\bin
         echo on
         where cat
         where awk
@@ -79,6 +79,8 @@ jobs:
     #- script: '@call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\$(vcvars)"'
 
     - script: |
+        echo on
+        set PATH=%PATH%;$(Build.ArtifactStagingDirectory)\unix\gnuwin32\bin;$(Build.ArtifactStagingDirectory)\unix\bin;$(Build.ArtifactStagingDirectory)\unix\cygwin64\bin;
         rd /s /q $(Build.BinariesDirectory)
         mkdir $(Build.BinariesDirectory)
         mkdir $(Build.BinariesDirectory)\bin
@@ -113,11 +115,11 @@ jobs:
       displayName: Check-Asan-Dynamic
       inputs:
         script: |
+          set PATH=%PATH%;$(Build.ArtifactStagingDirectory)\unix\gnuwin32\bin;$(Build.ArtifactStagingDirectory)\unix\bin;$(Build.ArtifactStagingDirectory)\unix\cygwin64\bin;
           @call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\$(vcvars)"
           set ASAN_SYMBOLIZER_PATH=$(Build.BinariesDirectory)\bin\llvm-symbolizer.exe
           pushd $(Build.BinariesDirectory)
           echo on
-          set PATH=$(Build.ArtifactStagingDirectory)\unix\gnuwin32\bin;$(Build.ArtifactStagingDirectory)\unix\bin;$(Build.ArtifactStagingDirectory)\unix\cygwin64\bin;%PATH%
           ninja check-asan-dynamic
         
     - script: |
