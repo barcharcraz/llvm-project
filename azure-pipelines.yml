@@ -106,10 +106,10 @@ jobs:
       inputs:
         targetType: 'inline'
         script: echo Copy-Item "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\Common7\\Packages\\Debugger\\$(msdia_loc)" "$(Build.BinariesDirectory)\\"
-    #- task: CmdLine@2
-    #  displayName: Check-Asan
-    #  inputs:
-    #    script: call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\$(vcvars)" && chdir $(Build.BinariesDirectory) && ninja check-asan
+    - task: CmdLine@2
+      displayName: Check-Asan
+      inputs:
+        script: call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\$(vcvars)" && chdir $(Build.BinariesDirectory) && ninja check-asan
 
     - task: CmdLine@2
       displayName: Check-Asan-Dynamic
@@ -145,6 +145,7 @@ jobs:
 
     - script: |
             echo on
+            set PATH=%PATH%;$(Build.ArtifactStagingDirectory)\unix\gnuwin32\bin;$(Build.ArtifactStagingDirectory)\unix\bin;$(Build.ArtifactStagingDirectory)\unix\cygwin64\bin;
             mkdir $(Build.BinariesDirectory)\shipping_components\bin
             cp $(Build.BinariesDirectory)\bin\* $(Build.BinariesDirectory)\shipping_components\bin\
 
