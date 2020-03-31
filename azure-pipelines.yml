@@ -147,7 +147,7 @@ jobs:
             echo on
             set PATH=%PATH%;$(Build.ArtifactStagingDirectory)\unix\gnuwin32\bin;$(Build.ArtifactStagingDirectory)\unix\bin;$(Build.ArtifactStagingDirectory)\unix\cygwin64\bin;
             mkdir $(Build.BinariesDirectory)\shipping_components\bin
-            cp $(Build.BinariesDirectory)\bin\* $(Build.BinariesDirectory)\shipping_components\bin\
+            copy $(Build.BinariesDirectory)\bin\* $(Build.BinariesDirectory)\shipping_components\bin\
 
     - task: PublishBuildArtifacts@1
       inputs:
