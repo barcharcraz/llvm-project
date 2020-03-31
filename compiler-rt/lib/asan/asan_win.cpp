@@ -119,7 +119,13 @@ INTERCEPTOR(int, _except_handler3, void *a, void *b, void *c, void *d) {
   __asan_handle_no_return();
   return REAL(_except_handler3)(a, b, c, d);
 }
-// might need an except_handler4_common interceptor for MD
+#if defined(_DLL)
+INTERCEPTOR(int, _except_handler4_common, void *a, void *b, void *c, void *d) {
+  CHECK(REAL(_except_handler4_common));
+  __asan_handle_no_return();
+  return REAL(_except_handler4_common)(a, b, c, d);
+}
+#endif
 INTERCEPTOR(int, _except_handler4, void *a, void *b, void *c, void *d) {
   CHECK(REAL(_except_handler4));
   __asan_handle_no_return();
@@ -170,6 +176,9 @@ void InitializePlatformInterceptors() {
 #else
   ASAN_INTERCEPT_FUNC(_except_handler3);
   ASAN_INTERCEPT_FUNC(_except_handler4);
+#if defined(_DLL)
+  ASAN_INTERCEPT_FUNC(_except_handler4_common);
+#endif
 #endif
 
   // Try to intercept kernel32!RaiseException, and if that fails, intercept
