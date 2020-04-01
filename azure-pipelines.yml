@@ -122,6 +122,27 @@ jobs:
           echo on
           ninja check-asan-dynamic
         
+    - task: CmdLine@2
+      displayName: Check-Asan-Dynamic
+      inputs:
+        script: |
+          set PATH=%PATH%;$(Build.ArtifactStagingDirectory)\unix\gnuwin32\bin;$(Build.ArtifactStagingDirectory)\unix\bin;$(Build.ArtifactStagingDirectory)\unix\cygwin64\bin;
+          @call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\$(vcvars)"
+          set ASAN_SYMBOLIZER_PATH=$(Build.BinariesDirectory)\bin\llvm-symbolizer.exe
+          pushd $(Build.BinariesDirectory)
+          echo on
+          ninja check-asan-debug
+    - task: CmdLine@2
+      displayName: Check-Asan-Dynamic
+      inputs:
+        script: |
+          set PATH=%PATH%;$(Build.ArtifactStagingDirectory)\unix\gnuwin32\bin;$(Build.ArtifactStagingDirectory)\unix\bin;$(Build.ArtifactStagingDirectory)\unix\cygwin64\bin;
+          @call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\$(vcvars)"
+          set ASAN_SYMBOLIZER_PATH=$(Build.BinariesDirectory)\bin\llvm-symbolizer.exe
+          pushd $(Build.BinariesDirectory)
+          echo on
+          ninja check-asan-dynamic-debug
+        
     - script: |
         echo on
         mkdir $(Build.BinariesDirectory)\shipping_components
