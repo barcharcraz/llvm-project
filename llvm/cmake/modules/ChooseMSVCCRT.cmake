@@ -102,5 +102,5 @@ set(MSVC_CRT
   MT
   MTd)
 
-choose_msvc_crt(MSVC_CRT)
+## choose_msvc_crt(MSVC_CRT)
 

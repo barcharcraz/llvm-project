@@ -290,14 +290,33 @@ add_compiler_rt_object_libraries(RTSanitizerCommonSymbolizerNoHooks
   DEFS ${SANITIZER_COMMON_DEFINITIONS})
 
 if(WIN32)
-  add_compiler_rt_object_libraries(SanitizerCommonWeakInterception
+
+  create_multiple_windows_obj_libs(RTSanitizerCommon
+  "${COMPILER_RT_WINDOWS_RT_VERSIONS}"
+    ${OS_OPTION}
+    ARCHS ${SANITIZER_COMMON_SUPPORTED_ARCH}
+    SOURCES ${SANITIZER_SOURCES}
+    ADDITIONAL_HEADERS ${SANITIZER_IMPL_HEADERS}
+    CFLAGS ${SANITIZER_CFLAGS}
+    DEFS ${SANITIZER_COMMON_DEFINITIONS})
+  create_multiple_windows_obj_libs(RTSanitizerCommonLibc
+    "${COMPILER_RT_WINDOWS_RT_VERSIONS}"
+    ${OS_OPTION}
+    ARCHS ${SANITIZER_COMMON_SUPPORTED_ARCH}
+    SOURCES ${SANITIZER_LIBCDEP_SOURCES}
+    ADDITIONAL_HEADERS ${SANITIZER_IMPL_HEADERS}
+    CFLAGS ${SANITIZER_CFLAGS}
+    DEFS ${SANITIZER_COMMON_DEFINITIONS})
+  create_multiple_windows_obj_libs(SanitizerCommonWeakInterception
+  "${COMPILER_RT_WINDOWS_RT_VERSIONS}"
     ${SANITIZER_COMMON_SUPPORTED_OS}
     ARCHS ${SANITIZER_COMMON_SUPPORTED_ARCH}
     SOURCES
       sanitizer_win_weak_interception.cpp
     CFLAGS ${SANITIZER_CFLAGS} -DSANITIZER_DYNAMIC
     DEFS ${SANITIZER_COMMON_DEFINITIONS})
-  add_compiler_rt_object_libraries(SancovWeakInterception
+  create_multiple_windows_obj_libs(SancovWeakInterception
+   "${COMPILER_RT_WINDOWS_RT_VERSIONS}"
     ${SANITIZER_COMMON_SUPPORTED_OS}
     ARCHS ${SANITIZER_COMMON_SUPPORTED_ARCH}
     SOURCES
@@ -305,14 +324,16 @@ if(WIN32)
     CFLAGS ${SANITIZER_CFLAGS} -DSANITIZER_DYNAMIC
     DEFS ${SANITIZER_COMMON_DEFINITIONS})
 
-  add_compiler_rt_object_libraries(SanitizerCommonDllThunk
+  create_multiple_windows_obj_libs(SanitizerCommonDllThunk
+   "${COMPILER_RT_WINDOWS_RT_VERSIONS}"
     ${SANITIZER_COMMON_SUPPORTED_OS}
     ARCHS ${SANITIZER_COMMON_SUPPORTED_ARCH}
     SOURCES
       sanitizer_win_dll_thunk.cpp
     CFLAGS ${SANITIZER_CFLAGS} -DSANITIZER_DLL_THUNK
     DEFS ${SANITIZER_COMMON_DEFINITIONS})
-  add_compiler_rt_object_libraries(SancovDllThunk
+  create_multiple_windows_obj_libs(SancovDllThunk
+   "${COMPILER_RT_WINDOWS_RT_VERSIONS}"
     ${SANITIZER_COMMON_SUPPORTED_OS}
     ARCHS ${SANITIZER_COMMON_SUPPORTED_ARCH}
     SOURCES
@@ -321,12 +342,49 @@ if(WIN32)
     CFLAGS ${SANITIZER_CFLAGS} -DSANITIZER_DLL_THUNK
     DEFS ${SANITIZER_COMMON_DEFINITIONS})
 
+  create_multiple_windows_obj_libs(RTSanitizerCommonCoverage
+   "${COMPILER_RT_WINDOWS_RT_VERSIONS}"
+    ${OS_OPTION}
+    ARCHS ${SANITIZER_COMMON_SUPPORTED_ARCH}
+    SOURCES ${SANITIZER_COVERAGE_SOURCES}
+    ADDITIONAL_HEADERS ${SANITIZER_IMPL_HEADERS}
+    CFLAGS ${SANITIZER_CFLAGS}
+    DEFS ${SANITIZER_COMMON_DEFINITIONS})
+  create_multiple_windows_obj_libs(RTSanitizerCommonSymbolizer
+   "${COMPILER_RT_WINDOWS_RT_VERSIONS}"
+    ${OS_OPTION}
+    ARCHS ${SANITIZER_COMMON_SUPPORTED_ARCH}
+    SOURCES ${SANITIZER_SYMBOLIZER_SOURCES}
+    ADDITIONAL_HEADERS ${SANITIZER_IMPL_HEADERS}
+    CFLAGS ${SANITIZER_CFLAGS}
+    DEFS ${SANITIZER_COMMON_DEFINITIONS})
+
+
   set(DYNAMIC_RUNTIME_THUNK_CFLAGS "-DSANITIZER_DYNAMIC_RUNTIME_THUNK")
   if(MSVC)
     list(APPEND DYNAMIC_RUNTIME_THUNK_CFLAGS "-Zl")
+    create_multiple_windows_obj_libs(SanitizerCommonDynamicRuntimeThunk
+     "${COMPILER_RT_WINDOWS_RT_VERSIONS}"
+      ${SANITIZER_COMMON_SUPPORTED_OS}
+      ARCHS ${SANITIZER_COMMON_SUPPORTED_ARCH}
+      SOURCES sanitizer_win_dynamic_runtime_thunk.cpp
+      CFLAGS ${SANITIZER_CFLAGS} ${DYNAMIC_RUNTIME_THUNK_CFLAGS}
+      DEFS ${SANITIZER_COMMON_DEFINITIONS})
+    create_multiple_windows_obj_libs(SancovDynamicRuntimeThunk
+     "${COMPILER_RT_WINDOWS_RT_VERSIONS}"
+      ${SANITIZER_COMMON_SUPPORTED_OS}
+      ARCHS ${SANITIZER_COMMON_SUPPORTED_ARCH}
+      SOURCES sanitizer_coverage_win_dynamic_runtime_thunk.cpp
+              sanitizer_coverage_win_sections.cpp
+      CFLAGS ${SANITIZER_CFLAGS} ${DYNAMIC_RUNTIME_THUNK_CFLAGS}
+      DEFS ${SANITIZER_COMMON_DEFINITIONS})
+
   elseif(CMAKE_C_COMPILER_ID MATCHES Clang)
     list(APPEND DYNAMIC_RUNTIME_THUNK_CFLAGS "-nodefaultlibs")
   endif()
+
+
+
   add_compiler_rt_object_libraries(SanitizerCommonDynamicRuntimeThunk
     ${SANITIZER_COMMON_SUPPORTED_OS}
     ARCHS ${SANITIZER_COMMON_SUPPORTED_ARCH}

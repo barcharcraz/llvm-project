@@ -128,6 +128,16 @@ if(APPLE)
 
 else()
   # Common parts of UBSan runtime.
+
+  if (MSVC)
+    create_multiple_windows_obj_libs(RTUbsan 
+      "${COMPILER_RT_WINDOWS_RT_VERSIONS}"
+      ARCHS ${UBSAN_COMMON_SUPPORTED_ARCH}
+      SOURCES ${UBSAN_SOURCES}
+      ADDITIONAL_HEADERS ${UBSAN_HEADERS}
+      CFLAGS ${UBSAN_CFLAGS})
+  endif()
+
   add_compiler_rt_object_libraries(RTUbsan
     ARCHS ${UBSAN_COMMON_SUPPORTED_ARCH}
     SOURCES ${UBSAN_SOURCES}
@@ -179,6 +189,40 @@ else()
         ubsan_win_dynamic_runtime_thunk.cpp
       CFLAGS ${UBSAN_CFLAGS} ${DYNAMIC_RUNTIME_THUNK_CFLAGS}
       DEFS ${UBSAN_COMMON_DEFINITIONS})
+  
+    if (MSVC)
+      create_multiple_windows_obj_libs(RTUbsan_cxx
+      "${COMPILER_RT_WINDOWS_RT_VERSIONS}"
+      ARCHS ${UBSAN_COMMON_SUPPORTED_ARCH}
+      SOURCES ${UBSAN_CXX_SOURCES}
+      ADDITIONAL_HEADERS ${UBSAN_HEADERS}
+      CFLAGS ${UBSAN_CXXFLAGS}) 
+
+      create_multiple_windows_obj_libs(UbsanWeakInterception
+      "${COMPILER_RT_WINDOWS_RT_VERSIONS}"
+        ${SANITIZER_COMMON_SUPPORTED_OS}
+        ARCHS ${UBSAN_SUPPORTED_ARCH}
+        SOURCES ubsan_win_weak_interception.cpp
+        CFLAGS ${UBSAN_CFLAGS} -DSANITIZER_DYNAMIC
+        DEFS ${UBSAN_COMMON_DEFINITIONS})
+
+      create_multiple_windows_obj_libs(UbsanDllThunk
+      "${COMPILER_RT_WINDOWS_RT_VERSIONS}"
+        ${SANITIZER_COMMON_SUPPORTED_OS}
+        ARCHS ${UBSAN_SUPPORTED_ARCH}
+        SOURCES ubsan_win_dll_thunk.cpp
+        CFLAGS ${UBSAN_CFLAGS} -DSANITIZER_DLL_THUNK
+        DEFS ${UBSAN_COMMON_DEFINITIONS})
+
+      create_multiple_windows_obj_libs(UbsanDynamicRuntimeThunk
+      "${COMPILER_RT_WINDOWS_RT_VERSIONS}"
+        ${SANITIZER_COMMON_SUPPORTED_OS}
+        ARCHS ${UBSAN_SUPPORTED_ARCH}
+        SOURCES ubsan_win_dynamic_runtime_thunk.cpp
+        CFLAGS ${UBSAN_CFLAGS} ${DYNAMIC_RUNTIME_THUNK_CFLAGS}
+        DEFS ${UBSAN_COMMON_DEFINITIONS})
+    endif()
+  
   endif()
 
   if(COMPILER_RT_HAS_UBSAN)

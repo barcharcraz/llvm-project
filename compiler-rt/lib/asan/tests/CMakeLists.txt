@@ -159,7 +159,7 @@ set(ASAN_BENCHMARKS_SOURCES
   )
 
 function(add_asan_dynamic_tests arch test_runtime)
-  cmake_parse_arguments(TEST "" "KIND" "CFLAGS" ${ARGN}) 
+  cmake_parse_arguments(TEST "" "KIND" "CFLAGS" ${ARGN})
   # Closure to keep the values.
   function(generate_asan_tests test_objects test_suite testname)
     generate_compiler_rt_tests(${test_objects} ${test_suite} ${testname} ${arch}
@@ -170,7 +170,7 @@ function(add_asan_dynamic_tests arch test_runtime)
       )
     set("${test_objects}" "${${test_objects}}" PARENT_SCOPE)
   endfunction()
-  
+
   if(MSVC)
     set(dynamic_dbg_test_name "Asan-${arch}${TEST_KIND}-Test")
     # With the MSVC CRT, the choice between static and dynamic CRT is made at
@@ -189,7 +189,7 @@ endfunction()
 function(add_asan_tests arch test_runtime)
 
 
-  cmake_parse_arguments(TEST "" "KIND" "CFLAGS" ${ARGN}) 
+  cmake_parse_arguments(TEST "" "KIND" "CFLAGS" ${ARGN})
   string(FIND "${TEST_CFLAGS}" "-D_DEBUG" MSVC_DEBUG_VERSION)
   set(MSVC_DEBUG_VERSION_BOOL NOT (MSVC_DEBUG_VERSION EQUAL -1))
   # The Lit files are configured once per architecture and static/dynamic
@@ -354,11 +354,11 @@ if(COMPILER_RT_CAN_EXECUTE_TESTS AND NOT ANDROID)
       FOLDER "Compiler-RT Runtime tests (MDd)")
 
     add_asan_tests(${arch} ${ASAN_TEST_RUNTIME_DEBUG_MTd} KIND "-debug"
-      CFLAGS -D_DEBUG 
+      CFLAGS -D_DEBUG
       LINK_FLAGS -D_DEBUG -Wl,-nodefaultlib:libcmt,-nodefaultlib:libucrt,-defaultlib:libucrtd,-force:multiple)
 
     add_asan_dynamic_tests(${arch} ${ASAN_TEST_RUNTIME_DEBUG_MDd} KIND "-debug-dynamic"
-      CFLAGS -D_DEBUG -D_MT -D_DLL 
+      CFLAGS -D_DEBUG -D_MT -D_DLL
       LINK_FLAGS -D_DEBUG -D_MT -D_DLL -Wl,-nodefaultlib:libcmtd,-nodefaultlib:libucrt,-defaultlib:msvcrtd,-defaultlib:ucrtd,-defaultlib:oldnames
       )
     endif()
