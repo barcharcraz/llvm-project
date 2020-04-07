@@ -338,6 +338,7 @@ function(add_compiler_rt_runtime name type)
         DESTINATION ${install_dir_${libname}}
         ${COMPONENT_OPTION})
     else()
+      message(STATUS ${libname} ${sources_${libname}})
       add_library(${libname} ${type} ${sources_${libname}})
       set_target_compile_flags(${libname} ${extra_cflags_${libname}})
       set_target_link_flags(${libname} ${extra_link_flags_${libname}})
@@ -400,6 +401,60 @@ function(add_compiler_rt_runtime name type)
   if(LIB_PARENT_TARGET)
     add_dependencies(${LIB_PARENT_TARGET} ${libnames})
   endif()
+endfunction()
+
+
+# create the many different versions needed to support Windows' many runtimes.
+# create_multiple_windows_obj_libs(<name>
+#                                  OS <os names>
+#                                  ARCHS <architectures>
+#                                  SOURCES <source files>
+#                                  CFLAGS <compile flags>
+#                                  DEFS <compile definitions>
+#                                  DEPS <dependencies>
+#                                  ADDITIONAL_HEADERS <header files>)
+function(create_multiple_windows_obj_libs name rt_types)
+  cmake_parse_arguments(WINLIB "" "" "OS;ARCHS;SOURCES;CFLAGS;DEFS;DEPS;ADDITIONAL_HEADERS"
+    ${ARGN})
+
+  foreach(rt_type ${rt_types})
+    list(APPEND ${name}_CFLAGS_${rt_type} ${WINLIB_CFLAGS} -${rt_type} )
+    add_compiler_rt_object_libraries(
+          ${name}_${rt_type}
+          ARCHS ${WINLIB_ARCHS}
+          OS ${WINLIB_OS}
+          SOURCES ${WINLIB_SOURCES}
+          CFLAGS ${${name}_CFLAGS_${rt_type}}
+          DEFS ${WINLIB_DEFS}
+          DEPS ${WINLIB_DEPS}
+          ADDITIONAL_HEADERS ${WINLIB_ADDITIONAL_HEADERS}
+        )
+  endforeach()
+endfunction()
+
+function(create_multiple_windows_rt_targets name rt_type)
+  cmake_parse_arguments(LIB
+    ""
+    "PARENT_TARGET"
+    "OS;ARCHS;SOURCES;CFLAGS;LINK_FLAGS;DEFS;LINK_LIBS;OBJECT_LIBS;ADDITIONAL_HEADERS"
+    ${ARGN})
+  foreach( rt_type ${rt_types} )
+    set(CFLAGS_${rt_type} ${CFLAGS} -${rt_type} )
+    add_compiler_rt_runtime(
+      name
+      ARCHS ${ARCHS}
+      OS ${OS}
+      SOURCES ${SOURCES}
+      CFLAGS ${CFLAGS_${rt_type}}
+      LINK_FLAGS ${LINK_FLAGS}
+      DEFS ${COMPILE_DEFINITIONS}
+      LINK_LIBS ${LINK_LIBS}
+      OBJECT_LIBS ${OBJECT_LIBS}
+      PARENT_TARGET ${PARENT_TARGET}
+      ADDITIONAL_HEADERS ${ADDITIONAL_HEADERS}
+    )
+  endforeach()
+
 endfunction()
 
 # when cross compiling, COMPILER_RT_TEST_COMPILER_CFLAGS help

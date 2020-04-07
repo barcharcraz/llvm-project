@@ -814,23 +814,6 @@ SanitizerArgs::SanitizerArgs(const ToolChain &TC,
         }
     }
 
-    if (Arg *WindowsDebugRTArg =
-            Args.getLastArg(options::OPT__SLASH_MTd, options::OPT__SLASH_MT,
-                            options::OPT__SLASH_MDd, options::OPT__SLASH_MD,
-                            options::OPT__SLASH_LDd, options::OPT__SLASH_LD)) {
-      switch (WindowsDebugRTArg->getOption().getID()) {
-      case options::OPT__SLASH_MTd:
-      case options::OPT__SLASH_MDd:
-      case options::OPT__SLASH_LDd:
-        if (DiagnoseErrors) {
-          D.Diag(clang::diag::err_drv_argument_not_allowed_with)
-              << WindowsDebugRTArg->getAsString(Args)
-              << lastArgumentForMask(D, Args, SanitizerKind::Address);
-          D.Diag(clang::diag::note_drv_address_sanitizer_debug_runtime);
-        }
-      }
-    }
-
     AsanUseAfterScope = Args.hasFlag(
         options::OPT_fsanitize_address_use_after_scope,
         options::OPT_fno_sanitize_address_use_after_scope, AsanUseAfterScope);

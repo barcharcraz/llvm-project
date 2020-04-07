@@ -15,7 +15,6 @@
 #if SANITIZER_WINDOWS
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-
 #include <stdlib.h>
 
 #include "asan_interceptors.h"
@@ -119,13 +118,7 @@ INTERCEPTOR(int, _except_handler3, void *a, void *b, void *c, void *d) {
   __asan_handle_no_return();
   return REAL(_except_handler3)(a, b, c, d);
 }
-#if defined(_DLL)
-INTERCEPTOR(int, _except_handler4_common, void *a, void *b, void *c, void *d) {
-  CHECK(REAL(_except_handler4_common));
-  __asan_handle_no_return();
-  return REAL(_except_handler4_common)(a, b, c, d);
-}
-#endif
+
 INTERCEPTOR(int, _except_handler4, void *a, void *b, void *c, void *d) {
   CHECK(REAL(_except_handler4));
   __asan_handle_no_return();
@@ -176,9 +169,6 @@ void InitializePlatformInterceptors() {
 #else
   ASAN_INTERCEPT_FUNC(_except_handler3);
   ASAN_INTERCEPT_FUNC(_except_handler4);
-#if defined(_DLL)
-  ASAN_INTERCEPT_FUNC(_except_handler4_common);
-#endif
 #endif
 
   // Try to intercept kernel32!RaiseException, and if that fails, intercept
@@ -251,9 +241,6 @@ void PlatformTSDDtor(void *tsd) { AsanThread::TSDDtor(tsd); }
 
 // ---------------------- Various stuff ---------------- {{{
 void *AsanDoesNotSupportStaticLinkage() {
-#if defined(_DEBUG)
-#error Please build the runtime with a non-debug CRT: /MD or /MT
-#endif
   return 0;
 }
 
@@ -401,7 +388,6 @@ __declspec(allocate(".CRT$XLY")) void(NTAPI *__asan_tls_exit)(
 
 WIN_FORCE_LINK(__asan_dso_reg_hook)
 
-// }}}
 }  // namespace __asan
 
 #endif  // SANITIZER_WINDOWS

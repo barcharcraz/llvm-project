@@ -7,6 +7,7 @@
 #include <setjmp.h>
 #include <stdio.h>
 #include <sanitizer/asan_interface.h>
+#include "../defines.h"
 
 static jmp_buf buf;
 

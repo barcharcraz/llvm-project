@@ -6,7 +6,9 @@
 // UNSUPPORTED: asan-64-bits
 #include <cassert>
 #include <stdio.h>
-#include<windows.h>
+#include <windows.h>
+#include "../defines.h"
+
 
 int main() {
   HANDLE heap = HeapCreate(0, 0, 0);

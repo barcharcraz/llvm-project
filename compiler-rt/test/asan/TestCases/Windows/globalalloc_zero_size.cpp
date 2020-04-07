@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <windows.h>
 #include <winbase.h>
+#include "../defines.h"
 
 int main() {
   void *ptr = GlobalAlloc(GMEM_FIXED, 4);

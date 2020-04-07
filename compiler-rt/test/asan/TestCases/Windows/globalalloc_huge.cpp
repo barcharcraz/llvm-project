@@ -4,6 +4,8 @@
 // UNSUPPORTED: asan-64-bits
 #include <stdio.h>
 #include <windows.h>
+#include "../defines.h"
+
 int main() {
   void *nope = GlobalAlloc(GMEM_FIXED, ((size_t)0) - 1);
   if (nope != nullptr) {

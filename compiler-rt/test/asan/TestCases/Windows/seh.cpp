@@ -2,15 +2,19 @@
 // different EH personality depending on the -GS setting, so test both -GS+ and
 // -GS-.
 //
+// Debug runtimes throw assertions everywhere, so getting an ASAN report with 
+// those runtimes requires NDEBUG to be defined. This disables assertions in
+// library code that fire before ASAN has a chance to catch and report errors.
+//
 // RUN: cl -c %s -Fo%t.obj -DCOMPILE_SEH
-// RUN: %clangxx_asan -o %t.exe %s %t.obj -DCOMPILE_MAIN
+// RUN: %clangxx_asan -o %t.exe %s %t.obj -DCOMPILE_MAIN -DNDEBUG
 // RUN: %run %t.exe
 //
 // RUN: cl -GS- -c %s -Fo%t.obj -DCOMPILE_SEH
-// RUN: %clangxx_asan -o %t.exe %s %t.obj -DCOMPILE_MAIN
+// RUN: %clangxx_asan -o %t.exe %s %t.obj -DCOMPILE_MAIN -DNDEBUG
 // RUN: %run %t.exe
 //
-// RUN: %clang_cl_asan %s -DCOMPILE_SEH -Fe%t.exe -DCOMPILE_MAIN
+// RUN: %clang_cl_asan %s -DCOMPILE_SEH -Fe%t.exe -DCOMPILE_MAIN -DNDEBUG
 // RUN: %run %t.exe
 
 #include <windows.h>
@@ -54,5 +58,6 @@ int main() {
   // FIXME: Invert this assertion once we fix
   // https://code.google.com/p/address-sanitizer/issues/detail?id=258
   assert(!__asan_address_is_poisoned(x + 32));
+  return x[0] = 0;
 }
 #endif

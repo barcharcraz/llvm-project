@@ -10,6 +10,7 @@
 #include <windows.h>
 #include <assert.h>
 #include <stdio.h>
+#include "../defines.h"
 
 // Should just "#include <sanitizer/asan_interface.h>" when C++ exceptions are
 // supported and we don't need to use CL.
@@ -46,5 +47,6 @@ int test_function() {
   // FIXME: Invert this assertion once we fix
   // https://code.google.com/p/address-sanitizer/issues/detail?id=258
   assert(!__asan_address_is_poisoned(x + 32));
-  return 0;
+  return x[0] = 0; //add a use for MSVC
+  // since it does not add instrumentation if a variable is not used.
 }

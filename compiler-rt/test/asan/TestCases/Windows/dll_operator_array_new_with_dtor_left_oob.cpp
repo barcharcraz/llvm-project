@@ -25,9 +25,11 @@ int test_function() {
 // FIXME: Should get rid of the malloc/free frames called from the inside of
 // operator new/delete in DLLs when using -MT CRT.
 // FIXME: The operator new frame should have [].
+// NOTE: This test has been relaxes somewhat since the stack frames are draumatically
+//       different for the debug runtimes.
 // CHECK-LABEL: allocated by thread T0 here:
 // CHECK:        operator new
-// CHECK-NEXT:   test_function {{.*}}dll_operator_array_new_with_dtor_left_oob.cpp:[[@LINE-16]]
+// CHECK:   test_function {{.*}}dll_operator_array_new_with_dtor_left_oob.cpp:[[@LINE-18]]
 // CHECK-NEXT:   main {{.*}}dll_host.cpp
 // CHECK-LABEL: SUMMARY
   delete [] buffer;

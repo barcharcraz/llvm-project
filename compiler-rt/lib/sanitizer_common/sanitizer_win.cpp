@@ -703,17 +703,25 @@ int Atexit(void (*function)(void)) {
 }
 
 static int RunAtexit() {
-  TraceLoggingUnregister(g_asan_provider);
   int ret = 0;
   for (uptr i = 0; i < atexit_functions.size(); ++i) {
     ret |= atexit(atexit_functions[i]);
   }
   return ret;
 }
-
+// Post switching to compiling the dynamic runtime with the MD runtime,
+// Placing a function in XID means that it is called in the wrong spot on initialization.
+// This is a hack to call this function after both asan_init and the crt initialize,
+// for both MT and MD runtimes.
+#if defined(_DLL)
+#pragma section(".CRT$XLAD", long, read)
+__declspec(allocate(".CRT$XLAD")) int (*__run_atexit)() = RunAtexit;
+#else
 #pragma section(".CRT$XID", long, read)
 __declspec(allocate(".CRT$XID")) int (*__run_atexit)() = RunAtexit;
-#endif
+#endif  // _DLL
+
+#endif  //! SANITIZER_GO
 
 // ------------------ sanitizer_libc.h
 fd_t OpenFile(const char *filename, FileAccessMode mode, error_t *last_error) {

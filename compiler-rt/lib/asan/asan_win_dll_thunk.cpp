@@ -29,30 +29,36 @@
 // Memory allocation functions.
 INTERCEPT_WRAP_V_W(free)
 INTERCEPT_WRAP_V_W(_free_base)
-INTERCEPT_WRAP_V_WW(_free_dbg)
 
 INTERCEPT_WRAP_W_W(malloc)
 INTERCEPT_WRAP_W_W(_malloc_base)
-INTERCEPT_WRAP_W_WWWW(_malloc_dbg)
 
 INTERCEPT_WRAP_W_WW(calloc)
 INTERCEPT_WRAP_W_WW(_calloc_base)
-INTERCEPT_WRAP_W_WWWWW(_calloc_dbg)
 INTERCEPT_WRAP_W_WWW(_calloc_impl)
 
 INTERCEPT_WRAP_W_WW(realloc)
 INTERCEPT_WRAP_W_WW(_realloc_base)
-INTERCEPT_WRAP_W_WWW(_realloc_dbg)
 INTERCEPT_WRAP_W_WWW(_recalloc)
 INTERCEPT_WRAP_W_WWW(_recalloc_base)
 
 INTERCEPT_WRAP_W_W(_msize)
 INTERCEPT_WRAP_W_W(_msize_base)
 INTERCEPT_WRAP_W_W(_expand)
-INTERCEPT_WRAP_W_W(_expand_dbg)
 
-// TODO(timurrrr): Might want to add support for _aligned_* allocation
-// functions to detect a bit more bugs.  Those functions seem to wrap malloc().
+#ifdef _DEBUG
+INTERCEPT_WRAP_W_W(_expand_dbg)
+INTERCEPT_WRAP_W_WWWWW(_calloc_dbg)
+INTERCEPT_WRAP_W_WWW(_realloc_dbg)
+INTERCEPT_WRAP_W_WWWW(_malloc_dbg)
+INTERCEPT_WRAP_V_WW(_free_dbg)
+#endif
+
+INTERCEPT_WRAP_V_W(_aligned_free)
+INTERCEPT_WRAP_W_WW(_aligned_malloc)
+INTERCEPT_WRAP_W_WWW(_aligned_realloc)
+INTERCEPT_WRAP_W_WWW(_aligned_recalloc)
+INTERCEPT_WRAP_W_WWW(_aligned_msize)
 
 // TODO(timurrrr): Do we need to add _Crt* stuff here? (see asan_malloc_win.cpp)
 

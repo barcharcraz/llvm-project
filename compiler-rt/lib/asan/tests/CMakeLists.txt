@@ -158,9 +158,40 @@ set(ASAN_BENCHMARKS_SOURCES
   asan_benchmarks_test.cpp
   )
 
-function(add_asan_tests arch test_runtime)
-  cmake_parse_arguments(TEST "" "KIND" "CFLAGS" ${ARGN})
+function(add_asan_dynamic_tests arch test_runtime)
+  cmake_parse_arguments(TEST "" "KIND" "CFLAGS" ${ARGN}) 
+  # Closure to keep the values.
+  function(generate_asan_tests test_objects test_suite testname)
+    generate_compiler_rt_tests(${test_objects} ${test_suite} ${testname} ${arch}
+      COMPILE_DEPS ${ASAN_UNITTEST_HEADERS} ${ASAN_BLACKLIST_FILE}
+      DEPS gtest asan
+      KIND ${TEST_KIND}
+      ${ARGN}
+      )
+    set("${test_objects}" "${${test_objects}}" PARENT_SCOPE)
+  endfunction()
+  
+  if(MSVC)
+    set(dynamic_dbg_test_name "Asan-${arch}${TEST_KIND}-Test")
+    # With the MSVC CRT, the choice between static and dynamic CRT is made at
+    # compile time with a macro. Simulate the effect of passing /MD to clang-cl.
+    set(ASAN_DYNAMIC_DBG_TEST_OBJECTS)
+    generate_asan_tests(ASAN_DYNAMIC_DBG_TEST_OBJECTS
+      AsanDynamicUnitTests "${dynamic_dbg_test_name}"
+      SUBDIR "dynamic-debug"
+      CFLAGS ${ASAN_UNITTEST_INSTRUMENTED_CFLAGS} ${TEST_CFLAGS} -O0
+      SOURCES ${ASAN_INST_TEST_SOURCES}
+      LINK_FLAGS ${ASAN_DYNAMIC_UNITTEST_INSTRUMENTED_LINK_FLAGS} ${TEST_LINKFLAGS}
+      )
+  endif()
+endfunction()
 
+function(add_asan_tests arch test_runtime)
+
+
+  cmake_parse_arguments(TEST "" "KIND" "CFLAGS" ${ARGN}) 
+  string(FIND "${TEST_CFLAGS}" "-D_DEBUG" MSVC_DEBUG_VERSION)
+  set(MSVC_DEBUG_VERSION_BOOL NOT (MSVC_DEBUG_VERSION EQUAL -1))
   # The Lit files are configured once per architecture and static/dynamic
   # selection. Each configuration expects the test binaries in a corresponding
   # subdirectory. Generate subdirectory names based on the architecture name.
@@ -179,18 +210,24 @@ function(add_asan_tests arch test_runtime)
     set("${test_objects}" "${${test_objects}}" PARENT_SCOPE)
   endfunction()
 
+  set(STATIC_TEST_SUBDIR)
+  if (MSVC_DEBUG_VERSION_BOOL)
+    set(STATIC_TEST_SUBDIR "default-debug")
+  else()
+    set(STATIC_TEST_SUBDIR "default")
+  endif()
+
   set(ASAN_INST_TEST_OBJECTS)
   generate_asan_tests(ASAN_INST_TEST_OBJECTS AsanUnitTests
     "Asan-${arch}${TEST_KIND}-Test"
-    SUBDIR "${CONFIG_NAME}"
+    SUBDIR "default"
     LINK_FLAGS ${ASAN_UNITTEST_INSTRUMENTED_LINK_FLAGS}
     SOURCES ${ASAN_INST_TEST_SOURCES}
     CFLAGS ${ASAN_UNITTEST_INSTRUMENTED_CFLAGS} ${TEST_CFLAGS})
 
-  if(COMPILER_RT_ASAN_HAS_STATIC_RUNTIME)
+  if(COMPILER_RT_ASAN_HAS_STATIC_RUNTIME AND NOT MSVC_DEBUG_VERSION_BOOL)
     set(dynamic_test_name "Asan-${arch}${TEST_KIND}-Dynamic-Test")
     if(MSVC)
-
       # With the MSVC CRT, the choice between static and dynamic CRT is made at
       # compile time with a macro. Simulate the effect of passing /MD to clang-cl.
       set(ASAN_DYNAMIC_TEST_OBJECTS)
@@ -200,7 +237,7 @@ function(add_asan_tests arch test_runtime)
         CFLAGS ${ASAN_UNITTEST_INSTRUMENTED_CFLAGS} -D_MT -D_DLL
         SOURCES ${ASAN_INST_TEST_SOURCES}
         LINK_FLAGS ${ASAN_DYNAMIC_UNITTEST_INSTRUMENTED_LINK_FLAGS}
-          -Wl,-nodefaultlib:libcmt,-defaultlib:msvcrt,-defaultlib:oldnames
+          -Wl,-nodefaultlib:libcmt,-nodefaultlib:libucrt,-defaultlib:msvcrt,-defaultlib:ucrt,-defaultlib:oldnames
         )
     else()
 
@@ -218,9 +255,9 @@ function(add_asan_tests arch test_runtime)
   set(ASAN_NOINST_TEST_OBJECTS)
   generate_asan_tests(ASAN_NOINST_TEST_OBJECTS
     AsanUnitTests "Asan-${arch}${TEST_KIND}-Noinst-Test"
-    SUBDIR "${CONFIG_NAME}"
-    CFLAGS ${ASAN_UNITTEST_COMMON_CFLAGS}
-    LINK_FLAGS ${ASAN_UNITTEST_NOINST_LINK_FLAGS}
+    SUBDIR "default"
+    CFLAGS ${ASAN_UNITTEST_COMMON_CFLAGS} ${TEST_CFLAGS}
+    LINK_FLAGS ${ASAN_UNITTEST_NOINST_LINK_FLAGS} ${TEST_LINK_FLAGS}
     SOURCES ${ASAN_NOINST_TEST_SOURCES}
     RUNTIME ${test_runtime})
 
@@ -279,7 +316,54 @@ if(COMPILER_RT_CAN_EXECUTE_TESTS AND NOT ANDROID)
     add_asan_tests(${arch} ${ASAN_TEST_RUNTIME} KIND "-inline")
     add_asan_tests(${arch} ${ASAN_TEST_RUNTIME} KIND "-calls"
       CFLAGS -mllvm -asan-instrumentation-with-call-threshold=0)
+    if (MSVC)
+    #generate extra tests for windows debug runtimes
+    set(ASAN_TEST_RUNTIME_DEBUG_MTd RTAsanTest.debug.${arch})
+    set(ASAN_TEST_RUNTIME_DEBUG_MDd RTAsanTest.debug.dynamic.${arch})
+    set(ASAN_TEST_RUNTIME_OBJECTS_MTd
+        $<TARGET_OBJECTS:RTAsan_MTd.${arch}>
+        $<TARGET_OBJECTS:RTAsan_cxx_MTd.${arch}>
+        $<TARGET_OBJECTS:RTInterception_MTd.${arch}>
+        $<TARGET_OBJECTS:RTSanitizerCommon_MTd.${arch}>
+        $<TARGET_OBJECTS:RTSanitizerCommonLibc_MTd.${arch}>
+        $<TARGET_OBJECTS:RTSanitizerCommonCoverage_MTd.${arch}>
+        $<TARGET_OBJECTS:RTSanitizerCommonSymbolizer_MTd.${arch}>
+        $<TARGET_OBJECTS:RTLSanCommon_MTd.${arch}>
+        $<TARGET_OBJECTS:RTUbsan_MTd.${arch}>
+        $<TARGET_OBJECTS:RTUbsan_cxx_MTd.${arch}>)
+      set(ASAN_TEST_RUNTIME_OBJECTS_MDd
+        $<TARGET_OBJECTS:RTAsan_MDd.${arch}>
+        $<TARGET_OBJECTS:RTAsan_cxx_MDd.${arch}>
+        $<TARGET_OBJECTS:RTInterception_MDd.${arch}>
+        $<TARGET_OBJECTS:RTSanitizerCommon_MDd.${arch}>
+        $<TARGET_OBJECTS:RTSanitizerCommonLibc_MDd.${arch}>
+        $<TARGET_OBJECTS:RTSanitizerCommonCoverage_MDd.${arch}>
+        $<TARGET_OBJECTS:RTSanitizerCommonSymbolizer_MDd.${arch}>
+        $<TARGET_OBJECTS:RTLSanCommon_MDd.${arch}>
+        $<TARGET_OBJECTS:RTUbsan_MDd.${arch}>
+        $<TARGET_OBJECTS:RTUbsan_cxx_MDd.${arch}>)
+
+    add_library(${ASAN_TEST_RUNTIME_DEBUG_MTd} STATIC ${ASAN_TEST_RUNTIME_OBJECTS_MTd})
+    set_target_properties(${ASAN_TEST_RUNTIME_DEBUG_MTd} PROPERTIES
+      ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+      FOLDER "Compiler-RT Runtime tests (MTd)")
+
+    add_library(${ASAN_TEST_RUNTIME_DEBUG_MDd} STATIC ${ASAN_TEST_RUNTIME_OBJECTS_MDd})
+    set_target_properties(${ASAN_TEST_RUNTIME_DEBUG_MDd} PROPERTIES
+      ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+      FOLDER "Compiler-RT Runtime tests (MDd)")
+
+    add_asan_tests(${arch} ${ASAN_TEST_RUNTIME_DEBUG_MTd} KIND "-debug"
+      CFLAGS -D_DEBUG 
+      LINK_FLAGS -D_DEBUG -Wl,-nodefaultlib:libcmt,-nodefaultlib:libucrt,-defaultlib:libucrtd,-force:multiple)
+
+    add_asan_dynamic_tests(${arch} ${ASAN_TEST_RUNTIME_DEBUG_MDd} KIND "-debug-dynamic"
+      CFLAGS -D_DEBUG -D_MT -D_DLL 
+      LINK_FLAGS -D_DEBUG -D_MT -D_DLL -Wl,-nodefaultlib:libcmtd,-nodefaultlib:libucrt,-defaultlib:msvcrtd,-defaultlib:ucrtd,-defaultlib:oldnames
+      )
+    endif()
   endforeach()
+
 endif()
 
 if(ANDROID)

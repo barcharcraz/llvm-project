@@ -64,11 +64,19 @@
 #endif
 
 // Make the compiler thinks that something is going on there.
-inline void break_optimization(void *arg) {
 #if !defined(_WIN32) || defined(__clang__)
+inline void break_optimization(void *arg) {
   __asm__ __volatile__("" : : "r" (arg) : "memory");
-#endif
 }
+#elif defined(_WIN32)
+#pragma optimize("", off)
+void _declspec(noinline) break_optimization(void *arg){
+  //always call this function and don't optimize to make the 
+  //optimizer think we might be doing stuff to it.
+  return;
+}
+#pragma optimize("", on)
+#endif
 
 // This function returns its parameter but in such a way that compiler
 // can not prove it.

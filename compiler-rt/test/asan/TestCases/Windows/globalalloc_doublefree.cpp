@@ -4,6 +4,7 @@
 
 #include <windows.h>
 #include <cassert>
+#include "../defines.h"
 
 int main(){
     void* allocation = GlobalAlloc(GMEM_FIXED, 10);

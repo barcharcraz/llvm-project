@@ -7417,6 +7417,12 @@ void Clang::AddClangCLArgs(const ArgList &Args, types::ID InputType,
     CmdArgs.push_back("-D_MT");
     CmdArgs.push_back("-flto-visibility-public-std");
     FlagForCRT = "--dependent-lib=libcmt";
+    if (Args.hasArg(options::OPT_D)) {
+      for (auto define : Args.getAllArgValues(options::OPT_D)) {
+        if (define.compare("_DEBUG") == 0)
+          FlagForCRT = "--dependent-lib=libcmtd";
+      }
+    }
     break;
   case options::OPT__SLASH_MTd:
     CmdArgs.push_back("-D_DEBUG");

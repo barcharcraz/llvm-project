@@ -5,6 +5,7 @@
 // No atexit output in older versions of Android due to
 // https://code.google.com/p/address-sanitizer/issues/detail?id=263
 // UNSUPPORTED: android
+// XFAIL: msvc-host
 
 #include <stdlib.h>
 #if !defined(__APPLE__) && !defined(__FreeBSD__) && !defined(__NetBSD__)

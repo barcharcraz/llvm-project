@@ -1,9 +1,8 @@
 // RUN: %clang_cl_asan /Od %s -Fe%t
 // RUN: %env_asan_opts=windows_hook_rtl_allocators=true not %run %t 2>&1 | FileCheck %s
-
-
 #include <windows.h>
 #include <cassert>
+#include "../defines.h"
 
 int main(){
     void* allocation = LocalAlloc(LMEM_FIXED, 10);

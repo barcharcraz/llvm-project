@@ -12,6 +12,12 @@
 #define EXTRACT_RETURN_ADDRESS _ReturnAddress()
 #define ASM_CAUSE_SIDE_EFFECT(dest) __asm{ mov eax, dest }
 #define MULTIPLE_ATTRIBUTE_DECL(a, b) __declspec( a b )
+#ifdef _DEBUG
+// _DEBUG tests are compiled with NDEBUG to turn off CRT debug assertions 
+// that will throw before we can get to the asan report.
+#undef assert
+#define assert(x) if (!(x)) return 1;
+#endif // _DEBUG
 #else
 
 #define ATTRIBUTE_NOINLINE __attribute__((noinline))

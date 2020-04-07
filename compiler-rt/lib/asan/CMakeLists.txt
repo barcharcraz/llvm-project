@@ -128,6 +128,17 @@ append_list_if(MINGW "${MINGW_LIBRARIES}" ASAN_DYNAMIC_LIBS)
 
 list(APPEND ASAN_DYNAMIC_RT_TYPES MD MDd)
 # Compile ASan sources into an object library.
+if (MSVC)
+  create_multiple_windows_obj_libs(RTAsan_dynamic 
+  "${COMPILER_RT_WINDOWS_RT_VERSIONS_DYNAMIC}"
+    OS ${SANITIZER_COMMON_SUPPORTED_OS}
+    ARCHS ${ASAN_SUPPORTED_ARCH}
+    SOURCES ${ASAN_SOURCES} ${ASAN_CXX_SOURCES}
+    ADDITIONAL_HEADERS ${ASAN_HEADERS}
+    CFLAGS ${ASAN_DYNAMIC_CFLAGS}
+    DEFS ${ASAN_DYNAMIC_DEFINITIONS}
+    DEPS ${ASAN_DEPS})
+endif()
 
 add_compiler_rt_object_libraries(RTAsan_dynamic
   OS ${SANITIZER_COMMON_SUPPORTED_OS}
@@ -138,6 +149,49 @@ add_compiler_rt_object_libraries(RTAsan_dynamic
   DEFS ${ASAN_DYNAMIC_DEFINITIONS})
 
 if(NOT APPLE)
+  if (MSVC)
+    create_multiple_windows_obj_libs(RTAsan 
+    "${COMPILER_RT_WINDOWS_RT_VERSIONS_STATIC}" 
+      ARCHS ${ASAN_SUPPORTED_ARCH}
+      SOURCES ${ASAN_SOURCES}
+      ADDITIONAL_HEADERS ${ASAN_HEADERS}
+      CFLAGS ${ASAN_CFLAGS}
+      DEFS ${ASAN_COMMON_DEFINITIONS}
+      DEPS ${ASAN_DEPS})
+    
+    #The dynamic libs need their definitions set to enable dll interception
+    create_multiple_windows_obj_libs(RTAsan 
+    "${COMPILER_RT_WINDOWS_RT_VERSIONS_DYNAMIC}" 
+      ARCHS ${ASAN_SUPPORTED_ARCH}
+      SOURCES ${ASAN_SOURCES}
+      ADDITIONAL_HEADERS ${ASAN_HEADERS}
+      CFLAGS ${ASAN_CFLAGS}
+      DEFS ${ASAN_DYNAMIC_DEFINITIONS}
+      DEPS ${ASAN_DEPS})
+    create_multiple_windows_obj_libs(RTAsan_cxx 
+    "${COMPILER_RT_WINDOWS_RT_VERSIONS}" 
+      ARCHS ${ASAN_SUPPORTED_ARCH}
+      SOURCES ${ASAN_CXX_SOURCES}
+      ADDITIONAL_HEADERS ${ASAN_HEADERS}
+      CFLAGS ${ASAN_CFLAGS}
+      DEFS ${ASAN_COMMON_DEFINITIONS}
+      DEPS ${ASAN_DEPS})
+    create_multiple_windows_obj_libs(RTAsan_preinit 
+    "${COMPILER_RT_WINDOWS_RT_VERSIONS}" 
+      ARCHS ${ASAN_SUPPORTED_ARCH}
+      SOURCES ${ASAN_PREINIT_SOURCES}
+      ADDITIONAL_HEADERS ${ASAN_HEADERS}
+      CFLAGS ${ASAN_CFLAGS}
+      DEFS ${ASAN_COMMON_DEFINITIONS}
+      DEPS ${ASAN_DEPS})
+    create_multiple_windows_obj_libs(RTAsan_dynamic_version_script_dummy  
+    "${COMPILER_RT_WINDOWS_RT_VERSIONS}"
+      ARCHS ${ASAN_SUPPORTED_ARCH}
+      SOURCES ${CMAKE_CURRENT_BINARY_DIR}/dummy.cpp
+      CFLAGS ${ASAN_DYNAMIC_CFLAGS}
+      DEFS ${ASAN_DYNAMIC_DEFINITIONS}
+      DEPS ${ASAN_DEPS})
+  endif()
   add_compiler_rt_object_libraries(RTAsan
     ARCHS ${ASAN_SUPPORTED_ARCH}
     SOURCES ${ASAN_SOURCES}
@@ -217,24 +271,55 @@ else()
     RTLSanCommon
     RTUbsan)
 
+  foreach(rt_flag MT MD MDd MTd)
+    foreach(lib_name ${ASAN_COMMON_RUNTIME_OBJECT_LIBS})
+      list(APPEND ASAN_COMMON_RUNTIME_OBJECT_LIBS_${rt_flag} ${lib_name}_${rt_flag})
+    endforeach()
+  endforeach()
+
+    
+
   add_compiler_rt_runtime(clang_rt.asan
     STATIC
     ARCHS ${ASAN_SUPPORTED_ARCH}
-    OBJECT_LIBS RTAsan_preinit
-                RTAsan
-                ${ASAN_COMMON_RUNTIME_OBJECT_LIBS}
-    CFLAGS ${ASAN_CFLAGS}
+    OBJECT_LIBS RTAsan_preinit_MT
+                RTAsan_MT
+                ${ASAN_COMMON_RUNTIME_OBJECT_LIBS_MT}
+    CFLAGS ${ASAN_CFLAGS_MT}
     DEFS ${ASAN_COMMON_DEFINITIONS}
     PARENT_TARGET asan)
+
+  if (MSVC)
+    add_compiler_rt_runtime(clang_rt.asan_dbg
+      STATIC
+      ARCHS ${ASAN_SUPPORTED_ARCH}
+      OBJECT_LIBS RTAsan_preinit_MTd
+                  RTAsan_MTd
+                  ${ASAN_COMMON_RUNTIME_OBJECT_LIBS_MTd}
+      CFLAGS ${ASAN_CFLAGS_MTd}
+      DEFS ${ASAN_COMMON_DEFINITIONS} _DEBUG
+      PARENT_TARGET asan)
+  endif()
 
   add_compiler_rt_runtime(clang_rt.asan_cxx
     STATIC
     ARCHS ${ASAN_SUPPORTED_ARCH}
-    OBJECT_LIBS RTAsan_cxx
-                RTUbsan_cxx
-    CFLAGS ${ASAN_CFLAGS}
+    OBJECT_LIBS RTAsan_cxx_MT
+                RTUbsan_cxx_MT
+    CFLAGS ${ASAN_CFLAGS_MT}
     DEFS ${ASAN_COMMON_DEFINITIONS}
     PARENT_TARGET asan)
+
+  if (MSVC)
+    add_compiler_rt_runtime(clang_rt.asan_cxx_dbg
+    STATIC
+    ARCHS ${ASAN_SUPPORTED_ARCH}
+    OBJECT_LIBS RTAsan_cxx_MTd
+                RTUbsan_cxx_MTd
+    CFLAGS ${ASAN_CFLAGS_MTd}
+    DEFS ${ASAN_COMMON_DEFINITIONS}
+    PARENT_TARGET asan)
+  endif()
 
   add_compiler_rt_runtime(clang_rt.asan_static
     STATIC
@@ -247,10 +332,11 @@ else()
   add_compiler_rt_runtime(clang_rt.asan-preinit
     STATIC
     ARCHS ${ASAN_SUPPORTED_ARCH}
-    OBJECT_LIBS RTAsan_preinit
-    CFLAGS ${ASAN_CFLAGS}
+    OBJECT_LIBS RTAsan_preinit_MT
+    CFLAGS ${ASAN_CFLAGS_MT}
     DEFS ${ASAN_COMMON_DEFINITIONS}
     PARENT_TARGET asan)
+
 
   foreach(arch ${ASAN_SUPPORTED_ARCH})
     if (COMPILER_RT_HAS_VERSION_SCRIPT)
@@ -274,32 +360,34 @@ else()
 
     set(ASAN_DYNAMIC_WEAK_INTERCEPTION)
     if (WIN32)
-      add_compiler_rt_object_libraries(AsanWeakInterception
+
+      create_multiple_windows_obj_libs(AsanWeakInterception
+       "${ASAN_DYNAMIC_RT_TYPES}"
         ${SANITIZER_COMMON_SUPPORTED_OS}
         ARCHS ${arch}
         SOURCES
           asan_win_weak_interception.cpp
-        CFLAGS ${ASAN_CFLAGS} -DSANITIZER_DYNAMIC
+        CFLAGS ${ASAN_CFLAGS_MD} -DSANITIZER_DYNAMIC
         DEFS ${ASAN_COMMON_DEFINITIONS})
       set(ASAN_DYNAMIC_WEAK_INTERCEPTION
-          AsanWeakInterception
-          UbsanWeakInterception
-          SancovWeakInterception
-          SanitizerCommonWeakInterception)
+          AsanWeakInterception_MD
+          UbsanWeakInterception_MD
+          SancovWeakInterception_MD
+          SanitizerCommonWeakInterception_MD)
     endif()
 
     add_compiler_rt_runtime(clang_rt.asan
       SHARED
       ARCHS ${arch}
-      OBJECT_LIBS ${ASAN_COMMON_RUNTIME_OBJECT_LIBS}
-              RTAsan_dynamic
+      OBJECT_LIBS ${ASAN_COMMON_RUNTIME_OBJECT_LIBS_MD}
+              RTAsan_dynamic_MD
               # The only purpose of RTAsan_dynamic_version_script_dummy is to
               # carry a dependency of the shared runtime on the version script.
               # Replacing it with a straightforward
               # add_dependencies(clang_rt.asan-dynamic-${arch} clang_rt.asan-dynamic-${arch}-version-list)
               # generates an order-only dependency in ninja.
-              RTAsan_dynamic_version_script_dummy
-              RTUbsan_cxx
+              RTAsan_dynamic_version_script_dummy_MD
+              RTUbsan_cxx_MD
               ${ASAN_DYNAMIC_WEAK_INTERCEPTION}
       CFLAGS ${ASAN_DYNAMIC_CFLAGS}
       LINK_FLAGS ${ASAN_DYNAMIC_LINK_FLAGS}
@@ -308,6 +396,31 @@ else()
       DEFS ${ASAN_DYNAMIC_DEFINITIONS}
       PARENT_TARGET asan)
 
+    if (MSVC)
+      add_compiler_rt_runtime(clang_rt.asan_dbg
+        SHARED
+        ARCHS ${arch}
+        OBJECT_LIBS ${ASAN_COMMON_RUNTIME_OBJECT_LIBS_MDd}
+                RTAsan_dynamic_MDd
+                # The only purpose of RTAsan_dynamic_version_script_dummy is to
+                # carry a dependency of the shared runtime on the version script.
+                # Replacing it with a straightforward
+                # add_dependencies(clang_rt.asan-dynamic-${arch} clang_rt.asan-dynamic-${arch}-version-list)
+                # generates an order-only dependency in ninja.
+                RTAsan_dynamic_version_script_dummy_MDd
+                RTUbsan_cxx_MDd
+                AsanWeakInterception_MDd
+                UbsanWeakInterception_MDd
+                SancovWeakInterception_MDd
+                SanitizerCommonWeakInterception_MDd
+        CFLAGS ${ASAN_DYNAMIC_CFLAGS} -D_DEBUG -D_MT -D_DLL
+        LINK_FLAGS ${ASAN_DYNAMIC_LINK_FLAGS}
+                  ${VERSION_SCRIPT_FLAG}
+        LINK_LIBS ${ASAN_DYNAMIC_LIBS}
+        DEFS ${ASAN_DYNAMIC_DEFINITIONS}
+        PARENT_TARGET asan)
+    endif()
+      
     if (SANITIZER_USE_SYMBOLS AND NOT ${arch} STREQUAL "i386")
       add_sanitizer_rt_symbols(clang_rt.asan_cxx
         ARCHS ${arch})
@@ -327,14 +440,34 @@ else()
         CFLAGS ${ASAN_CFLAGS} -DSANITIZER_DLL_THUNK
         DEFS ${ASAN_COMMON_DEFINITIONS})
 
+        add_compiler_rt_object_libraries(AsanDllThunk_MTd
+          ${SANITIZER_COMMON_SUPPORTED_OS}
+          ARCHS ${arch}
+          SOURCES asan_globals_win.cpp
+                  asan_win_dll_thunk.cpp
+          CFLAGS ${ASAN_CFLAGS} -DSANITIZER_DLL_THUNK -MTd
+          DEFS ${ASAN_COMMON_DEFINITIONS} _DEBUG _MT
+          DEPS ${ASAN_DEPS})
+
       add_compiler_rt_runtime(clang_rt.asan_dll_thunk
         STATIC
         ARCHS ${arch}
         OBJECT_LIBS AsanDllThunk
-                    UbsanDllThunk
-                    SancovDllThunk
-                    SanitizerCommonDllThunk
+                    UbsanDllThunk_MT
+                    SancovDllThunk_MT
+                    SanitizerCommonDllThunk_MT
         SOURCES $<TARGET_OBJECTS:RTInterception.${arch}>
+        PARENT_TARGET asan)
+
+        add_compiler_rt_runtime(clang_rt.asan_dbg_dll_thunk
+        STATIC
+        ARCHS ${arch}
+        OBJECT_LIBS AsanDllThunk_MTd
+                    UbsanDllThunk_MTd
+                    SancovDllThunk_MTd
+                    SanitizerCommonDllThunk_MTd
+        SOURCES $<TARGET_OBJECTS:RTInterception.${arch}>
+        CFLAGS -D_DEBUG
         PARENT_TARGET asan)
 
       set(DYNAMIC_RUNTIME_THUNK_CFLAGS "-DSANITIZER_DYNAMIC_RUNTIME_THUNK")
@@ -342,6 +475,18 @@ else()
         list(APPEND DYNAMIC_RUNTIME_THUNK_CFLAGS "-Zl")
       elseif(CMAKE_C_COMPILER_ID MATCHES Clang)
         list(APPEND DYNAMIC_RUNTIME_THUNK_CFLAGS "-nodefaultlibs")
+      endif()
+
+      if (MSVC)
+        create_multiple_windows_obj_libs(AsanDynamicRuntimeThunk
+         "${ASAN_DYNAMIC_RT_TYPES}"
+          ${SANITIZER_COMMON_SUPPORTED_OS}
+          ARCHS ${arch}
+          SOURCES asan_globals_win.cpp
+                  asan_win_dynamic_runtime_thunk.cpp
+          CFLAGS ${ASAN_CFLAGS} ${DYNAMIC_RUNTIME_THUNK_CFLAGS}
+          DEFS ${ASAN_COMMON_DEFINITIONS}
+          DEPS ${ASAN_DEPS})
       endif()
 
       add_compiler_rt_object_libraries(AsanDynamicRuntimeThunk
@@ -355,13 +500,27 @@ else()
       add_compiler_rt_runtime(clang_rt.asan_dynamic_runtime_thunk
         STATIC
         ARCHS ${arch}
-        OBJECT_LIBS AsanDynamicRuntimeThunk
-                    UbsanDynamicRuntimeThunk
-                    SancovDynamicRuntimeThunk
-                    SanitizerCommonDynamicRuntimeThunk
-        CFLAGS ${ASAN_CFLAGS} ${DYNAMIC_RUNTIME_THUNK_CFLAGS}
-        DEFS ${ASAN_COMMON_DEFINITIONS}
+        OBJECT_LIBS AsanDynamicRuntimeThunk_MD
+                    UbsanDynamicRuntimeThunk_MD
+                    SancovDynamicRuntimeThunk_MD
+                    SanitizerCommonDynamicRuntimeThunk_MD
+        CFLAGS ${ASAN_CFLAGS_MD} ${DYNAMIC_RUNTIME_THUNK_CFLAGS}
+        DEFS ${ASAN_COMMON_DEFINITIONS} _DLL
         PARENT_TARGET asan)
+
+        if (MSVC)
+        add_compiler_rt_runtime(clang_rt.asan_dbg_dynamic_runtime_thunk
+          STATIC
+          ARCHS ${arch}
+          OBJECT_LIBS AsanDynamicRuntimeThunk_MDd
+                      UbsanDynamicRuntimeThunk_MDd
+                      SancovDynamicRuntimeThunk_MDd
+                      SanitizerCommonDynamicRuntimeThunk_MDd
+          CFLAGS ${ASAN_CFLAGS_MDd} ${DYNAMIC_RUNTIME_THUNK_CFLAGS}
+          DEFS ${ASAN_COMMON_DEFINITIONS} _DEBUG _DLL
+          LINK_FLAGS -DEBUG
+          PARENT_TARGET asan)
+        endif()
     endif()
   endforeach()
 endif()

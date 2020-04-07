@@ -98,13 +98,17 @@ clang_asan_static_cflags = (["-fsanitize=address",
 if config.target_arch == 's390x':
   clang_asan_static_cflags.append("-mbackchain")
 clang_asan_static_cxxflags = config.cxx_mode_flags + clang_asan_static_cflags
-
 asan_dynamic_flags = []
 if config.asan_dynamic:
   asan_dynamic_flags = ["-shared-libasan"]
   if platform.system() == 'Windows':
     # On Windows, we need to simulate "clang-cl /MD" on the clang driver side.
-    asan_dynamic_flags += ["-D_MT", "-D_DLL", "-Wl,-nodefaultlib:libcmt,-defaultlib:msvcrt,-defaultlib:oldnames"]
+    if "windows-debug" in config.name_suffix:
+      if config.target_arch == "i386":
+        config.available_features.add("clang-win32-asan-mdd-runtime")
+      asan_dynamic_flags += ["-fno-stack-protector","-D_MT", "-D_DLL","-D_DEBUG","-Wl,-nodefaultlib:libcmt,-nodefaultlib:libcmtd,-nodefaultlib:libucrtd,-defaultlib:msvcrtd,-defaultlib:ucrtd,-nodefaultlib:libvcruntimed,-defaultlib:vcruntimed,-defaultlib:oldnames"]
+    else:
+      asan_dynamic_flags += ["-D_MT", "-D_DLL","-Wl,-nodefaultlib:libcmt,-nodefaultlib:libucrt,-defaultlib:msvcrt,-defaultlib:ucrt,-nodefaultlib:libvcruntime,-defaultlib:oldnames"]
   elif platform.system() == 'FreeBSD':
     # On FreeBSD, we need to add -pthread to ensure pthread functions are available.
     asan_dynamic_flags += ['-pthread']
@@ -152,7 +156,21 @@ if platform.system() == 'Windows':
                        "-Zi"] + target_cflags
   clang_cl_asan_cxxflags = ["-fsanitize=address"] + clang_cl_cxxflags
   if config.asan_dynamic:
-    clang_cl_asan_cxxflags.append("-MD")
+    if "windows-debug" in config.name_suffix:
+      clang_cl_asan_cxxflags.append("-MDd")
+    else:
+      clang_cl_asan_cxxflags.append("-MD")
+  else:
+    if "windows-debug" in config.name_suffix:
+      clang_cl_asan_cxxflags.append("-D_DEBUG")
+      clang_cl_asan_cxxflags.append("-D_MT")
+      config.substitutions.append(("[\-\/]MT ","-MTd "))
+      config.substitutions.append(("[\-\/]LD ","-LDd "))
+      if "_LINK_" in config.environment:
+        config.environment["_LINK_"] += " /force:multiple  "
+      else:
+        config.environment["_LINK_"] = " /force:multiple  "
+
 
   clang_cl_invocation = build_invocation(clang_cl_cxxflags)
   clang_cl_invocation = clang_cl_invocation.replace("clang.exe","clang-cl.exe")

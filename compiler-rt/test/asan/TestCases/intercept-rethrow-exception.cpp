@@ -8,7 +8,8 @@
 
 // The current implementation of this functionality requires special
 // combination of libraries that are not used by default on NetBSD
-// XFAIL: netbsd
+// FIXME: clang + MDd runtime on win32 calls the destructors in the wrong order.
+// XFAIL: netbsd, clang-win32-asan-mdd-runtime
 // FIXME: Bug 42703
 // XFAIL: solaris
 

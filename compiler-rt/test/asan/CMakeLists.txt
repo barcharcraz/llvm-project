@@ -77,6 +77,29 @@ foreach(arch ${ASAN_TEST_ARCH})
   if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Linux" AND NOT ANDROID AND ${arch} MATCHES "arm")
     set(ASAN_TEST_TARGET_CFLAGS "${ASAN_TEST_TARGET_CFLAGS} -funwind-tables")
   endif()
+
+  if (MSVC)
+  string(TOLOWER "-${arch}-${OS_NAME}-debug" ASAN_TEST_CONFIG_SUFFIX)
+    set(ASAN_TEST_DYNAMIC False)
+    set(ASAN_TEST_WIN32_DEBUG_RT True)
+    set(CONFIG_NAME ${ARCH_UPPER_CASE}${OS_NAME}DebugConfig)
+    configure_lit_site_cfg(
+      ${CMAKE_CURRENT_SOURCE_DIR}/lit.site.cfg.py.in
+      ${CMAKE_CURRENT_BINARY_DIR}/${CONFIG_NAME}/lit.site.cfg.py)
+      list(APPEND ASAN_DEBUG_TESTSUITES
+      ${CMAKE_CURRENT_BINARY_DIR}/${CONFIG_NAME})
+
+    string(TOLOWER "-${arch}-${OS_NAME}-debug-dynamic" ASAN_TEST_CONFIG_SUFFIX)
+    set(ASAN_TEST_DYNAMIC True)
+    set(ASAN_TEST_WIN32_DEBUG_RT True)
+    set(CONFIG_NAME ${ARCH_UPPER_CASE}${OS_NAME}DebugDynamicConfig)
+    configure_lit_site_cfg(
+      ${CMAKE_CURRENT_SOURCE_DIR}/lit.site.cfg.py.in
+      ${CMAKE_CURRENT_BINARY_DIR}/${CONFIG_NAME}/lit.site.cfg.py)
+    list(APPEND ASAN_DEBUG_DYNAMIC_TESTSUITES
+      ${CMAKE_CURRENT_BINARY_DIR}/${CONFIG_NAME})
+  endif()
+
 endforeach()
 
 # iOS and iOS simulator test suites
@@ -150,6 +173,9 @@ if(COMPILER_RT_INCLUDE_TESTS)
         list(APPEND ASAN_DYNAMIC_TEST_DEPS AsanDynamicUnitTests)
         list(APPEND ASAN_DYNAMIC_TESTSUITES ${CMAKE_CURRENT_BINARY_DIR}/Unit/${CONFIG_NAME_DYNAMIC})
       endif()
+      if (MSVC)
+        list(APPEND ASAN_DYNAMIC_TEST_DEPS AsanDynamicUnitTests)
+      endif()
     endif()
   endforeach()
 endif()
@@ -165,6 +191,19 @@ add_lit_testsuite(check-asan "Running the AddressSanitizer tests"
   ${exclude_from_check_all}
   DEPENDS ${ASAN_TEST_DEPS})
 set_target_properties(check-asan PROPERTIES FOLDER "Compiler-RT Misc")
+
+if (MSVC)
+  add_lit_testsuite(check-asan-debug "Running the AddressSanitizer tests with win32 debug runtime"
+    ${ASAN_DEBUG_TESTSUITES}
+    DEPENDS ${ASAN_TEST_DEPS})
+  set_target_properties(check-asan-debug PROPERTIES FOLDER "Compiler-RT Misc")
+  add_lit_testsuite(check-asan-dynamic-debug
+                    "Running the AddressSanitizer tests with win32 MDd dynamic runtime"
+                    ${ASAN_DEBUG_DYNAMIC_TESTSUITES}
+                    DEPENDS ${ASAN_DYNAMIC_TEST_DEPS})
+  set_target_properties(check-asan-dynamic-debug
+                        PROPERTIES FOLDER "Compiler-RT Misc")
+endif()
 
 if(COMPILER_RT_ASAN_HAS_STATIC_RUNTIME)
   add_lit_testsuite(check-asan-dynamic

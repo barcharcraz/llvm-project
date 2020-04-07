@@ -513,14 +513,15 @@ static size_t GetInstructionSize(uptr address, size_t* rel_offset = nullptr) {
     case 0xA1:  // A1 XX XX XX XX XX XX XX XX :
                 //   movabs eax, dword ptr ds:[XXXXXXXX]
       return 9;
-
-    case 0x83:
-      const u8 next_byte = *(u8*)(address + 1);
-      const u8 mod = next_byte >> 6;
-      const u8 rm = next_byte & 7;
-      if (mod == 1 && rm == 4)
-        return 5;  // 83 ModR/M SIB Disp8 Imm8
-                   //   add|or|adc|sbb|and|sub|xor|cmp [r+disp8], imm8
+    case 0xf2:
+      switch (*(u32*)(address+1)) {
+        case 0x2444110f: // f2 0f 11 44 24 XX    movsd   mmword ptr [rsp + XX], xmm0
+        case 0x244c110f: //  f2 0f 11 4c 24 XX       movsd  QWORD PTR [rsp+0x8],xmm1
+        case 0x2454110f: //  f2 0f 11 54 24 XX       movsd  QWORD PTR [rsp+0x8],xmm2
+        case 0x245c110f: //  f2 0f 11 5c 24 XX       movsd  QWORD PTR [rsp+0x8],xmm3
+        case 0x2464110f: //  f2 0f 11 64 24 XX       movsd  QWORD PTR [rsp+0x8],xmm4
+          return 6;
+      }
   }
 
   switch (*(u16*)address) {
@@ -610,8 +611,11 @@ static size_t GetInstructionSize(uptr address, size_t* rel_offset = nullptr) {
     case 0x24548948:  // 48 89 54 24 XX : mov QWORD PTR [rsp + XX], rdx
     case 0x244c894c:  // 4c 89 4c 24 XX : mov QWORD PTR [rsp + XX], r9
     case 0x2444894c:  // 4c 89 44 24 XX : mov QWORD PTR [rsp + XX], r8
+    case 0x244c8944:  // 44 89 4c 24 XX   mov DWORD PTR [rsp + XX], r9d
+    case 0x24448944:  // 44 89 44 24 XX   mov DWORD PTR [rsp + XX], r8d
+    case 0x246c8d48:  // 48 8d 6c 24 XX : lea rbp, [rsp + XX]
       return 5;
-    case 0x24648348:  // 48 83 64 24 XX : and QWORD PTR [rsp + XX], YY
+    case 0x24648348:  // 48 83 64 24 XX YY : and QWORD PTR [rsp + XX], YY                      
       return 6;
   }
 
@@ -890,16 +894,26 @@ bool OverrideFunction(
 
 static void **InterestingDLLsAvailable() {
   static const char *InterestingDLLs[] = {
-      "kernel32.dll",
-      "msvcr100.dll",      // VS2010
-      "msvcr110.dll",      // VS2012
-      "msvcr120.dll",      // VS2013
-      "vcruntime140.dll",  // VS2015
-      "ucrtbase.dll",      // Universal CRT
-      "KERNELBASE.dll",    // KernelBase for GlobalAlloc and LocalAlloc (dynamic)
-      // NTDLL should go last as it exports some functions that we should
-      // override in the CRT [presumably only used internally].
-      "ntdll.dll", NULL};
+    "kernel32.dll",
+#if defined(_DEBUG)
+    "msvcr100d.dll",      // VS2010
+    "msvcr110d.dll",      // VS2012
+    "msvcr120d.dll",      // VS2013
+    "vcruntime140d.dll",  // VS2015
+    "ucrtbased.dll",      // Universal CRT
+#else
+    "msvcr100.dll",      // VS2010
+    "msvcr110.dll",      // VS2012
+    "msvcr120.dll",      // VS2013
+    "vcruntime140.dll",  // VS2015
+    "ucrtbase.dll",      // Universal CRT
+#endif
+    "KERNELBASE.dll",  // KernelBase for GlobalAlloc and LocalAlloc (dynamic)
+    // NTDLL should go last as it exports some functions that we should
+    // override in the CRT [presumably only used internally].
+    "ntdll.dll",
+    NULL
+  };
   static void *result[ARRAY_SIZE(InterestingDLLs)] = { 0 };
   if (!result[0]) {
     for (size_t i = 0, j = 0; InterestingDLLs[i]; ++i) {

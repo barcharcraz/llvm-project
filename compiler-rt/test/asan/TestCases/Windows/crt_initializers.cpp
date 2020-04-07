@@ -5,7 +5,13 @@
 
 #include <stdio.h>
 
+#if defined(_DEBUG) && defined(_MSC_VER) && !defined(__mingw32__)
+//in the debug runtime these pointers are placed such that they are called by initterm_e,
+// which expects a different function prototype. yikes.
+typedef int (*FPTR)();
+#else
 typedef void (*FPTR)();
+#endif
 
 // __xi_a and __xi_z are defined in VC/crt/src/crt0dat.c
 // and are located in .CRT$XIA and .CRT$XIZ respectively.
@@ -24,8 +30,11 @@ int main() {
 // CHECK: Number of nonzero CRT initializers
 }
 
+#ifdef _DEBUG
+int call_me_maybe() { return 0; }
+#else
 void call_me_maybe() {}
-
+#endif
 #pragma data_seg(".CRT$XIB")
 // Add an initializer that shouldn't get its own redzone.
 FPTR run_on_startup = call_me_maybe;

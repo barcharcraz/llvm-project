@@ -105,11 +105,6 @@ void free(void *ptr) {
 }
 
 ALLOCATION_FUNCTION_ATTRIBUTE
-void _free_dbg(void *ptr, int) {
-  free(ptr);
-}
-
-ALLOCATION_FUNCTION_ATTRIBUTE
 void _free_base(void *ptr) {
   free(ptr);
 }
@@ -126,11 +121,6 @@ void *_malloc_base(size_t size) {
 }
 
 ALLOCATION_FUNCTION_ATTRIBUTE
-void *_malloc_dbg(size_t size, int, const char *, int) {
-  return malloc(size);
-}
-
-ALLOCATION_FUNCTION_ATTRIBUTE
 void *calloc(size_t nmemb, size_t size) {
   GET_STACK_TRACE_MALLOC;
   return asan_calloc(nmemb, size, &stack);
@@ -142,11 +132,6 @@ void *_calloc_base(size_t nmemb, size_t size) {
 }
 
 ALLOCATION_FUNCTION_ATTRIBUTE
-void *_calloc_dbg(size_t nmemb, size_t size, int, const char *, int) {
-  return calloc(nmemb, size);
-}
-
-ALLOCATION_FUNCTION_ATTRIBUTE
 void *_calloc_impl(size_t nmemb, size_t size, int *errno_tmp) {
   return calloc(nmemb, size);
 }
@@ -154,13 +139,10 @@ void *_calloc_impl(size_t nmemb, size_t size, int *errno_tmp) {
 ALLOCATION_FUNCTION_ATTRIBUTE
 void *realloc(void *ptr, size_t size) {
   GET_STACK_TRACE_MALLOC;
+  if (!__asan::flags()->allocator_frees_and_returns_null_on_realloc_zero)
+    Report("WARNING: allocator_frees_and_returns_null_on_realloc_zero is set to FALSE."
+          " This is not consistent with libcmt/ucrt/msvcrt behavior.");
   return asan_realloc(ptr, size, &stack);
-}
-
-ALLOCATION_FUNCTION_ATTRIBUTE
-void *_realloc_dbg(void *ptr, size_t size, int) {
-  UNREACHABLE("_realloc_dbg should not exist!");
-  return 0;
 }
 
 ALLOCATION_FUNCTION_ATTRIBUTE
@@ -181,7 +163,7 @@ void *_recalloc(void *p, size_t n, size_t elem_size) {
   if (new_alloc) {
     REAL(memcpy)(new_alloc, p, Min<size_t>(size, old_size));
     if (old_size < size)
-      REAL(memset)(((u8 *)new_alloc) + old_size, 0, size - old_size);
+      REAL(memset)(static_cast<u8*>(new_alloc) + old_size, 0, size - old_size);
     free(p);
   }
   return new_alloc;
@@ -199,13 +181,91 @@ void *_expand(void *memblock, size_t size) {
   return 0;
 }
 
+#ifdef _DEBUG
+ALLOCATION_FUNCTION_ATTRIBUTE
+void *_malloc_dbg(size_t size, int, const char *, int) {
+  return malloc(size);
+}
+
+ALLOCATION_FUNCTION_ATTRIBUTE
+void _free_dbg(void *ptr, int) {
+  free(ptr);
+}
+
 ALLOCATION_FUNCTION_ATTRIBUTE
 void *_expand_dbg(void *memblock, size_t size) {
   return _expand(memblock, size);
 }
 
-// TODO(timurrrr): Might want to add support for _aligned_* allocation
-// functions to detect a bit more bugs.  Those functions seem to wrap malloc().
+ALLOCATION_FUNCTION_ATTRIBUTE
+void *_calloc_dbg(size_t nmemb, size_t size, int, const char *, int) {
+  return calloc(nmemb, size);
+}
+
+ALLOCATION_FUNCTION_ATTRIBUTE
+void *_realloc_dbg(void *ptr, size_t size, int) { return realloc(ptr, size); }
+
+ALLOCATION_FUNCTION_ATTRIBUTE
+void *_recalloc_dbg(void *userData, size_t num, size_t size, int, const char *,
+                    int) {
+  return _recalloc(userData, num, size);
+}
+#endif //_DEBUG
+ALLOCATION_FUNCTION_ATTRIBUTE void *_aligned_malloc(size_t size,
+                                                    size_t alignment) {
+  GET_STACK_TRACE_MALLOC;
+  return asan_aligned_alloc(alignment, size, &stack);
+}
+
+ALLOCATION_FUNCTION_ATTRIBUTE void _aligned_free(void *memblock) {
+  GET_STACK_TRACE_MALLOC;
+  asan_free(memblock, &stack, FROM_MALLOC);
+}
+
+ALLOCATION_FUNCTION_ATTRIBUTE size_t _aligned_msize(void *memblock,
+                                                    size_t alignment,
+                                                    size_t offset) {
+  // get the original pointer from the breadcrumb
+  GET_CURRENT_PC_BP;
+  return asan_malloc_usable_size(memblock, pc, bp);
+}
+
+ALLOCATION_FUNCTION_ATTRIBUTE void *_aligned_realloc(void *memblock,
+                                                     size_t size,
+                                                     size_t alignment) {
+  // msdn documentation states that if memblock is nullptr,
+  // this should just allocate a new block.
+  // if size is 0, the block should be freed and nullptr returned.
+  GET_STACK_TRACE_MALLOC;
+  if (size == 0 && memblock != nullptr) {
+    asan_free(memblock, &stack, FROM_MALLOC);
+    return nullptr;
+  }
+
+  void *new_ptr = asan_aligned_alloc(alignment, size, &stack);
+  if (new_ptr && memblock) {
+    GET_CURRENT_PC_BP;
+    size_t aligned_size = asan_malloc_usable_size(memblock, pc, bp);
+    internal_memcpy(new_ptr, memblock, Min<size_t>(aligned_size, size));
+    asan_free(memblock, &stack, FROM_MALLOC);
+  }
+
+  return new_ptr;
+}
+
+ALLOCATION_FUNCTION_ATTRIBUTE void *_aligned_recalloc(void *memblock,
+                                                      size_t size,
+                                                      size_t alignment) {
+  size_t old_size = 0;
+  if (memblock) {
+    old_size = _aligned_msize(memblock, alignment, 0);
+  }
+  void *new_ptr = _aligned_realloc(memblock, size, alignment);
+  if (new_ptr && old_size < size) {
+    REAL(memset)(static_cast<u8*>(new_ptr) + old_size, 0, size - old_size);
+  }
+  return new_ptr;
+}
 
 int _CrtDbgReport(int, const char*, int,
                   const char*, const char*, ...) {
@@ -807,7 +867,18 @@ void ReplaceSystemMalloc() {
   TryToOverrideFunction("_msize_base", (uptr)_msize);
   TryToOverrideFunction("_expand", (uptr)_expand);
   TryToOverrideFunction("_expand_base", (uptr)_expand);
-
+  TryToOverrideFunction("_aligned_malloc", (uptr)_aligned_malloc);
+  TryToOverrideFunction("_aligned_msize", (uptr)_aligned_msize);
+  TryToOverrideFunction("_aligned_free", (uptr)_aligned_free);
+  TryToOverrideFunction("_aligned_realloc", (uptr)_aligned_realloc);
+#ifdef _DEBUG
+  TryToOverrideFunction("_expand_dbg", (uptr)_expand_dbg);
+  TryToOverrideFunction("_free_dbg", (uptr)_free_dbg);
+  TryToOverrideFunction("_malloc_dbg", (uptr)_malloc_dbg);
+  TryToOverrideFunction("_calloc_dbg", (uptr)_calloc_dbg);
+  TryToOverrideFunction("_realloc_dbg", (uptr)_realloc_dbg);
+  TryToOverrideFunction("_recalloc_dbg", (uptr)_recalloc_dbg);
+#endif
   if (flags()->windows_hook_rtl_allocators) {
     INTERCEPT_FUNCTION(GlobalAlloc);
     INTERCEPT_FUNCTION(GlobalFree);
@@ -835,9 +906,14 @@ void ReplaceSystemMalloc() {
                                      (uptr)WRAP(RtlAllocateHeap),
                                      (uptr *)&REAL(RtlAllocateHeap));
   } else {
+#ifdef _DEBUG
+#define UCRT_LIBNAME "ucrtbased.dll"
+#else
+#define UCRT_LIBNAME "ucrtbase.dll"
+#endif
 #define INTERCEPT_UCRT_FUNCTION(func)                                  \
   if (!INTERCEPT_FUNCTION_DLLIMPORT(                                   \
-          "ucrtbase.dll", "api-ms-win-core-heap-l1-1-0.dll", func)) {  \
+          UCRT_LIBNAME, "api-ms-win-core-heap-l1-1-0.dll", func)) {    \
     VPrintf(2, "Failed to intercept ucrtbase.dll import %s\n", #func); \
   }
     INTERCEPT_UCRT_FUNCTION(HeapAlloc);
@@ -846,14 +922,6 @@ void ReplaceSystemMalloc() {
     INTERCEPT_UCRT_FUNCTION(HeapSize);
 #undef INTERCEPT_UCRT_FUNCTION
   }
-  // Recent versions of ucrtbase.dll appear to be built with PGO and LTCG, which
-  // enable cross-module inlining. This means our _malloc_base hook won't catch
-  // all CRT allocations. This code here patches the import table of
-  // ucrtbase.dll so that all attempts to use the lower-level win32 heap
-  // allocation API will be directed to ASan's heap. We don't currently
-  // intercept all calls to HeapAlloc. If we did, we would have to check on
-  // HeapFree whether the pointer came from ASan of from the system.
-
 #endif  // defined(ASAN_DYNAMIC)
 }
 }  // namespace __asan

@@ -11,6 +11,9 @@
 #define PTR "%lx"
 #endif
 
+//windows dynamic debug has a few more frames, increasing limit from 10 to 12.
+#define FRAME_LIMIT 12
+
 #include <sanitizer/asan_interface.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -35,9 +38,7 @@ int main() {
   size_t num_frames = 100;
   int thread_id;
   num_frames = __asan_get_alloc_stack(mem, trace, num_frames, &thread_id);
-
-  fprintf(stderr, "alloc stack retval %s\n", (num_frames > 0 && num_frames < 10)
-          ? "ok" : "");
+  fprintf(stderr, "alloc stack retval %s\n", (num_frames > 0 && num_frames < FRAME_LIMIT) ? "ok" : "");
   // CHECK: alloc stack retval ok
   fprintf(stderr, "thread id = %d\n", thread_id);
   // CHECK: thread id = 0
@@ -49,8 +50,7 @@ int main() {
   num_frames = 100;
   num_frames = __asan_get_free_stack(mem, trace, num_frames, &thread_id);
 
-  fprintf(stderr, "free stack retval %s\n", (num_frames > 0 && num_frames < 10)
-          ? "ok" : "");
+  fprintf(stderr, "free stack retval %s\n", (num_frames > 0 && num_frames < FRAME_LIMIT) ? "ok" : "");
   // CHECK: free stack retval ok
   fprintf(stderr, "thread id = %d\n", thread_id);
   // CHECK: thread id = 0

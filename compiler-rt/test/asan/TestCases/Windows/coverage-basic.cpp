@@ -5,6 +5,7 @@
 //
 // RUN: %sancov print *.sancov | FileCheck %s
 // XFAIL: msvc-host
+
 #include <stdio.h>
 
 void foo() { fputs("FOO", stderr); }

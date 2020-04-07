@@ -5,6 +5,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <windows.h>
+#include "../defines.h"
 
 extern "C" int
 __sanitizer_get_ownership(const volatile void *p);

@@ -443,15 +443,57 @@ void visualstudio::Linker::ConstructJob(Compilation &C, const JobAction &JA,
   auto &TC = static_cast<const toolchains::MSVCToolChain &>(getToolChain());
 
   assert((Output.isFilename() || Output.isNothing()) && "invalid output");
+
+  bool DebugDefined = false, DllDefined = false;
+  if (Args.hasArg(options::OPT_D, options::OPT__SLASH_D)) {
+    auto defines = Args.getAllArgValues(options::OPT_D);
+
+    /* MSVC++ and MS-Link make some decisions about which CRT version to link
+    based on whether some preprocessor macros are defined. We will account
+    for this when linking sanitizers to prevent mismatch
+    assertions and to link the correct libraries.
+    https://docs.microsoft.com/en-us/cpp/build/reference/md-mt-ld-use-run-time-library?view=vs-2019
+
+    NOTE: while the documentation says defining _MT has an effect, it does not.
+          _DLL and _DEBUG are all that matter.
+
+      Libraries:
+          1. asan-{arch}             MT
+          2. asan_dbg-{arch}         MTd
+          3. asan_dynamic-{arch}     MD
+          4. asan_dbg_dynamic-{arch} MDd
+
+      Definition truth table for defines and lib associations:
+        ---------------------------------------------------
+        ~_DEBUG &   ~_DLL : 1
+         _DEBUG &   ~_DLL : 2
+        ~_DEBUG &    _DLL : 3
+         _DEBUG &    _DLL : 4
+    */
+
+    auto defineFound = [&](std::string& define, const char *value) {
+      return define.compare(value) == 0;
+    };
+    for (std::string& define : defines) {
+      if (defineFound(define, "_DEBUG"))
+        DebugDefined = true;
+      else if (defineFound(define, "_DLL"))
+        DllDefined = true;
+    }
+  }
+
   if (Output.isFilename())
     CmdArgs.push_back(
         Args.MakeArgString(std::string("-out:") + Output.getFilename()));
 
   if (!Args.hasArg(options::OPT_nostdlib, options::OPT_nostartfiles) &&
-      !C.getDriver().IsCLMode()) {
+      !C.getDriver().IsCLMode() && (!DllDefined && !DebugDefined)) {
     CmdArgs.push_back("-defaultlib:libcmt");
     CmdArgs.push_back("-defaultlib:oldnames");
   }
+
+  if (DebugDefined)
+    CmdArgs.push_back("-nodefaultlib:libcmt");
 
   // If the VC environment hasn't been configured (perhaps because the user
   // did not run vcvarsall), try to build a consistent link environment.  If
@@ -556,30 +598,60 @@ void visualstudio::Linker::ConstructJob(Compilation &C, const JobAction &JA,
   if (TC.getSanitizerArgs(Args).needsAsanRt()) {
     CmdArgs.push_back(Args.MakeArgString("-debug"));
     CmdArgs.push_back(Args.MakeArgString("-incremental:no"));
+    bool needsDebugRt =
+        Args.hasArg(options::OPT__SLASH_MDd) || (DebugDefined && DllDefined);
     if (TC.getSanitizerArgs(Args).needsSharedRt() ||
-        Args.hasArg(options::OPT__SLASH_MD, options::OPT__SLASH_MDd)) {
-      for (const auto &Lib : {"asan_dynamic", "asan_dynamic_runtime_thunk"})
-        CmdArgs.push_back(TC.getCompilerRTArgString(Args, Lib));
+        Args.hasArg(options::OPT__SLASH_MD) || needsDebugRt) {
+      if (needsDebugRt) {
+        for (const auto &Lib :
+             {"asan_dbg_dynamic", "asan_dbg_dynamic_runtime_thunk"})
+          CmdArgs.push_back(TC.getCompilerRTArgString(Args, Lib));
+        //make sure the linker considers all input from the dbg runtime thunk lib.
+        CmdArgs.push_back(Args.MakeArgString(
+            std::string("-wholearchive:") +
+            TC.getCompilerRT(Args, "asan_dbg_dynamic_runtime_thunk")));
+      } else {
+        for (const auto &Lib : {"asan_dynamic", "asan_dynamic_runtime_thunk"})
+          CmdArgs.push_back(TC.getCompilerRTArgString(Args, Lib));
+        //make sure the linker considers all input from the runtime thunk lib.
+        CmdArgs.push_back(Args.MakeArgString(
+            std::string("-wholearchive:") +
+            TC.getCompilerRT(Args, "asan_dynamic_runtime_thunk")));
+      }
       // Make sure the dynamic runtime thunk is not optimized out at link time
       // to ensure proper SEH handling.
       CmdArgs.push_back(Args.MakeArgString(
           TC.getArch() == llvm::Triple::x86
               ? "-include:___asan_seh_interceptor"
               : "-include:__asan_seh_interceptor"));
-      // Make sure the linker consider all object files from the dynamic runtime
-      // thunk.
-      CmdArgs.push_back(Args.MakeArgString(std::string("-wholearchive:") +
-          TC.getCompilerRT(Args, "asan_dynamic_runtime_thunk")));
     } else if (DLL) {
-      CmdArgs.push_back(TC.getCompilerRTArgString(Args, "asan_dll_thunk"));
+      if (Args.hasArg(options::OPT__SLASH_MTd) || DebugDefined)
+        CmdArgs.push_back(
+            TC.getCompilerRTArgString(Args, "asan_dbg_dll_thunk"));
+      else
+        CmdArgs.push_back(TC.getCompilerRTArgString(Args, "asan_dll_thunk"));
     } else {
-      for (const auto &Lib : {"asan", "asan_cxx"}) {
-        CmdArgs.push_back(TC.getCompilerRTArgString(Args, Lib));
-        // Make sure the linker consider all object files from the static lib.
-        // This is necessary because instrumented dlls need access to all the
-        // interface exported by the static lib in the main executable.
-        CmdArgs.push_back(Args.MakeArgString(std::string("-wholearchive:") +
-            TC.getCompilerRT(Args, Lib)));
+      if (Args.hasArg(options::OPT__SLASH_MTd) || (DebugDefined)) {
+        for (const auto &Lib : {"asan_dbg", "asan_cxx_dbg"}) {
+          CmdArgs.push_back(TC.getCompilerRTArgString(Args, Lib));
+          // Make sure the linker consider all object files from the static lib.
+          // This is necessary because instrumented dlls need access to all the
+          // interface exported by the static lib in the main executable.
+          CmdArgs.push_back(Args.MakeArgString(std::string("-wholearchive:") +
+                                               TC.getCompilerRT(Args, Lib)));
+        }
+      } else {
+        // if there are no options requiring us to make a dynamic
+        // asan lib or use the MD runtime, default to MT asan.
+        // This is consistent with MSVC's behavior of default linking libcmt
+        for (const auto &Lib : {"asan", "asan_cxx"}) {
+          CmdArgs.push_back(TC.getCompilerRTArgString(Args, Lib));
+          // Make sure the linker consider all object files from the static lib.
+          // This is necessary because instrumented dlls need access to all the
+          // interface exported by the static lib in the main executable.
+          CmdArgs.push_back(Args.MakeArgString(std::string("-wholearchive:") +
+                                               TC.getCompilerRT(Args, Lib)));
+        }
       }
     }
   }

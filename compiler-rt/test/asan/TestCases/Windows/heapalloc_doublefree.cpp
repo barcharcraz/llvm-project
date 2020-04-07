@@ -3,6 +3,7 @@
 // UNSUPPORTED: asan-64-bits
 #include <cassert>
 #include <windows.h>
+#include "../defines.h"
 
 int main() {
   void *allocation = HeapAlloc(GetProcessHeap(), 0, 10);
