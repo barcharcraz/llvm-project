@@ -5,7 +5,7 @@
 // RUN: %clang_cl /Od -DEXE %s -Fe%te.exe
 // RUN: %env_asan_opts=windows_hook_rtl_allocators=true not %run %te.exe %t.dll 2>&1 | FileCheck %s
 // REQUIRES: asan-dynamic-runtime
-// REQUIRES: asan-32-bits
+
 
 #include <cassert>
 #include <stdio.h>
@@ -22,8 +22,13 @@ int main(int argc, char **argv) {
   assert(region_w_hooks != nullptr);
   assert(0 != FreeLibrary(lib));
 
-  fprintf(stderr, "WITHOUT:0x%08x\n", (unsigned int)region_without_hooks);
-  fprintf(stderr, "WITH:0x%08x\n", (unsigned int)region_w_hooks);
+#if defined(_M_AMD64)
+#define WIDTH_STRING "%zx"
+#elif defined(_M_IX86)
+#define WIDTH_STRING "%08zx"
+#endif
+  fprintf(stderr, "WITHOUT:0x" WIDTH_STRING "\n", (size_t) region_without_hooks);
+  fprintf(stderr, "WITH:0x" WIDTH_STRING "\n", (size_t) region_w_hooks);
 
   assert(0 != HeapFree(GetProcessHeap(), 0, region_without_hooks));
   assert(0 != HeapFree(GetProcessHeap(), 0, region_w_hooks));

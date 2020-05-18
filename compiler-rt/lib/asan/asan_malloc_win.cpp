@@ -569,6 +569,17 @@ constexpr unsigned long SHARED_ALLOC_SUPPORTED_FLAGS = (FIXED | ZEROINIT);
 constexpr unsigned long SHARED_ALLOC_UNSUPPORTED_FLAGS =
     (~SHARED_ALLOC_SUPPORTED_FLAGS);
 
+namespace __asan {
+  //forward declaring a few items for the shared versions of some of these Global/Local interceptors.
+using GlobalLocalAlloc = HANDLE(WINAPI *)(UINT, SIZE_T);
+using GlobalLocalRealloc = HANDLE(WINAPI *)(HANDLE, SIZE_T, UINT);
+using GlobalLocalSize = SIZE_T(WINAPI *)(HANDLE);
+using GlobalLocalFree = HANDLE(WINAPI *)(HANDLE);
+using GlobalLocalLock = LPVOID(WINAPI *)(HANDLE);
+using GlobalLocalUnlock = LPVOID(WINAPI *)(HANDLE);
+HANDLE GlobalLocalGenericFree(GlobalLocalUnlock lockFunction, GlobalLocalFree freeFunction, HANDLE hMem);
+}
+
 INTERCEPTOR_WINAPI(HGLOBAL, GlobalAlloc, UINT uFlags, SIZE_T dwBytes) {
   // If we encounter an unsupported flag, then we fall
   // back to the original allocator.
@@ -584,14 +595,10 @@ INTERCEPTOR_WINAPI(HGLOBAL, GlobalAlloc, UINT uFlags, SIZE_T dwBytes) {
 }
 
 INTERCEPTOR_WINAPI(HGLOBAL, GlobalFree, HGLOBAL hMem) {
-  // If the memory we are trying to free is not owned
-  // by ASan heap, then fall back to the original GlobalFree.
-  if (OWNED_BY_RTL(GetProcessHeap(), hMem)) {
-    return REAL(GlobalFree)(hMem);
-  }
-  GET_STACK_TRACE_FREE;
-  asan_free(hMem, &stack, FROM_MALLOC);
-  return nullptr;
+  return GlobalLocalGenericFree(
+                              GlobalLock, 
+                              REAL(GlobalFree), 
+                              hMem);
 }
 
 INTERCEPTOR_WINAPI(SIZE_T, GlobalSize, HGLOBAL hMem) {
@@ -608,12 +615,6 @@ INTERCEPTOR_WINAPI(SIZE_T, GlobalSize, HGLOBAL hMem) {
 }
 
 namespace __asan {
-using GlobalLocalAlloc = HANDLE(WINAPI *)(UINT, SIZE_T);
-using GlobalLocalRealloc = HANDLE(WINAPI *)(HANDLE, SIZE_T, UINT);
-using GlobalLocalSize = SIZE_T(WINAPI *)(HANDLE);
-using GlobalLocalFree = HANDLE(WINAPI *)(HANDLE);
-using GlobalLocalLock = LPVOID(WINAPI *)(HANDLE);
-using GlobalLocalUnlock = LPVOID(WINAPI *)(HANDLE);
 
 enum class AllocationOwnership {
   OWNED_BY_UNKNOWN,
@@ -622,6 +623,28 @@ enum class AllocationOwnership {
   OWNED_BY_GLOBAL_OR_LOCAL,
   OWNED_BY_GLOBAL_OR_LOCAL_HANDLE,
 };
+
+HANDLE GlobalLocalGenericFree(GlobalLocalUnlock lockFunction, GlobalLocalFree freeFunction, HANDLE hMem) {
+// If the memory we are trying to free is not owned
+  // by ASan heap, then fall back to the original GlobalFree.
+  if (!__sanitizer_get_ownership(hMem)) {
+    HGLOBAL pointer = lockFunction(hMem);
+    if (pointer != nullptr) {
+      //This was either a handle, or it was a pointer to begin with.
+      // Either way, we can HeapValidate now.
+       if (HeapValidate(GetProcessHeap(), 0, pointer)) {
+        return freeFunction(hMem);
+      }
+    }
+  }
+  // Now we're either 
+  // a) an asan-owned pointer
+  // b) an invalid pointer which asan needs to report on.
+ 
+  GET_STACK_TRACE_FREE;
+  asan_free(hMem, &stack, FROM_MALLOC);
+  return nullptr;
+}
 
 void *RtlToAsan(void *mPtr, size_t old_size, size_t dwBytes,
                 GlobalLocalFree freeFunc, BufferedStackTrace *stack) {
@@ -807,13 +830,7 @@ INTERCEPTOR_WINAPI(HLOCAL, LocalAlloc, UINT uFlags, SIZE_T uBytes) {
 INTERCEPTOR_WINAPI(HLOCAL, LocalFree, HGLOBAL hMem) {
   // If the memory we are trying to free is not owned
   // ASan heap, then fall back to the original LocalFree.
-  if (OWNED_BY_RTL(GetProcessHeap(), hMem)) {
-    return REAL(LocalFree)(hMem);
-  }
-
-  GET_STACK_TRACE_FREE;
-  asan_free(hMem, &stack, FROM_MALLOC);
-  return nullptr;
+  return GlobalLocalGenericFree(LocalLock, REAL(LocalFree), hMem);
 }
 
 INTERCEPTOR_WINAPI(SIZE_T, LocalSize, HGLOBAL hMem) {

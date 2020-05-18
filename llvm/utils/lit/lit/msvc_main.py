@@ -23,8 +23,6 @@ import lit.discovery
 import lit.TestRunner
 import threading
 
-SUPPORTED_DB_ENGINES = ['postgres', 'sqlite3','pyodbc']
-
 class TestingProgressDisplay(object):
     def __init__(self, opts, numTests, progressBar=None):
         self.opts = opts
@@ -96,6 +94,8 @@ class TestingProgressDisplay(object):
 
         # Ensure the output is flushed.
         sys.stdout.flush()
+def slashsan(stri):
+    return stri.replace("\\","\\\\")
 
 print """
     Run LLVM/Clang/ASAN unit tests on MSVC/ASAN
@@ -137,9 +137,6 @@ parser.add_argument("-D", "--param", dest="userParameters",
                     metavar="NAME=VAL",
                     help="Add 'NAME' = 'VAL' to the user defined parameters",
                     type=str, action="append", default=[])
-parser.add_argument("-d", "--database", dest="dbengine",
-                    help="Choose the database engine. Accepted values are:" + ','.join(SUPPORTED_DB_ENGINES),
-                    type=str, default="postgres")
 parser.add_argument("--use-debug-runtimes", dest="debug_runtimes",
                     help="Enable MTd and MDd runtimes for tests",
                     action="store_true", default=False)
@@ -208,6 +205,9 @@ execution_group.add_argument("--timeout", dest="maxIndividualTestTime",
 execution_group.add_argument("--max-failures", dest="maxFailures",
                     help="Stop execution after the given number of failures.",
                     action="store", type=int, default=None)
+execution_group.add_argument("--test-target-arch", dest="testTargetArch",
+    help="Select runtime library extension (i386,amd64,etc)",
+    action="store", type=str, default="i386")
 
 selection_group = parser.add_argument_group("Test Selection")
 selection_group.add_argument("--max-tests", dest="maxTests", metavar="N",
@@ -263,10 +263,6 @@ debug_group.add_argument("--print-env", dest="print_env",
                     help="print the environment",
                     action="store_true", default=False)
 
-debug_group.add_argument("--write-sql-results", dest="write_sql_results",
-                    help="write_sql_results to sqlite_database",
-                    action="store_true", default=False)
-
 debug_group.add_argument("--disable-optimizations", dest="disable_opt",
                     help="disable optimization",
                     action="store_true", default=False)
@@ -292,19 +288,16 @@ if opts.maxFailures == 0:
 if opts.echoAllCommands:
     opts.showOutput = True
 
-if opts.dbengine not in SUPPORTED_DB_ENGINES:
-    parser.error('Unsupported DB engine. Should be one of: ' + ','.join(SUPPORTED_DB_ENGINES) + ' got ' + opts.dbengine)
-
 inputs = args
 
-MT_VERSION = None
-MD_VERSION = None
+STATIC_RT_FLAG = None
+DYNAMIC_RT_FLAG = None
 if opts.debug_runtimes:
-    MT_VERSION = " /MTd "
-    MD_VERSION = " /MDd "
+    STATIC_RT_FLAG = " /MTd "
+    DYNAMIC_RT_FLAG = " /MDd "
 else:
-    MT_VERSION = " /MT "
-    MD_VERSION = " /MD "
+    STATIC_RT_FLAG = " /MT "
+    DYNAMIC_RT_FLAG = " /MD "
 
 # Decide what the requested maximum indvidual test time should be
 if opts.maxIndividualTestTime is not None:
@@ -350,24 +343,36 @@ litConfig.compiler_rt_libdir = litConfig.environment['ASAN_RT_LIB_DIR']
 litConfig.compiler_rt_src_root = litConfig.environment['ASAN_RT_SRC_ROOT']
 litConfig.python_executable = "c:\python27\python.exe"
 litConfig.android = False
-litConfig.bits = "32"
+litConfig.pipefail = True
+litConfig.bashPath = ""
+
+arch_specific_features = []
+if opts.testTargetArch == "x86_64":
+    litConfig.bits = "64"
+    arch_specific_features = ['asan-64-bits', 'x86_64-target-arch']
+elif opts.testTargetArch == "i386":
+    litConfig.bits = "32"
+    arch_specific_features =  ['asan-32-bits', 'x86-target-arch']
+else:
+    assert 0 and "Error: unsupported ASan runtime architecture."
 
 if opts.force_dynamic:
-     litConfig.available_features = [\
-    'clang-dynamic-runtime', 'asan-32-bits',\
-    'asan-dynamic-runtime','lld-available','stable-runtime','x86-target-arch',
-    "shadow-scale-3", "msvc-host", "win32",'win32-dynamic-asan', 'windows-msvc']
+     litConfig.available_features = [ 'clang-dynamic-runtime',
+    'asan-dynamic-runtime','stable-runtime',
+    "shadow-scale-3", "msvc-host", "win32", 'windows-msvc','win32-dynamic-asan']
 else:
-    litConfig.available_features = ["clang-static-runtime",
-    'asan-32-bits', 'asan-static-runtime',
-    'lld-available','stable-runtime','x86-target-arch',
+    litConfig.available_features = ['clang-static-runtime', 'asan-static-runtime','stable-runtime',
     "shadow-scale-3", "msvc-host", "win32" , "windows-msvc" ]
+
+litConfig.available_features += arch_specific_features
 
 litConfig.limit_to_features = False
 litConfig.unsupported = False
 default_flags = " /EHs  /DMSVC /D_WIN32 /Zi "
 selected_runtime = None
-test_target_arch = "i386"
+test_target_arch = opts.testTargetArch
+
+#setup arch specific lib names for reference later
 if opts.debug_runtimes:
     dynamic_import_lib = "clang_rt.asan_dbg_dynamic-" + test_target_arch + ".lib"
     static_lib = "clang_rt.asan_dbg-" + test_target_arch + ".lib"
@@ -377,7 +382,6 @@ if opts.debug_runtimes:
     dll_thunk_lib = "clang_rt.asan_dbg_dll_thunk-" + test_target_arch + ".lib"
     fuzzer_no_main_lib = "clang_rt.fuzzer_no_main-" + test_target_arch + ".lib"
     profile_lib = "clang_rt.profile-" + test_target_arch + ".lib"
-
 else:
     dynamic_import_lib = "clang_rt.asan_dynamic-" + test_target_arch + ".lib"
     static_lib = "clang_rt.asan-" + test_target_arch + ".lib"
@@ -388,26 +392,32 @@ else:
     fuzzer_no_main_lib = "clang_rt.fuzzer_no_main-" + test_target_arch + ".lib"
     profile_lib = "clang_rt.profile-" + test_target_arch + ".lib"
 
+#create some short hand names for libs packages that we'll link to most exes later
 link_these_libs = litConfig.compiler_rt_libdir + "\\" + static_lib + " " + litConfig.compiler_rt_libdir + "\\" + static_cxx_lib+" "
+
 if opts.force_dynamic:
     link_these_libs = litConfig.compiler_rt_libdir + "\\" + dynamic_import_lib
     litConfig.environment['_LINK_'] ="/debug /wholearchive:" + litConfig.compiler_rt_libdir + "\\" + dynamic_import_lib + "  /wholearchive:"+litConfig.compiler_rt_libdir+"\\" + dynamic_runtime_thunk + " /incremental:no "
-    litConfig.environment['_CL_'] = MD_VERSION + " /Od "
-    selected_runtime = MD_VERSION
+    litConfig.environment['_CL_'] = DYNAMIC_RT_FLAG + " /Od "
+    selected_runtime = DYNAMIC_RT_FLAG
     default_flags += " /Od "
-    default_flags += MD_VERSION
+    default_flags += DYNAMIC_RT_FLAG
 else:
     link_these_libs = litConfig.compiler_rt_libdir + "\\" + static_lib + " "
     litConfig.environment['_LINK_'] ="/debug /wholearchive:" + litConfig.compiler_rt_libdir + "\\" + static_lib + " /wholearchive:" + litConfig.compiler_rt_libdir + "\\" +static_cxx_lib + " /incremental:no  "
-    litConfig.environment['_CL_'] = MT_VERSION
-    selected_runtime = MT_VERSION
-    default_flags += MT_VERSION
+    litConfig.environment['_CL_'] = STATIC_RT_FLAG
+    selected_runtime = STATIC_RT_FLAG
+    default_flags += STATIC_RT_FLAG
 
-
+#create some tuples to stick into the subsitutions set later.
 full_cxx_asan_sub =  ("%clangxx_asan", litConfig.clang +  default_flags + " /fsanitize=address " + link_these_libs )
 truncated_cxx_asan_sub = ("%clangxx_asan", litConfig.clang +  default_flags + " /fsanitize=address " )
 truncated_cl_asan_sub = ("%clang_cl_asan", litConfig.clang + default_flags + " /fsanitize=address " )
 full_cl_asan_sub = ("%clang_cl_asan", litConfig.clang + default_flags + " /fsanitize=address " +  litConfig.compiler_rt_libdir + "\\" + static_lib + " " +  litConfig.compiler_rt_libdir + "\\"+ static_cxx_lib + "")
+subsitute_obj = lit.TestingConfig.SubstituteCaptures("/Fe:%t\g<1>")
+object_substitute_tuple = ("-o %t( |)",subsitute_obj)
+
+#set of optimization substitutions
 optimization_subs = {
        ("-O0", "/Od"),
         ("/O0", "/Od"),
@@ -428,8 +438,9 @@ if opts.disable_opt:
         (" -O ", " /Od "),
     }
 
-subsitute_obj = lit.TestingConfig.SubstituteCaptures("/Fe:%t\g<1>")
-
+#general set of substitutions for Lit to use when processing compile/run lines.
+# these are a base that will be modified later for some sets of tests,
+# some for individual tests, too
 litConfig.substitutions = {
                             ("-fsanitize-coverage=func ", lit.TestingConfig.SubstituteCaptures("/d2Sancov " )),
                             ("%sancov", "sancov.exe"),
@@ -438,20 +449,18 @@ litConfig.substitutions = {
                             ("%clang_asan", litConfig.clang +  default_flags + " /fsanitize=address "),
                             ("%clang_cl ", litConfig.clang + default_flags),
                             ("%clang ", litConfig.clang + default_flags),
-                            ("%asan_dll_thunk_lib", litConfig.compiler_rt_libdir + "\\" + dynamic_runtime_thunk + " "),
                             ("%asan_dll_lib", litConfig.compiler_rt_libdir + "\\" + dynamic_import_lib + " "),
                             ("%asan_dll ", litConfig.compiler_rt_libdir + "\\" + dynamic_runtime_dll + " "),
                             ("(%env_asan_opts=)(([a-zA-Z0-9_]+=(?:[0-9]{1,4}|true|[a-zA-Z]{1,6}|false|\'\"[%\/a-zA-Z0-9\\\-_:=\. ]{1,50}\"\')[:  ]?){1,5})", lit.TestingConfig.SubstituteCaptures("cmd /v /c \"set ASAN_OPTIONS=\g<2> && ") ),
                             ("-Fe","/Fe:"),
                             ("-o %t.obj","/Fo:%t.obj"),
-                            ("-o %t( |)",subsitute_obj),
                             ("%run"," cmd /c "),
                             ("-fomit-frame-pointer","/Oy"),
                             ("-fstack-protector"," /GS "),
                             ("%stdcxx11","/std:c++14"), # Apparently we don't have a c++11 flag :(
                             ("-std=","/std:"),
                             ("%clang_cfi", litConfig.clang + " /guard:cf "),
-                            ("%asan_dll_thunk", litConfig.compiler_rt_libdir + "\\" + dynamic_runtime_thunk + " "),
+                            ("%asan_dll_thunk", litConfig.compiler_rt_libdir + "\\" + dll_thunk_lib + " "),
                             ("-link","/link /incremental:no"),
                             ("sed ",litConfig.environment["UNIX_BIN_DIR"]+"\\sed.exe "),
                             ("mv ",litConfig.environment["UNIX_BIN_DIR"]+"\\mv.exe "),
@@ -476,11 +485,15 @@ litConfig.substitutions = {
                             ("-Wno-fortify-source", " "),
                             ("-Wl,-debug"," ")
                             }
+
+if opts.force_dynamic:
+    litConfig.substitutions |= {
+        ("%asan_dll_thunk_lib", slashsan(litConfig.compiler_rt_libdir) + "\\" + dynamic_runtime_thunk + " " + slashsan(litConfig.compiler_rt_libdir)+ "\\" + dynamic_import_lib)
+    }
 litConfig.substitutions |= optimization_subs
 litConfig.environment["INCLUDE"] = litConfig.environment["INCLUDE"] + litConfig.compiler_rt_src_root + "\\include" + ";" + litConfig.compiler_rt_src_root + "\\test\\asan\\TestCases" + ";"
 litConfig.environment["PATH"] += ";" + litConfig.environment["ASAN_RT_BIN_DIR"] +";"+ litConfig.environment["ASAN_RT_LIB_DIR"] + ";"
-litConfig.pipefail = True
-litConfig.bashPath = ""
+
 #print litConfig.getToolsPath(opts.path[0],"",["cl.exe"])
 if opts.debug_runtimes:
     litConfig.substitutions |= {("[\/\-](MT|MD)(?!d)", lit.TestingConfig.SubstituteCaptures("/\g<1>d"))}
@@ -490,30 +503,19 @@ else:
     litConfig.available_features.append("non-debug-crt")
 suite = lit.Test.TestSuite("msvc",sys.argv[1], litConfig.environment['TEST_OUTPUT_DIR'], litConfig)
 
+
+# grab the list of test source files in the directory we've selected
 files = os.listdir(suite.source_root)
+cc_files = filter(lambda x: ".c" in x[-2:] or ".cpp" in x[-4:], files) 
 
-cc_files = filter(lambda x: ".c" in x[-4:] and ".cfg" not in x[-4:], files)
-
-#print cc_files
+#set up some blank lists and dicts for use later.
 tests_to_run = []
 results = {}
-
-
-def slashsan(stri):
-    return stri.replace("\\","\\\\")
-
 xfails = dict()
 
-def RunTest(tester,testObj):
-    _name, _test, _config = testObj
-    #print _config.environment['PATH']
-    result = tester.executeShTest(_test,_config,True)
-    _test.setResult(result)
-    results[_name] = result
-
-
-
 for cc_file in cc_files:
+    # we're making a copy of each config and environment since we're
+    # passing a copy to each thread we start.
     __litConfig = copy.deepcopy(litConfig)
     saved_subs = set([ copy.deepcopy(i) for i in copy.deepcopy(litConfig.substitutions) ])
     saved_env =  copy.deepcopy(litConfig.environment)
@@ -521,7 +523,9 @@ for cc_file in cc_files:
         saved_env[key] = copy.deepcopy(litConfig.environment[key])
     __litConfig.substitutions = saved_subs
     __litConfig.environment = saved_env
-    test = lit.Test.Test(suite,[ cc_file],__litConfig)
+
+    # start with a default test object, this may be re-created later.
+    #test = lit.Test.Test(suite,[ cc_file],__litConfig)
 
     if opts.runTest == "" or opts.runTest in cc_file:
         if ".cpp" not in cc_file:
@@ -547,7 +551,7 @@ for cc_file in cc_files:
             heap_alloc_replace = slashsan(__litConfig.clang) + default_flags + " \g<1>.lib \g<2>/Fe\g<3> -MT"
             __litConfig.substitutions.add((heap_alloc_capture, lit.TestingConfig.SubstituteCaptures(heap_alloc_replace)))
             dll_large_func_capture = "%clang_cl_asan (.*).obj"
-            dll_large_func_replace = slashsan(__litConfig.clang) + default_flags + " /fsanitize=address \g<1>.obj"
+            dll_large_func_replace = slashsan(__litConfig.clang) + default_flags + " /fsanitize=address \g<1>.obj " + __litConfig.compiler_rt_libdir.replace("\\","\\\\") +  "\\" + static_lib + " " + __litConfig.compiler_rt_libdir.replace("\\","\\\\") +  "\\" + static_cxx_lib + " "
             __litConfig.substitutions.add((dll_large_func_capture, lit.TestingConfig.SubstituteCaptures(dll_large_func_replace)))
 
             if "dll_null_deref" in cc_file:
@@ -579,7 +583,6 @@ for cc_file in cc_files:
             __litConfig.environment["_LINK_"] = " "
             __litConfig.substitutions -= {
                 ("-O2","/O2i-"),
-                ("-o %t( |)",subsitute_obj),
             }
             __litConfig.substitutions |= {
                 ("-o %t.obj","/Fo:%t.obj"),
@@ -589,6 +592,7 @@ for cc_file in cc_files:
             }
         else:
             __litConfig.substitutions |= {
+                object_substitute_tuple,
                 ("%asan_lib", __litConfig.compiler_rt_libdir + "\\" + static_lib + ""),
                 ("%asan_cxx_lib", __litConfig.compiler_rt_libdir + "\\" + static_cxx_lib + ""),
             }
@@ -633,7 +637,7 @@ for cc_file in cc_files:
 
         __litConfig.environment['_CL_'] += " /Fd" + cc_file + ".pdb " + selected_runtime + " "
         __litConfig.environment['_LINK_'] += " /force:multiple "
-        __suite = lit.Test.TestSuite("msvc",sys.argv[1], os.path.join(litConfig.environment['TEST_OUTPUT_DIR'],cc_file.replace(".","")), __litConfig)
+        __suite = lit.Test.TestSuite("msvc",sys.argv[1], os.path.join(litConfig.environment['TEST_OUTPUT_DIR'],cc_file.replace(".","")+opts.testTargetArch), __litConfig)
         litConfig.substitutions = sorted(litConfig.substitutions)[::-1]
         __test = lit.Test.Test(__suite,[ cc_file],__litConfig)
         print "found test %s"%(cc_file)
@@ -661,6 +665,15 @@ for cc_file in cc_files:
 
 threads = []
 run_single_tests = []
+
+# thread function to kick off an individual test
+def RunTest(tester,testObj):
+    _name, _test, _config = testObj
+    #print _config.environment['PATH']
+    result = tester.executeShTest(_test,_config,True)
+    _test.setResult(result)
+    results[_name] = result
+
 for testObj in tests_to_run:
     t = threading.Thread(target=RunTest, args=(lit.TestRunner, testObj,))
     t.setName(testObj[0])
@@ -742,7 +755,6 @@ for result in sorted(results.keys()):
         xpasses.append(result)
         print result
 
-
 print "Expected Failures ================================================================="
 
 for result in sorted(results.keys()):
@@ -751,17 +763,6 @@ for result in sorted(results.keys()):
     if robj.code == lit.Test.XFAIL:
         xfailed += 1
         xfails.append(result)
-        print result
-
-
-print "Unexpected Failures ================================================================="
-
-count = 0
-for result in sorted(results.keys()):
-    robj = results[result]
-    if robj.code == lit.Test.FAIL:
-        failed += 1
-        fails.append(result)
         print result
 
 print "Unexpected Passes ================================================================="
@@ -773,53 +774,20 @@ for result in sorted(results.keys()):
         passes.append(result)
         print result
 
+print "Unexpected Failures ================================================================="
 
+count = 0
+for result in sorted(results.keys()):
+    robj = results[result]
+    if robj.code == lit.Test.FAIL:
+        failed += 1
+        fails.append(result)
+        print result
 
 print "passed %d out of %d tests"%(xpassed + xfailed ,xpassed+xfailed+passed+failed)
 
 retcode = 1
 if xpassed+xfailed  == xpassed+xfailed+passed+failed:
     retcode = 0
-
-if opts.write_sql_results:
-    import os
-    if opts.dbengine == 'postgres':
-        import psycopg2 as dbengine
-    elif opts.dbengine == 'sqlite3':
-        import sqlite3 as dbengine
-    elif opts.dbengine == 'pyodbc':
-        import pyodbc as dbengine
-    else:
-        print "Unexpected DB engine %s" % opts.dbengine
-        exit(-1)
-
-
-
-    conn = None
-    if opts.dbengine != 'pyodbc':
-        if not os.environ.get("SQL_TABLE_PATH") or not os.environ.get("SQL_TABLE_NAME"):
-            print "Must set the environment variables SQL_TABLE_PATH and SQL_TABLE_NAME"
-            exit(-1)
-        conn = dbengine.connect(os.environ["SQL_TABLE_PATH"])
-    else:
-        if not os.environ.get("GTDB_SECRET") and os.environ.get("SQL_TABLE_NAME"):
-            print "Must set the environment variables GTDB_SECRET and SQL_TABLE_NAME"
-            exit(-1)
-        conn = dbengine.connect("Driver={ODBC Driver 17 for SQL Server};Server=tcp:asan.database.windows.net,1433;Database=asantests;Uid=greenteam@asan;Pwd="+os.environ["GTDB_SECRET"]+";Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;")
-    c = conn.cursor()
-
-    # Insert a row of data
-    try:
-            c.execute("INSERT INTO %s VALUES ( SYSDATETIME() , ?,?,?,?,?,?,?,?)"%os.environ["SQL_TABLE_NAME"], (xpassed,xfailed,passed,failed,",".join(xpasses),",".join(xfails),",".join(passes),",".join(fails)))
-    except dbengine.ProgrammingError as err:
-            c.execute('''CREATE TABLE %s (date DATETIME, expected_pass INTEGER, expected_fail INTEGER, unexpected_pass INTEGER, unexpected_fail INTEGER, xpasses text, xfails text, passes text, fails text)'''%os.environ["SQL_TABLE_NAME"])
-            c.execute("INSERT INTO %s VALUES ( SYSDATETIME() , ?,?,?,?,?,?,?,?)"%os.environ["SQL_TABLE_NAME"], (xpassed,xfailed,passed,failed,",".join(xpasses),",".join(xfails),",".join(passes),",".join(fails)))
-
-
-    # Save (commit) the changes
-    conn.commit()
-    # We can also close the connection if we are done with it.
-    # Just be sure any changes have been committed or they will be lost.
-    conn.close()
 
 sys.exit( retcode )
