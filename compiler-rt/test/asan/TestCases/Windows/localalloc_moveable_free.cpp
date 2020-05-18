@@ -16,7 +16,7 @@ int main(){
         return -1;
     }
     fprintf(stderr,"Passed\n");
-    return 0; 
+    return 1; 
 }
 // CHECK-NOT: AddressSanitizer
 // CHECK-NOT: Failure!
