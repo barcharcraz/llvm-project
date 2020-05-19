@@ -31,7 +31,8 @@ BOOL WINAPI DllMain(HMODULE, DWORD reason, LPVOID) {
 
 // CHECK: in DLL(reason=1)
 // CHECK: in DLL(reason=0)
-// CHECK: AddressSanitizer: attempting double-free
+// CHECK: AddressSanitizer: {{(attempting double-free|nested bug in the same thread, aborting.)}}
+
 
 #else
 #error oops!
