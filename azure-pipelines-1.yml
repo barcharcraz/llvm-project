@@ -100,7 +100,7 @@ jobs:
         set LIB=$(System.ArtifactsDirectory)\$(LlvmArtifactID)\lib\windows\$(MsvcTargetArch);%LIB%;
         set INCLUDE=%INCLUDE%;$(Build.SourcesDirectory)\compiler-rt\include;$(Build.SourcesDirectory)\compiler-rt\test\asan\TestCases\defines.h
         pushd $(Build.SourcesDirectory)\llvm\utils\lit\lit
-        c:\python27\python.exe $(Build.SourcesDirectory)\llvm\utils\lit\lit\msvc_main.py $(Build.SourcesDirectory)\compiler-rt\test\asan\TestCases\Windows $(MsvcTargetArch) --write-sql-results -d pyodbc  2>&1
+        c:\python27\python.exe $(Build.SourcesDirectory)\llvm\utils\lit\lit\msvc_main.py $(Build.SourcesDirectory)\compiler-rt\test\asan\TestCases\Windows $(MsvcTargetArch) --write-sql-results   2>&1
         popd
       displayName: 'Run Windows specific tests default'
       env:
@@ -116,7 +116,7 @@ jobs:
         set LIB=$(System.ArtifactsDirectory)\$(LlvmArtifactID)\lib\windows\$(MsvcTargetArch);%LIB%;
         set INCLUDE=%INCLUDE%;$(Build.SourcesDirectory)\compiler-rt\include;$(Build.SourcesDirectory)\compiler-rt\test\asan\TestCases\defines.h
         pushd $(Build.SourcesDirectory)\llvm\utils\lit\lit
-        c:\python27\python.exe $(Build.SourcesDirectory)\llvm\utils\lit\lit\msvc_main.py $(Build.SourcesDirectory)\compiler-rt\test\asan\TestCases\Windows $(MsvcTargetArch) --force-dynamic --write-sql-results -d pyodbc 2>&1
+        c:\python27\python.exe $(Build.SourcesDirectory)\llvm\utils\lit\lit\msvc_main.py $(Build.SourcesDirectory)\compiler-rt\test\asan\TestCases\Windows $(MsvcTargetArch) --force-dynamic --write-sql-results  2>&1
         popd
 
       displayName: 'Run Windows specific tests dynamic'
@@ -132,7 +132,7 @@ jobs:
         set LIB=$(System.ArtifactsDirectory)\$(LlvmArtifactID)\lib\windows\$(MsvcTargetArch);%LIB%;
         set INCLUDE=%INCLUDE%;$(Build.SourcesDirectory)\compiler-rt\include;$(Build.SourcesDirectory)\compiler-rt\test\asan\TestCases\defines.h
         pushd $(Build.SourcesDirectory)\llvm\utils\lit\lit
-        c:\python27\python.exe $(Build.SourcesDirectory)\llvm\utils\lit\lit\msvc_main.py $(Build.SourcesDirectory)\compiler-rt\test\asan\TestCases $(MsvcTargetArch) --write-sql-results -d pyodbc 2>&1
+        c:\python27\python.exe $(Build.SourcesDirectory)\llvm\utils\lit\lit\msvc_main.py $(Build.SourcesDirectory)\compiler-rt\test\asan\TestCases $(MsvcTargetArch) --write-sql-results  2>&1
         popd
       displayName: 'Run asan tests static'
       env:
@@ -147,7 +147,7 @@ jobs:
         set LIB=$(System.ArtifactsDirectory)\$(LlvmArtifactID)\lib\windows\$(MsvcTargetArch);%LIB%;
         set INCLUDE=%INCLUDE%;$(Build.SourcesDirectory)\compiler-rt\include;$(Build.SourcesDirectory)\compiler-rt\test\asan\TestCases\defines.h
         pushd $(Build.SourcesDirectory)\llvm\utils\lit\lit
-        c:\python27\python.exe $(Build.SourcesDirectory)\llvm\utils\lit\lit\msvc_main.py $(Build.SourcesDirectory)\compiler-rt\test\asan\TestCases $(MsvcTargetArch) --write-sql-results -d pyodbc --force-dynamic 2>&1
+        c:\python27\python.exe $(Build.SourcesDirectory)\llvm\utils\lit\lit\msvc_main.py $(Build.SourcesDirectory)\compiler-rt\test\asan\TestCases $(MsvcTargetArch) --write-sql-results  --force-dynamic 2>&1
         popd
       displayName: 'Run asan tests dynamic'
       env:
