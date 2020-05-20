@@ -584,12 +584,18 @@ for cc_file in cc_files:
             __litConfig.substitutions -= {
                 ("-O2","/O2i-"),
             }
-            __litConfig.substitutions |= {
-                ("-o %t.obj","/Fo:%t.obj"),
-                ("%asan_lib", "/wholearchive:" + __litConfig.compiler_rt_libdir + "\\" + static_lib + ""),
-                ("%asan_cxx_lib", "/wholearchive:" + __litConfig.compiler_rt_libdir + "\\" + static_cxx_lib + ""),
-            ("-O2","/Od")
-            }
+            if opts.force_dynamic:
+                __litConfig.substitutions |= {
+                    ("-o %t.obj","/Fo:%t.obj"),
+                    ("%asan_lib", "/wholearchive:" + __litConfig.compiler_rt_libdir + "\\" + dynamic_import_lib + ""),
+                    ("%asan_cxx_lib", "/wholearchive:" + __litConfig.compiler_rt_libdir + "\\" + dynamic_runtime_thunk + "")
+                }
+            else:
+                __litConfig.substitutions |= {
+                    ("-o %t.obj","/Fo:%t.obj"),
+                    ("%asan_lib", "/wholearchive:" + __litConfig.compiler_rt_libdir + "\\" + static_lib + ""),
+                    ("%asan_cxx_lib", "/wholearchive:" + __litConfig.compiler_rt_libdir + "\\" + static_cxx_lib + "")
+                }
         else:
             __litConfig.substitutions |= {
                 object_substitute_tuple,
