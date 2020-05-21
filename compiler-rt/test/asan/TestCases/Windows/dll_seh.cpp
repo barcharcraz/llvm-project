@@ -6,7 +6,7 @@
 //
 // RUN: %clang_cl_asan -GS- -LD -Od %s -Fe%t.dll
 // RUN: %run %t %t.dll
-
+// XFAIL: msvc-host && asan-dynamic-runtime
 #include <windows.h>
 #include <assert.h>
 #include <stdio.h>

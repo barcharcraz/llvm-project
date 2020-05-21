@@ -368,7 +368,7 @@ litConfig.available_features += arch_specific_features
 
 litConfig.limit_to_features = False
 litConfig.unsupported = False
-default_flags = " /EHs  /DMSVC /D_WIN32 /Zi "
+default_flags = " /EHs  /DMSVC /D_WIN32 /Zi /GS- "
 selected_runtime = None
 test_target_arch = opts.testTargetArch
 
@@ -604,7 +604,10 @@ for cc_file in cc_files:
             }
         if "seh.cpp" in cc_file:
             __litConfig.environment["_CL_"] = __litConfig.environment["_CL_"].replace("/EHs", "/EHa")
-            __litConfig.substitutions.add(("/EHs","/EHa"))
+            __litConfig.substitutions |= {
+                ("/EHs","/EHa"),
+                ("/GS ", " /GS- ")
+            }
 
 
 
