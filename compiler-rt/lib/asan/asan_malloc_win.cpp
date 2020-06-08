@@ -214,7 +214,7 @@ void *_recalloc_dbg(void *userData, size_t num, size_t size, int, const char *,
 ALLOCATION_FUNCTION_ATTRIBUTE void *_aligned_malloc(size_t size,
                                                     size_t alignment) {
   GET_STACK_TRACE_MALLOC;
-  return asan_aligned_alloc(alignment, size, &stack);
+  return asan_memalign(alignment, size, &stack, FROM_MALLOC);
 }
 
 ALLOCATION_FUNCTION_ATTRIBUTE void _aligned_free(void *memblock) {
@@ -242,7 +242,7 @@ ALLOCATION_FUNCTION_ATTRIBUTE void *_aligned_realloc(void *memblock,
     return nullptr;
   }
 
-  void *new_ptr = asan_aligned_alloc(alignment, size, &stack);
+  void *new_ptr = asan_memalign(alignment, size, &stack, FROM_MALLOC);
   if (new_ptr && memblock) {
     GET_CURRENT_PC_BP;
     size_t aligned_size = asan_malloc_usable_size(memblock, pc, bp);
