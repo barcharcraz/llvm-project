@@ -130,6 +130,8 @@
 #include "sanitizer_common/sanitizer_platform.h"
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include "sanitizer_common/sanitizer_libc.h"
+
 
 namespace __interception {
 
@@ -663,6 +665,28 @@ static size_t GetInstructionSize(uptr address, size_t* rel_offset = nullptr) {
   // interceptor or a new compiler version. In either case, they should result
   // in visible and readable error messages. However, merely calling abort()
   // leads to an infinite recursion in CheckFailed.
+  HANDLE console = GetStdHandle(STD_ERROR_HANDLE);
+  if (console != INVALID_HANDLE_VALUE) {
+    char* addr_cptr = (char*) address;
+    char OutputBuffer[0x200] = {0};
+    int formatted_length = internal_snprintf(OutputBuffer, 0x200,
+    "Warning: ASAN Interception failure! Function prologue follows:\n"
+                  "%hhx %hhx %hhx %hhx %hhx %hhx %hhx %hhx\n"
+                  "%hhx %hhx %hhx %hhx %hhx %hhx %hhx %hhx\n",
+                    addr_cptr[0],addr_cptr[1],addr_cptr[2],addr_cptr[3],
+                    addr_cptr[4],addr_cptr[5],addr_cptr[6],addr_cptr[7],
+                    addr_cptr[8],addr_cptr[9],addr_cptr[10],addr_cptr[11],
+                    addr_cptr[12],addr_cptr[13],addr_cptr[14],addr_cptr[15]
+    );
+
+    WriteConsole(
+      console,
+      OutputBuffer,
+      formatted_length,
+      nullptr,
+      nullptr
+    );
+  }
   InterceptionFailed();
   return 0;
 }
