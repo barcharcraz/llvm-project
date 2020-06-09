@@ -671,8 +671,8 @@ static size_t GetInstructionSize(uptr address, size_t* rel_offset = nullptr) {
     char OutputBuffer[0x200] = {0};
     int formatted_length = internal_snprintf(OutputBuffer, 0x200,
     "Warning: ASAN Interception failure! Function prologue follows:\n"
-                  "%hhx %hhx %hhx %hhx %hhx %hhx %hhx %hhx\n"
-                  "%hhx %hhx %hhx %hhx %hhx %hhx %hhx %hhx\n",
+                  "%02x %02x %02x %02x %02x %02x %02x %02x\n"
+                  "%02x %02x %02x %02x %02x %02x %02x %02x\n",
                     addr_cptr[0],addr_cptr[1],addr_cptr[2],addr_cptr[3],
                     addr_cptr[4],addr_cptr[5],addr_cptr[6],addr_cptr[7],
                     addr_cptr[8],addr_cptr[9],addr_cptr[10],addr_cptr[11],
