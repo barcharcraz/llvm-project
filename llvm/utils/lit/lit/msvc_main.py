@@ -451,10 +451,10 @@ litConfig.substitutions = {
                             ("%clang ", litConfig.clang + default_flags),
                             ("%asan_dll_lib", litConfig.compiler_rt_libdir + "\\" + dynamic_import_lib + " "),
                             ("%asan_dll ", litConfig.compiler_rt_libdir + "\\" + dynamic_runtime_dll + " "),
-                            ("(%env_asan_opts=)(([a-zA-Z0-9_]+=(?:[0-9]{1,4}|true|[a-zA-Z]{1,6}|false|\'\"[%\/a-zA-Z0-9\\\-_:=\. ]{1,50}\"\')[:  ]?){1,5})", lit.TestingConfig.SubstituteCaptures("cmd /v /c \"set ASAN_OPTIONS=\g<2> && ") ),
+                            ("%env_asan_opts=", "env ASAN_OPTIONS=" ),
                             ("-Fe","/Fe:"),
                             ("-o %t.obj","/Fo:%t.obj"),
-                            ("%run"," cmd /c "),
+                            ("%run"," cmd /v /c "),
                             ("-fomit-frame-pointer","/Oy"),
                             ("-fstack-protector"," /GS "),
                             ("%stdcxx11","/std:c++14"), # Apparently we don't have a c++11 flag :(
@@ -469,7 +469,6 @@ litConfig.substitutions = {
                             ("awk ", litConfig.environment["UNIX_BIN_DIR"]+"\\awk.exe "),
                             ("-LD","/LD"),
                             (" -D"," /D"),
-                            ("cmd /v /c (\"|)(.*)(\|)\"?", lit.TestingConfig.SubstituteCaptures("cmd /v /c \"\g<2> \" 2>&1 \g<3>")), ##relies on capture for env_asan_opts above
                             ("-x c "," /Tc%s "),
                             ("-x c\+\+ "," /Tp%s "),
                             ("-pie", ""),
