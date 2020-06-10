@@ -665,7 +665,7 @@ static size_t GetInstructionSize(uptr address, size_t* rel_offset = nullptr) {
   // in visible and readable error messages. However, merely calling abort()
   // leads to an infinite recursion in CheckFailed.
  
-
+  char* addr_cptr = (char*) address;
   printf(
   "Warning: ASAN Interception failure! Function prologue follows:\n"
                 "%x %x %x %x %x %x %x %x\n"
