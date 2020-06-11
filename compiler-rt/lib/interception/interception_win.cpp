@@ -542,11 +542,27 @@ static size_t GetInstructionSize(uptr address, size_t* rel_offset = nullptr) {
     case 0xc084:  // test al, al
     case 0x018a:  // mov al, byte ptr [rcx]
       return 2;
-
+    
+    case 0x7e80: // 80 7e YY XX  cmp BYTE PTR [rsi+YY], XX
+    case 0x7d80: // 80 7d YY XX  cmp BYTE PTR [rdx+YY], XX
+    case 0x7a80: // 80 7a YY XX  cmp BYTE PTR [rdx+YY], XX
+    case 0x7880: // 80 78 YY XX  cmp BYTE PTR [rax+YY], XX
+    case 0x7b80: // 80 7b YY XX  cmp BYTE PTR [rbx+YY], XX
+    case 0x7980: // 80 79 YY XX  cmp BYTE ptr [rcx+YY], XX
+      return 4;
+    
     case 0x058B:  // 8B 05 XX XX XX XX : mov eax, dword ptr [XX XX XX XX]
       if (rel_offset)
         *rel_offset = 2;
       return 6;
+    
+    case 0x7e81: // 81 7e YY XX XX XX XX  cmp DWORD PTR [rsi+YY], XX XX XX XX
+    case 0x7d81: // 81 7d YY XX XX XX XX  cmp DWORD PTR [rdx+YY], XX XX XX XX
+    case 0x7a81: // 81 7a YY XX XX XX XX  cmp DWORD PTR [rdx+YY], XX XX XX XX
+    case 0x7881: // 81 78 YY XX XX XX XX  cmp DWORD PTR [rax+YY], XX XX XX XX
+    case 0x7b81: // 81 78 YY XX XX XX XX  cmp DWORD PTR [rbx+YY], XX XX XX XX
+    case 0x7981: // 81 79 YY XX XX XX XX  cmp dword ptr [rcx+YY], XX XX XX XX
+      return 7; 
   }
 
   switch (0x00FFFFFF & *(u32*)address) {
@@ -584,9 +600,29 @@ static size_t GetInstructionSize(uptr address, size_t* rel_offset = nullptr) {
     case 0x245489:    // 89 54 24 XX : mov DWORD PTR[rsp + XX], edx
       return 4;
 
+    case 0x7e8166: // 66 81 7e YY XX XX  cmp WORD PTR [rsi+0xYY], XX XX
+    case 0x7f8166: // 66 81 7f YY XX XX  cmp WORD PTR [rdi+0xYY], XX XX
+    case 0x788166: // 66 81 78 YY XX XX  cmp WORD PTR [rax+0xYY], XX XX
+    case 0x7b8166: // 66 81 7b YY XX XX  cmp WORD PTR [rbx+0xYY], XX XX
+    case 0x798166: // 66 81 79 YY XX XX  cmp WORD PTR [rcx+0xYY], XX XX
+    case 0x7a8166: // 66 81 7a YY XX XX  cmp WORD PTR [rdx+0xYY], XX XX
+      return 6;
+
     case 0xec8148:    // 48 81 EC XX XX XX XX : sub rsp, XXXXXXXX
       return 7;
 
+    case 0x788141: // 41 81 78 YY XX XX XX XX cmp DWORD PTR [r8+YY], XX XX XX XX
+    case 0x798141: // r9
+    case 0x7a8141: //r10
+    case 0x7b8141: //r11
+    case 0x7c8141: //r12
+    case 0x7d8141: //r13
+    case 0x7e8141: //r14
+    case 0x7f8141: // 41 81 78 YY XX XX XX XX cmp DWORD P [r15+YY], XX XX XX XX
+    case 0x247c81: // 81 7c 24 YY XX XX XX XX cmp DWORD P [rsp+YY], XX XX XX XX
+      return 8;
+
+    
     case 0x058b48:    // 48 8b 05 XX XX XX XX :
                       //   mov rax, QWORD PTR [rip + XXXXXXXX]
     case 0x25ff48:    // 48 ff 25 XX XX XX XX :
@@ -665,17 +701,6 @@ static size_t GetInstructionSize(uptr address, size_t* rel_offset = nullptr) {
   // in visible and readable error messages. However, merely calling abort()
   // leads to an infinite recursion in CheckFailed.
  
-  char* addr_cptr = (char*) address;
-  printf(
-  "Warning: ASAN Interception failure! Function prologue follows:\n"
-                "%x %x %x %x %x %x %x %x\n"
-                "%x %x %x %x %x %x %x %x\n",
-                  addr_cptr[0],addr_cptr[1],addr_cptr[2],addr_cptr[3],
-                  addr_cptr[4],addr_cptr[5],addr_cptr[6],addr_cptr[7],
-                  addr_cptr[8],addr_cptr[9],addr_cptr[10],addr_cptr[11],
-                  addr_cptr[12],addr_cptr[13],addr_cptr[14],addr_cptr[15]
-  );
-
   InterceptionFailed();
   return 0;
 }
