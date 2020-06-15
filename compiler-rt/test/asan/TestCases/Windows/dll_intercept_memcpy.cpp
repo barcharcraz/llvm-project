@@ -6,6 +6,7 @@
 // RUN: %clang_cl_asan -Wno-fortify-source -LD -Od %s -Fe%t.dll -link /OPT:REF /OPT:ICF
 // RUN: not %run %t %t.dll 2>&1 | FileCheck %s
 
+// XFAIL: asan-64-bits
 #include <stdio.h>
 #include <string.h>
 
