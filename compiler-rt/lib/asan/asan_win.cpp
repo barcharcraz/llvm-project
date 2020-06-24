@@ -95,10 +95,14 @@ INTERCEPTOR_WINAPI(void, RtlRaiseException, EXCEPTION_RECORD *ExceptionRecord) {
   REAL(RtlRaiseException)(ExceptionRecord);
 }
 
-INTERCEPTOR_WINAPI(void, RaiseException, void *a, void *b, void *c, void *d) {
+INTERCEPTOR_WINAPI(void, RaiseException, DWORD dwExceptionCode, DWORD dwExceptionFlags, 
+                   DWORD nNumberOfArguments, const ULONG_PTR *lpArguments) {
   CHECK(REAL(RaiseException));
-  __asan_handle_no_return();
-  REAL(RaiseException)(a, b, c, d);
+  // This is a noreturn function, unless it's one of the exceptions raised to
+  // communicate with the debugger, such as the one from OutputDebugStringA.
+  if (dwExceptionCode != DBG_PRINTEXCEPTION_C)
+    __asan_handle_no_return();
+  REAL(RaiseException)(dwExceptionCode, dwExceptionFlags, nNumberOfArguments, lpArguments);
 }
 
 #ifdef _WIN64
