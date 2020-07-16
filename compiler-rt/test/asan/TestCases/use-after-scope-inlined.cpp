@@ -4,6 +4,9 @@
 //
 // RUN: %clangxx_asan -O2 -fsanitize-address-use-after-scope %s -o %t && \
 // RUN:     not %run %t 2>&1 | FileCheck %s
+
+// MSVC marks this as unsupported because we don't generate the metadata to display the "x.i" offset.
+// UNSUPPORTED: msvc-host 
 #include "defines.h"
 int *arr;
 
