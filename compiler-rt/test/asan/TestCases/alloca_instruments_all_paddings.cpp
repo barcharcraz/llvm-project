@@ -7,11 +7,10 @@
 #include "sanitizer/asan_interface.h"
 #include <assert.h>
 ATTRIBUTE_NOINLINE void foo(int index, int len) {
-ATTRIBUTE_ALIGNED(32)
 #ifdef MSVC
-  volatile char *str = (volatile char *)_alloca(len);
+  volatile char ATTRIBUTE_ALIGNED(32) *str = (volatile char *)_alloca(len);
 #else
-  volatile char str[len];
+  volatile char ATTRIBUTE_ALIGNED(32) str[len];
 #endif
 assert(!(reinterpret_cast<long>(str) & 31L));
   char *q = (char *)__asan_region_is_poisoned((char *)str, 64);

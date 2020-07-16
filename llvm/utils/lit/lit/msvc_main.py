@@ -641,8 +641,12 @@ for cc_file in cc_files:
         if "coverage" in cc_file:
             __litConfig.environment["_LINK_"] = "/wholearchive:" + litConfig.compiler_rt_libdir + "\\" + fuzzer_no_main_lib + " /wholearchive:" + litConfig.compiler_rt_libdir + "\\libsancov.lib" + \
             " /wholearchive:" + litConfig.compiler_rt_libdir + "\\" + profile_lib + " "
-            
 
+        if "use-after-scope" in cc_file:
+            __litConfig.substitutions.remove(("-O1", "/O1i-"))
+            __litConfig.substitutions.add(("-O1", "/Od"))
+            __litConfig.substitutions.add(("-O1i-", "/Od"))
+            
         __litConfig.environment['_CL_'] += " /Fd" + cc_file + ".pdb " + selected_runtime + " "
         __litConfig.environment['_LINK_'] += " /force:multiple "
         __suite = lit.Test.TestSuite("msvc",sys.argv[1], os.path.join(litConfig.environment['TEST_OUTPUT_DIR'],cc_file.replace(".","")+opts.testTargetArch), __litConfig)
