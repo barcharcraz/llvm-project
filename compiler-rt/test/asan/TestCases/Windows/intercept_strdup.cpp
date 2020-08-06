@@ -23,7 +23,7 @@ int main() {
   //
   // The first frame is our wrapper normally but will be malloc in the dynamic
   // config.
-  // CHECK:   #0 {{.*}} in {{malloc|__asan_wrap_strdup}}
+  // CHECK:   #0 {{.*}} in {{malloc|__asan_wrap_strdup|__asan_wrap__strdup}}
   //
   // The local call to _strdup above may be the second or third or fourth frame depending
   // on whether we're using the dynamic or debug config.
