@@ -112,12 +112,6 @@ void InitializePlatformInterceptors();
 # define ASAN_INTERCEPT___STRDUP 0
 #endif
 
-#if defined(__i386) && SANITIZER_WINDOWS
-# define ASAN_INTERCEPT_MSVC__STRDUP 1
-#else 
-# define ASAN_INTERCEPT_MSVC__STRDUP 0
-#endif
-
 #if SANITIZER_LINUX &&                                                \
     (defined(__arm__) || defined(__aarch64__) || defined(__i386__) || \
      defined(__x86_64__) || SANITIZER_RISCV64)
