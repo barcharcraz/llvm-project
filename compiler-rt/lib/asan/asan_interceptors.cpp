@@ -443,6 +443,23 @@ INTERCEPTOR(char*, strdup, const char *s) {
   return reinterpret_cast<char*>(new_mem);
 }
 
+#if ASAN_INTERCEPT_MSVC__STRDUP
+INTERCEPTOR(char*, _strdup, const char *s) {
+  void *ctx;
+  ASAN_INTERCEPTOR_ENTER(ctx, _strdup);
+  if (UNLIKELY(!asan_inited)) return internal_strdup(s);
+  ENSURE_ASAN_INITED();
+  uptr length = REAL(strlen)(s);
+  if (flags()->replace_str) {
+    ASAN_READ_RANGE(ctx, s, length + 1);
+  }
+  GET_STACK_TRACE_MALLOC;
+  void *new_mem = asan_malloc(length + 1, &stack);
+  REAL(memcpy)(new_mem, s, length + 1);
+  return reinterpret_cast<char*>(new_mem);
+}
+#endif // ASAN_INTERCEPT_MSVC__STRDUP
+
 #if ASAN_INTERCEPT___STRDUP
 INTERCEPTOR(char*, __strdup, const char *s) {
   void *ctx;
@@ -625,7 +642,11 @@ void InitializeAsanInterceptors() {
   ASAN_INTERCEPT_FUNC(strcpy);
   ASAN_INTERCEPT_FUNC(strncat);
   ASAN_INTERCEPT_FUNC(strncpy);
+#if ASAN_INTERCEPT_MSVC__STRDUP
+  ASAN_INTERCEPT_FUNC(_strdup);
+#else
   ASAN_INTERCEPT_FUNC(strdup);
+#endif
 #if ASAN_INTERCEPT___STRDUP
   ASAN_INTERCEPT_FUNC(__strdup);
 #endif
