@@ -1,14 +1,17 @@
 // RUN: %clang_cl_asan /Od %s -Fe%t
 // RUN: %env_asan_opts=windows_hook_rtl_allocators=true %run %t 2>&1 | FileCheck %s
+// RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_GLOBAL
+// RUN: %env_asan_opts=windows_hook_rtl_allocators=true %run %t 2>&1 | FileCheck %s
 #include <stdio.h>
 #include <windows.h>
 #include "../defines.h"
+#include "globallocal_shared.h"
 
 int main() {
   char *buffer;
-  buffer = (char*)GlobalAlloc(GMEM_FIXED, 32),
+  buffer = (char*)ALLOC(GMEM_FIXED, 32),
   buffer[0] = 'a';
-  GlobalFree(buffer);
+  FREE(buffer);
   puts("Okay");
 // CHECK: Okay
 }

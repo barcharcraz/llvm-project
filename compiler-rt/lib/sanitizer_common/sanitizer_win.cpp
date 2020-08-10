@@ -714,8 +714,13 @@ static int RunAtexit() {
 // This is a hack to call this function after both asan_init and the crt initialize,
 // for both MT and MD runtimes.
 #if defined(_DLL)
-#pragma section(".CRT$XLAD", long, read)
-__declspec(allocate(".CRT$XLAD")) int (*__run_atexit)() = RunAtexit;
+class AtexitRunner {
+  public:
+    AtexitRunner() {
+      RunAtexit();
+    }
+};
+static AtexitRunner atExitRunner;
 #else
 #pragma section(".CRT$XID", long, read)
 __declspec(allocate(".CRT$XID")) int (*__run_atexit)() = RunAtexit;

@@ -1,6 +1,6 @@
-// RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_GLOBAL
+// RUN: %clang_cl_asan /Od %s -Fe%t
 // RUN: %env_asan_opts=windows_hook_rtl_allocators=true not %run %t 2>&1 | FileCheck %s
-// RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_LOCAL
+// RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_GLOBAL
 // RUN: %env_asan_opts=windows_hook_rtl_allocators=true not %run %t 2>&1 | FileCheck %s
 
 #include <windows.h>

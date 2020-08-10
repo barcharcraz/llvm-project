@@ -1,0 +1,25 @@
+// RUN: %clang_cl_asan /Od %s -Fe%t
+// RUN: %env_asan_opts=windows_hook_rtl_allocators=true not %run %t 2>&1 | FileCheck %s
+// RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_GLOBAL
+// RUN: %env_asan_opts=windows_hook_rtl_allocators=true not %run %t 2>&1 | FileCheck %s
+
+// CHECK: RETURNED_HANDLE: 0
+// CHECK: AddressSanitizer: heap-use-after-free
+
+#include <Windows.h>
+#include <stdio.h>
+#include "globallocal_shared.h"
+
+int main() { 
+    void *alloc = ALLOC(GMEM_MOVEABLE, 100);
+    fprintf(stderr, "RETURNED_PTR: %x\n", (unsigned int)alloc);
+    void *ptr = LOCK(alloc);
+    ptr = LOCK(alloc);
+    fprintf(stderr, "RETURNED_PTR: %x\n", 
+            (unsigned int)ptr);
+    void *result = FREE(alloc);
+    fprintf(stderr, "RETURNED_HANDLE: %x \n", (unsigned int)result);
+    ((char *)ptr)[0] = 0xff;
+
+    return 0;
+}

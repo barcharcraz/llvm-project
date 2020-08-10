@@ -18,6 +18,7 @@ set(ASAN_SOURCES
   asan_malloc_linux.cpp
   asan_malloc_mac.cpp
   asan_malloc_win.cpp
+  asan_malloc_win_moveable.cpp
   asan_memory_profile.cpp
   asan_poisoning.cpp
   asan_posix.cpp
@@ -87,7 +88,7 @@ include_directories(..)
 
 set(ASAN_CFLAGS ${SANITIZER_COMMON_CFLAGS})
 set(ASAN_COMMON_DEFINITIONS ${COMPILER_RT_ASAN_SHADOW_SCALE_DEFINITION})
-
+append_list_if(MSVC /std:c++17 ASAN_CFLAGS)
 append_rtti_flag(OFF ASAN_CFLAGS)
 
 # Silence warnings in system headers with MSVC.

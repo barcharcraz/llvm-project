@@ -1,18 +1,24 @@
 // RUN: %clang_cl_asan /Od %s -Fe%t
 // RUN: %env_asan_opts=windows_hook_rtl_allocators=true not %run %t 2>&1 | FileCheck %s
-// UNSUPPORTED: asan-64-bits
+// RUN: %env_asan_opts=windows_hook_rtl_allocators=true not %run %t 2>&1 | FileCheck %s
+
+// RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_GLOBAL
+// RUN: %env_asan_opts=windows_hook_rtl_allocators=true not %run %t 2>&1 | FileCheck %s
+// RUN: %env_asan_opts=windows_hook_rtl_allocators=true not %run %t 2>&1 | FileCheck %s
+
 #include <stdio.h>
 #include <windows.h>
 #include <winbase.h>
+#include "globallocal_shared.h"
 
 int main() {
   char *oldbuf;
   size_t sz = 8;
-  oldbuf = (char *)GlobalAlloc(GMEM_FIXED, sz);
+  oldbuf = (char *)ALLOC(GMEM_FIXED, sz);
   char *newbuf = oldbuf;
   while (oldbuf == newbuf) {
     sz *= 2;
-    newbuf = (char *)GlobalReAlloc(oldbuf, sz, GMEM_ZEROINIT);
+    newbuf = (char *)REALLOC(oldbuf, sz, GMEM_ZEROINIT);
   }
 
   newbuf[0] = 'a';

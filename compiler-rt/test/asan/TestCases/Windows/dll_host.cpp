@@ -32,10 +32,16 @@
 // IMPORT: __asan_wrap_GlobalFree
 // IMPORT: __asan_wrap_GlobalReAlloc
 // IMPORT: __asan_wrap_GlobalSize
+// IMPORT: __asan_wrap_GlobalHandle
+// IMPORT: __asan_wrap_GlobalLock
+// IMPORT: __asan_wrap_GlobalUnlock
 // IMPORT: __asan_wrap_LocalAlloc
 // IMPORT: __asan_wrap_LocalFree
 // IMPORT: __asan_wrap_LocalReAlloc
 // IMPORT: __asan_wrap_LocalSize
+// IMPORT: __asan_wrap_LocalHandle
+// IMPORT: __asan_wrap_LocalLock
+// IMPORT: __asan_wrap_LocalUnlock
 // IMPORT: __asan_wrap_CreateThread
 // IMPORT: __asan_wrap_RaiseException
 // IMPORT: __asan_wrap_RtlRaiseException
@@ -44,6 +50,7 @@
 // IMPORT: __asan_wrap_RtlAllocateHeap
 // IMPORT: __asan_wrap_RtlReAllocateHeap
 // IMPORT: __asan_wrap_RtlFreeHeap
+// IMPORT: __asan_wrap__strdup
 //
 // RUN: cat %t.imports1 %t.imports2 | sort | uniq > %t.imports-sorted
 // RUN: cat %t.exports1 %t.exports2 | sort | uniq > %t.exports-sorted

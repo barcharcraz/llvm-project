@@ -8,9 +8,11 @@
 #include "globallocal_shared.h"
 
 int main() {
-  char *buffer;
-  buffer = (char*)ALLOC(GMEM_FIXED, 32),
-  FREE(buffer);
+  char *buffer, *handle;
+  handle = (char*)ALLOC(GMEM_MOVEABLE, 32);
+  buffer = (char*)LOCK(handle);
+  UNLOCK(handle);
+  FREE(handle);
   buffer[0] = 'a';
 // CHECK: AddressSanitizer: heap-use-after-free on address [[ADDR:0x[0-9a-f]+]]
 // CHECK: WRITE of size 1 at [[ADDR]] thread T0

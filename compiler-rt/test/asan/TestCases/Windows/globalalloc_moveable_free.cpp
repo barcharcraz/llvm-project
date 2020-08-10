@@ -1,17 +1,20 @@
 // RUN: %clang_cl_asan /Od %s -Fe%t
 // RUN: %env_asan_opts=windows_hook_rtl_allocators=true not %run %t 2>&1 | FileCheck %s
-
+// RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_GLOBAL
+// RUN: %env_asan_opts=windows_hook_rtl_allocators=true not %run %t 2>&1 | FileCheck %s
 
 #include <Windows.h>
 #include <stdio.h>
+#include "globallocal_shared.h"
+
 int main(){
-    HGLOBAL moveable = GlobalAlloc(GMEM_MOVEABLE, 100);
+    HGLOBAL moveable = ALLOC(GMEM_MOVEABLE, 100);
     if (moveable == nullptr) {
-        fprintf(stderr,"Alloc Failure!\n");
+        fprintf(stderr,"Alloc Failure! %lx \n", GetLastError());
         return -1;
     }
     
-    if( GlobalFree(moveable) != nullptr ){
+    if( FREE(moveable) != nullptr ){
         fprintf(stderr,"Free Failure!\n");
         return -1;
     }
