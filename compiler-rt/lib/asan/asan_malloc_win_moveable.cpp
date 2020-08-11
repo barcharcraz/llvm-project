@@ -75,6 +75,7 @@ static std::recursive_mutex GlobalHeapMutex;
 
 // ignore dll linkage warning: we are defining our own versions in
 // asan_malloc_win.
+#pragma warning(push)
 #pragma warning(disable: 4273)
 
 /* Link against extern symbols to call the intercepted vesions without
