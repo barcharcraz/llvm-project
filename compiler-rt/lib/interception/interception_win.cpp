@@ -144,7 +144,9 @@ static const int kDirectBranchLength = kBranchLength + kAddressLength;
 
 static void InterceptionFailed() {
   // Do we have a good way to abort with an error message here?
-  __debugbreak();
+  //__debugbreak();
+  // TODO: Newer builds are hard failing on debug breaks, these should not be
+  // fatal so we're going to have to turn this off temporarily.
 }
 
 static bool DistanceIsWithin2Gig(uptr from, uptr target) {
