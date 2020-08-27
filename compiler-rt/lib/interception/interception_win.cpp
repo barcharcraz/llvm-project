@@ -143,10 +143,29 @@ static const int kBranchLength =
 static const int kDirectBranchLength = kBranchLength + kAddressLength;
 
 static void InterceptionFailed() {
-  // Do we have a good way to abort with an error message here?
-  //__debugbreak();
-  // TODO: Newer builds are hard failing on debug breaks, these should not be
-  // fatal so we're going to have to turn this off temporarily.
+  /* If the user wants to continue past an interception failure, they can set
+   * this variable. If not, these failures should be fatal, prompting them to
+   * open a debugger. */
+  char dummy_buffer[1] = {0};
+  bool break_on_interception_failure =
+      GetEnvironmentVariableA("ASAN_WIN_CONTINUE_ON_INTERCEPTION_FAILURE",
+                              dummy_buffer, 0) == 0 &&
+      GetLastError() == ERROR_ENVVAR_NOT_FOUND;
+  bool debugger_is_present = IsDebuggerPresent();
+  if (debugger_is_present) {
+    OutputDebugStringA(
+        "====================================================================\n"
+        "Warning!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
+        "AddressSanitizer (ASan) interception failed for a targeted function.\n"
+        "Please file a bug report which includes your Windows build number.\n"
+        "This is listed as 'OS Version' in the command output from \n"
+        "systeminfo.\n"
+        "====================================================================\n"
+        );
+  }
+  if (break_on_interception_failure || debugger_is_present) {
+    DebugBreak();
+  }
 }
 
 static bool DistanceIsWithin2Gig(uptr from, uptr target) {
