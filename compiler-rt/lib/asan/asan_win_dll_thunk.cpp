@@ -49,9 +49,11 @@ INTERCEPT_WRAP_W_W(_expand)
 #ifdef _DEBUG
 INTERCEPT_WRAP_W_W(_expand_dbg)
 INTERCEPT_WRAP_W_WWWWW(_calloc_dbg)
+INTERCEPT_WRAP_W_WWWWWW(_recalloc_dbg)
 INTERCEPT_WRAP_W_WWW(_realloc_dbg)
 INTERCEPT_WRAP_W_WWWW(_malloc_dbg)
 INTERCEPT_WRAP_V_WW(_free_dbg)
+INTERCEPT_WRAP_V_WW(_msize_dbg)
 #endif
 
 INTERCEPT_WRAP_V_W(_aligned_free)

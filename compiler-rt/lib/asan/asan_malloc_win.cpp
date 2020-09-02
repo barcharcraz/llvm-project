@@ -215,7 +215,13 @@ void *_recalloc_dbg(void *userData, size_t num, size_t size, int, const char *,
                     int) {
   return _recalloc(userData, num, size);
 }
+
+ALLOCATION_FUNCTION_ATTRIBUTE
+size_t _msize_dbg(void *userData, int) {
+  return _msize(userData);
+}
 #endif //_DEBUG
+
 ALLOCATION_FUNCTION_ATTRIBUTE void *_aligned_malloc(size_t size,
                                                     size_t alignment) {
   GET_STACK_TRACE_MALLOC;
@@ -834,6 +840,7 @@ INTERCEPTOR_WINAPI(HLOCAL, LocalReAlloc, HGLOBAL hMem, DWORD dwBytes,
   TryToOverrideFunction("_calloc_dbg", (uptr)_calloc_dbg);
   TryToOverrideFunction("_realloc_dbg", (uptr)_realloc_dbg);
   TryToOverrideFunction("_recalloc_dbg", (uptr)_recalloc_dbg);
+  TryToOverrideFunction("_msize_dbg", (uptr)_msize_dbg);
 #endif
   if (flags()->windows_hook_rtl_allocators) {
     INTERCEPT_FUNCTION(GlobalAlloc);
