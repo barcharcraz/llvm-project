@@ -579,11 +579,11 @@ namespace __asan {
 
   constexpr unsigned long COMBINED_GLOBALLOCAL_SUPPORTED_FLAGS =
       (SHARED_ALLOC_SUPPORTED_FLAGS | LOCAL_ALLOC_SUPPORTED_FLAGS |
-       GLOBAL_ALLOC_UNSUPPORTED_FLAGS);
+       GLOBAL_ALLOC_SUPPORTED_FLAGS);
 
     constexpr unsigned long COMBINED_GLOBALLOCAL_UNSUPPORTED_FLAGS =
       ~(SHARED_ALLOC_SUPPORTED_FLAGS | LOCAL_ALLOC_SUPPORTED_FLAGS |
-       GLOBAL_ALLOC_UNSUPPORTED_FLAGS);
+       GLOBAL_ALLOC_SUPPORTED_FLAGS);
 
   enum class LockAction { Decrement = 0, Increment = 1 };
   //forward declaring a few items for the shared versions of some of these Global/Local interceptors.
