@@ -283,8 +283,22 @@ void *MoveableMemoryManager::ReallocHandleToHandle(void *original,
   CHECK(original != nullptr && IsOwnedHandle(original));
   // if the resolved ptr is free, if this item is null, we just pass it to the
   // interceptor no matter what to generate a report.
-  void *ptr = ResolveHandleToPointer(original);
-  return ReallocFixedToFixed(ptr, new_size, zero_init);
+  MoveableAllocEntry* handle_entry = ResolveHandleToTableEntry(original);
+  void *ptr = ResolveHandleToPointer(handle_entry->addr);
+  void* new_ptr = ReallocFixedToFixed(ptr, new_size, zero_init);
+  if (!new_ptr) {
+    return nullptr;
+  }
+  if (new_ptr != ptr) {
+    /* new backing memory, the old pointer is invalid so we need to update our table to remember this */
+
+    //NOTE: should we leave the pointer entry? It would be best to be able to still pass freed pointers to our asan functions but I don't want to create a mess of old pointers dangling in our map. Might need to add a quarantine list as well.
+
+    PointerToHandleMap[new_ptr] = handle_entry;
+    handle_entry->addr = new_ptr;
+    PointerToHandleMap.erase(ptr);
+  }
+  return original;
 }
 
 void *MoveableMemoryManager::DecrementLockCount(void *ident) {
