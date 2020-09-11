@@ -284,7 +284,7 @@ void *MoveableMemoryManager::ReallocHandleToHandle(void *original,
   // if the resolved ptr is free, if this item is null, we just pass it to the
   // interceptor no matter what to generate a report.
   MoveableAllocEntry *handle_entry = ResolveHandleToTableEntry(original);
-  void *ptr = ResolveHandleToPointer(handle_entry->addr);
+  void *ptr = handle_entry->addr;
   void *new_ptr = ReallocFixedToFixed(ptr, new_size, zero_init);
   if (!new_ptr) {
     return nullptr;
@@ -300,7 +300,7 @@ void *MoveableMemoryManager::ReallocHandleToHandle(void *original,
      * it's passed into a function it will be treated like a fixed pointer, and
      * will get passed to an asan_function to get reported on. It will have been
      * freed & quarantined at this point. */
-    PointerToHandleMap[ptr] == nullptr;
+    PointerToHandleMap[ptr] = nullptr;
   }
   return original;
 }
