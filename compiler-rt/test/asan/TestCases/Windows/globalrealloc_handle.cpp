@@ -1,6 +1,7 @@
 #include <windows.h>
 #include <winbase.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 // realloc a handle to handle path and make sure functions still work on that item.
 
