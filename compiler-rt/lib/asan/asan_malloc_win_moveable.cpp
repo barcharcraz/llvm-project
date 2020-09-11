@@ -293,15 +293,14 @@ void *MoveableMemoryManager::ReallocHandleToHandle(void *original,
 
     // New backing memory, the old pointer is invalid so we need to update our
     // table to remember this
-
-    // NOTE: should we leave the pointer entry? It would be best to be able to
-    // still pass freed pointers to our asan functions but I don't want to
-    // create a mess of old pointers dangling in our map. Might need to add a
-    // quarantine list as well.
-
     PointerToHandleMap[new_ptr] = handle_entry;
     handle_entry->addr = new_ptr;
-    PointerToHandleMap.erase(ptr);
+
+    /* leave the pointer entry, since we want to know this is owned still, if
+     * it's passed into a function it will be treated like a fixed pointer, and
+     * will get passed to an asan_function to get reported on. It will have been
+     * freed & quarantined at this point. */
+    PointerToHandleMap[ptr] == nullptr;
   }
   return original;
 }
