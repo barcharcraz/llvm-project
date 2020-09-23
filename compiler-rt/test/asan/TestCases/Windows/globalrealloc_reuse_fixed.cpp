@@ -24,7 +24,7 @@ int __cdecl main() {
         size2 *= 2;
         hMemNew = GlobalReAlloc(hMem, size2,
                                 GMEM_SHARE | GMEM_MOVEABLE | GMEM_ZEROINIT);
-
+    
         pGlobal = (BYTE *)GlobalLock (hMemNew);
     } while (old_data == pGlobal);
 

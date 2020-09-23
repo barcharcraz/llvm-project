@@ -30,6 +30,9 @@
 #include "sanitizer_common/sanitizer_list.h"
 #include "sanitizer_common/sanitizer_quarantine.h"
 #include "sanitizer_common/sanitizer_stackdepot.h"
+#ifdef SANITIZER_WINDOWS
+#include "asan_malloc_win_moveable.h"
+#endif
 
 namespace __asan {
 
@@ -1210,6 +1213,9 @@ uptr __sanitizer_get_allocated_size(const void *p) {
 
 void __sanitizer_purge_allocator() {
   GET_STACK_TRACE_MALLOC;
+#ifdef SANITIZER_WINDOWS
+  MoveableMemoryManager::GetInstance()->Purge();  
+#endif
   instance.Purge(&stack);
 }
 

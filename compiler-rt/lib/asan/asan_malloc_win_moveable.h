@@ -1,6 +1,5 @@
 #pragma once
 
-
 #define FIXED 0x0000
 #define ZEROINIT 0x0040
 #define MOVEABLE 0x0002
@@ -9,12 +8,12 @@
 #define NODISCARD 0x0020
 #define LOCAL_DISCARDABLE 0x0F00
 #define GLOBAL_DISCARDABLE 0x0100
-#define GLOBAL_NOT_BANKED     0x1000
-#define GLOBAL_SHARE       0x2000   // same as GMEM_DDESHARE and SHARE
-#define GLOBAL_NOTIFY         0x4000
+#define GLOBAL_NOT_BANKED 0x1000
+#define GLOBAL_SHARE 0x2000 // same as GMEM_DDESHARE and SHARE
+#define GLOBAL_NOTIFY 0x4000
 #define INVALID_HANDLE 0x8000
-#define GLOBAL_VALID_FLAGS    0x7F72
-#define LOCAL_VALID_FLAGS    0x0F72
+#define GLOBAL_VALID_FLAGS 0x7F72
+#define LOCAL_VALID_FLAGS 0x0F72
 
 class MoveableAllocEntry {
   // the physical address entry, split so the pointers can be sorted separately
@@ -36,27 +35,26 @@ public:
   }
 };
 
-enum class HeapCaller {
-  GLOBAL,
-  LOCAL
-};
+enum class HeapCaller { GLOBAL, LOCAL };
 class MoveableMemoryManager {
 private:
-  size_t ResolveHandleToIndex(void *handle);
-  MoveableAllocEntry *ResolveHandleToTableEntry(void *handle);
-  void *TagHandleIndex(size_t);
-  bool IsOwnedHandle(void *item);
-  bool IsOwnedPointer(void *item);
-
-public:
   MoveableMemoryManager();
-  bool IsOwned(void* item);
   void *ReallocHandleToFixed(void *original, bool zero_init);
   void *ReallocFixedToHandle(void *original, bool zero_init);
   void *ReallocFixedToFixed(void *original, size_t new_size, bool zero_init);
   void *ReallocHandleToHandle(void *original, size_t new_size, bool zero_init);
   void *AddMoveableAllocation(size_t size, bool zero_init);
   void *AddFixedAllocation(size_t size, bool zero_init);
+  size_t ResolveHandleToIndex(void *handle);
+  MoveableAllocEntry *ResolveHandleToTableEntry(void *handle);
+  void *TagHandleIndex(size_t);
+  bool IsOwnedHandle(void *item);
+  bool IsOwnedPointer(void *item);
+  void *GetHandleReservation();
+  size_t GetHandleTag();
+
+public:
+  bool IsOwned(void *item);
   // These functions all take in an untyped identifier, rather
   // than make this more confusing I'll avoid labeling the param
   // 'pointer' or 'handle'; we have to check in the functions anyway.
@@ -68,7 +66,7 @@ public:
   size_t GetLockCount(void *memory_ident);
   void *Free(void *ident);
   void *Alloc(unsigned long flags, size_t size);
-  void* ReAllocate(void* ident, size_t flags, size_t size, HeapCaller caller);
-  void *GetHandleReservation();
-  size_t GetHandleTag();
+  void *ReAllocate(void *ident, size_t flags, size_t size, HeapCaller caller);
+  void Purge();
+  static MoveableMemoryManager *MoveableMemoryManager::GetInstance();
 };

@@ -58,6 +58,15 @@ static std::queue<MoveableAllocEntry *> HandleReuseList;
  * tag*/
 constexpr size_t GlobalLocalHeapHandleLimit = 0xFFFF;
 
+/* To track whether a fixed pointer is freed or not, we can use 0 and -1 as
+ * markers for the fixed pointers.*/
+const MoveableAllocEntry *IsFixedPointer = nullptr;
+const MoveableAllocEntry *IsFreedFixedPointer =
+    reinterpret_cast<MoveableAllocEntry *>(~__sanitizer::uptr{0});
+bool HandleIsActiveHandle(MoveableAllocEntry *ident) {
+  return ident != IsFixedPointer && ident != IsFreedFixedPointer;
+}
+
 /* Make this reservation static, but to ensure it's aligned apply the
  * aligned_malloc technique of reserving twice the amount of space and using the
  * first aligned address within that reservation as element 0. */
@@ -76,7 +85,7 @@ static std::recursive_mutex GlobalHeapMutex;
 // ignore dll linkage warning: we are defining our own versions in
 // asan_malloc_win.
 #pragma warning(push)
-#pragma warning(disable: 4273)
+#pragma warning(disable : 4273)
 
 /* Link against extern symbols to call the intercepted vesions without
  * needing to deal with the internal asan interface. */
@@ -108,6 +117,25 @@ MoveableMemoryManager::MoveableMemoryManager() {
                 GMEM_NOCOMPACT == NOCOMPACT);
   static_assert(GMEM_INVALID_HANDLE == LMEM_INVALID_HANDLE &&
                 GMEM_INVALID_HANDLE == INVALID_HANDLE);
+}
+
+void MoveableMemoryManager::Purge() {
+  std::lock_guard<std::recursive_mutex> scoped_lock(GlobalHeapMutex);
+  // pointer to handle map first, find fixed free items and clear them.
+  std::unordered_map<void *, MoveableAllocEntry *>::iterator iter =
+      PointerToHandleMap.begin();
+  std::vector<void *> removal_list = {};
+  for (auto &kv : PointerToHandleMap) {
+    if (kv.first == IsFreedFixedPointer) {
+      removal_list.push_back(kv.first);
+    }
+  }
+  for (auto &freed_pointer : removal_list) {
+    PointerToHandleMap.erase(freed_pointer);
+  }
+
+  // Moveable Entries already free their backing memory, we just cleaned up the
+  // leftovers in the fixed area, the handle reuse list will remain the same.
 }
 
 void *MoveableMemoryManager::GetHandleReservation() {
@@ -155,9 +183,13 @@ void *MoveableMemoryManager::AddMoveableAllocation(size_t size,
     PointerToHandleMap[new_region] = new_handle;
     return TagHandleIndex(next_available_handle);
   }
+  if (HandleReuseList.empty()) {
+    free(new_region);
+    SetLastError(ERROR_OUTOFMEMORY);
+    return nullptr;
+  }
   MoveableAllocEntry *reuseEntry = HandleReuseList.front();
   HandleReuseList.pop();
-  CHECK(reuseEntry != nullptr);
   // reuseEntry->handle value remains the same
   reuseEntry->freed = false;
   reuseEntry->addr = new_region;
@@ -168,7 +200,8 @@ void *MoveableMemoryManager::AddMoveableAllocation(size_t size,
 void *MoveableMemoryManager::AddFixedAllocation(size_t size, bool zero_init) {
   void *new_region = AllocMaybeZero(size, zero_init);
   HANDLE_OUT_OF_MEMORY(new_region);
-  PointerToHandleMap[new_region] = nullptr;
+  PointerToHandleMap[new_region] =
+      const_cast<MoveableAllocEntry *>(IsFixedPointer);
   return new_region;
 }
 
@@ -205,13 +238,13 @@ void *MoveableMemoryManager::ResolvePointerToHandle(void *ident) {
 
   if (IsOwnedPointer(ident)) {
     MoveableAllocEntry *handle_entry = PointerToHandleMap.at(ident);
-    if (handle_entry) {
+    if (HandleIsActiveHandle(handle_entry)) {
       return handle_entry->handle;
     }
     return nullptr;
   }
   CHECK(0 && "Untracked pointer passed into "
-              "MoveableMemoryManager::ResolvePointerToHandle");
+             "MoveableMemoryManager::ResolvePointerToHandle");
   return nullptr;
 }
 
@@ -260,7 +293,7 @@ size_t MoveableMemoryManager::GetAllocationSize(void *memory_ident) {
     ptr = memory_ident;
   } else {
     CHECK(0 && "Memory ID passed to MoveableMemoryManager::GetAllocationSize "
-                "is not valid!\n");
+               "is not valid!\n");
   }
   return _msize(ptr);
 }
@@ -300,7 +333,8 @@ void *MoveableMemoryManager::ReallocHandleToHandle(void *original,
      * it's passed into a function it will be treated like a fixed pointer, and
      * will get passed to an asan_function to get reported on. It will have been
      * freed & quarantined at this point. */
-    PointerToHandleMap[ptr] = nullptr;
+    PointerToHandleMap[ptr] =
+        const_cast<MoveableAllocEntry *>(IsFreedFixedPointer);
   }
   return original;
 }
@@ -347,9 +381,9 @@ size_t MoveableMemoryManager::GetLockCount(void *ident) {
 bool MoveableMemoryManager::IsOwnedHandle(void *item) {
   auto HandleTag = reinterpret_cast<size_t>(MoveableHandleTag);
   bool HandleTagIsCorrect = ((reinterpret_cast<size_t>(item) &
-          ~(GlobalLocalHeapHandleLimit)) == HandleTag);
+                              ~(GlobalLocalHeapHandleLimit)) == HandleTag);
   bool HandleIsInRange = ((reinterpret_cast<size_t>(item) - HandleTag) <=
-          GlobalLocalHeapHandleLimit);
+                          GlobalLocalHeapHandleLimit);
   return HandleTagIsCorrect && HandleIsInRange;
 }
 
@@ -399,7 +433,8 @@ void *MoveableMemoryManager::Free(void *ident) {
     free(backing_memory);
     MoveableAllocEntry *entry = ResolveHandleToTableEntry(ident);
     CHECK(entry != nullptr);
-    PointerToHandleMap[backing_memory] = nullptr;
+    PointerToHandleMap[backing_memory] =
+        const_cast<MoveableAllocEntry *>(IsFreedFixedPointer);
 
     /* NOTE: Lock count is not affected by free
              you can even get the lock count of the handle after
@@ -409,6 +444,7 @@ void *MoveableMemoryManager::Free(void *ident) {
     HandleReuseList.push(entry);
     return nullptr;
   }
+
   /* If this is a bad free it will be reported on. */
   free(ident);
   return nullptr; // returns null on success
@@ -422,6 +458,11 @@ void *MoveableMemoryManager::Alloc(unsigned long flags, size_t size) {
   } else {
     return AddFixedAllocation(size, zero_alloc);
   }
+}
+
+MoveableMemoryManager *MoveableMemoryManager::GetInstance() {
+  static MoveableMemoryManager MoveableManager;
+  return &MoveableManager;
 }
 
 #endif
