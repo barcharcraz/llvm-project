@@ -90,6 +90,7 @@ set(ASAN_CFLAGS ${SANITIZER_COMMON_CFLAGS})
 set(ASAN_COMMON_DEFINITIONS ${COMPILER_RT_ASAN_SHADOW_SCALE_DEFINITION})
 append_list_if(MSVC /std:c++17 ASAN_CFLAGS)
 append_list_if(MSVC /guard:ehcont ASAN_CFLAGS)
+append_list_if(MSVC /EHsc ASAN_CFLAGS)
 append_rtti_flag(OFF ASAN_CFLAGS)
 
 # Silence warnings in system headers with MSVC.
