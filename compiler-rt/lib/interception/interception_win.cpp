@@ -481,6 +481,11 @@ static size_t GetInstructionSize(uptr address, size_t* rel_offset = nullptr) {
     case 0x6A:  // 6A XX = push XX
       return 2;
 
+    // This instruction can be encoded with a 16-bit immediate but that is
+    // incredibly unlikely.
+    case 0x68:  // 68 XX XX XX XX : push imm32
+      return 5;
+
     case 0xb8:  // b8 XX XX XX XX : mov eax, XX XX XX XX
     case 0xB9:  // b9 XX XX XX XX : mov ecx, XX XX XX XX
       return 5;
@@ -516,12 +521,13 @@ static size_t GetInstructionSize(uptr address, size_t* rel_offset = nullptr) {
     case 0xc889:  // 89 C8 : mov eax, ecx
     case 0xC18B:  // 8B C1 : mov eax, ecx
     case 0xC033:  // 33 C0 : xor eax, eax
+    case 0x8bec:  // EC 8B : mov ebp, esp
     case 0xC933:  // 33 C9 : xor ecx, ecx
     case 0xD233:  // 33 D2 : xor edx, edx
-    case 0xc084:    // 84 c0 :   test   al,al
-    case 0xdb84:    // 84 db :   test   bl,bl
-    case 0xc984:    // 84 c9 :   test   cl,cl
-    case 0xd284:    // 84 d2 :   test   dl,dl
+    case 0xc084:  // 84 c0 : test al,al
+    case 0xdb84:  // 84 db : test bl,bl
+    case 0xc984:  // 84 c9 : test cl,cl
+    case 0xd284:  // 84 d2 : test dl,dl
       return 2;
 
     // Cannot overwrite control-instruction. Return 0 to indicate failure.
@@ -530,6 +536,9 @@ static size_t GetInstructionSize(uptr address, size_t* rel_offset = nullptr) {
   }
 
   switch (0x00FFFFFF & *(u32*)address) {
+    case 0x83e4f8:  // F8 E4 83 : and esp, 0xFFFFFFF8
+    case 0x83ec64:  // 64 EC 83 : sub esp, 64h
+      return 3;
     case 0x24A48D:  // 8D A4 24 XX XX XX XX : lea esp, [esp + XX XX XX XX]
       return 7;
   }
