@@ -36,9 +36,12 @@ public:
 };
 
 enum class HeapCaller { GLOBAL, LOCAL };
+struct MemoryManagerResources;
+
 class MoveableMemoryManager {
 private:
   MoveableMemoryManager();
+  ~MoveableMemoryManager();
   void *ReallocHandleToFixed(void *original, bool zero_init);
   void *ReallocFixedToHandle(void *original, bool zero_init);
   void *ReallocFixedToFixed(void *original, size_t new_size, bool zero_init);
@@ -69,4 +72,7 @@ public:
   void *ReAllocate(void *ident, size_t flags, size_t size, HeapCaller caller);
   void Purge();
   static MoveableMemoryManager *MoveableMemoryManager::GetInstance();
+  static bool MoveableMemoryManager::ManagerIsAlive();
+  friend struct ::MemoryManagerResources;
+
 };

@@ -996,7 +996,7 @@ HANDLE GlobalLocalGenericFree(GlobalLocalUnlock lockFunction,
                               GlobalLocalFree freeFunction, HANDLE hMem) {
   // If the memory we are trying to free is not owned
   // by ASan heap, then fall back to the original GlobalFree.
-  if (!MemManager->IsOwned(hMem)) {
+  if (!MoveableMemoryManager::ManagerIsAlive() || !MemManager->IsOwned(hMem)) {
     HGLOBAL pointer = lockFunction(hMem);
     if (pointer != nullptr) {
       // This was either a handle, or it was a pointer to begin with.

@@ -1,7 +1,7 @@
 // RUN: %clang_cl_asan /Od %s -Fe%t /link /force:multiple
 // RUN: not %run %t
 // RUN: env ASAN_WIN_CONTINUE_ON_INTERCEPTION_FAILURE=1 %run %t
-// UNSUPPORTED: asan-64-bits
+// UNSUPPORTED: asan-64-bits, asan-dynamic-runtime
 
 /* Written to verify that running this with the 'continue on interception error'
  *  variable is working correctly. There is also a warning message dumped into
