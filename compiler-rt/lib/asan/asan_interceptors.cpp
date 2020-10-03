@@ -428,6 +428,7 @@ INTERCEPTOR(char *, strcpy, char *to, const char *from) {
   return REAL(strcpy)(to, from);
 }
 
+#if !SANITIZER_WINDOWS
 INTERCEPTOR(char*, strdup, const char *s) {
   void *ctx;
   ASAN_INTERCEPTOR_ENTER(ctx, strdup);
@@ -442,8 +443,9 @@ INTERCEPTOR(char*, strdup, const char *s) {
   REAL(memcpy)(new_mem, s, length + 1);
   return reinterpret_cast<char*>(new_mem);
 }
+#endif // !SANITIZER_WINDOWS
 
-#if ASAN_INTERCEPT_MSVC__STRDUP
+#if SANITIZER_WINDOWS
 INTERCEPTOR(char*, _strdup, const char *s) {
   void *ctx;
   ASAN_INTERCEPTOR_ENTER(ctx, _strdup);
@@ -458,7 +460,7 @@ INTERCEPTOR(char*, _strdup, const char *s) {
   REAL(memcpy)(new_mem, s, length + 1);
   return reinterpret_cast<char*>(new_mem);
 }
-#endif // ASAN_INTERCEPT_MSVC__STRDUP
+#endif // SANITIZER_WINDOWS
 
 #if ASAN_INTERCEPT___STRDUP
 INTERCEPTOR(char*, __strdup, const char *s) {
@@ -642,7 +644,7 @@ void InitializeAsanInterceptors() {
   ASAN_INTERCEPT_FUNC(strcpy);
   ASAN_INTERCEPT_FUNC(strncat);
   ASAN_INTERCEPT_FUNC(strncpy);
-#if ASAN_INTERCEPT_MSVC__STRDUP
+#if SANITIZER_WINDOWS
   ASAN_INTERCEPT_FUNC(_strdup);
 #else
   ASAN_INTERCEPT_FUNC(strdup);
