@@ -12,7 +12,6 @@
 // infrastructure to create an object whose destructor is never called.
 //===----------------------------------------------------------------------===//
 #include "sanitizer_common/sanitizer_win_defs.h"
-
 // These types are required to satisfy XFG which requires that the names of the
 // types for indirect calls to be correct as well as the name of the original
 // type for any typedefs.
@@ -26,11 +25,10 @@ _declspec(dllimport) int WINAPI
                         void*);
 }
 
-void* operator new(size_t, void* ptr) { return ptr; }
-
 template <class Ty>
 BOOL WINAPI immortalize_impl(PINIT_ONCE, PVOID storage_ptr, PVOID*) noexcept {
-  ::new (storage_ptr) Ty();
+  // Ty must provide a placement new operator
+  new (storage_ptr) Ty();
   return 1;
 }
 
@@ -38,7 +36,6 @@ template <class Ty>
 Ty& immortalize() {  // return a reference to an object that will live forever
   static void* flag;
   alignas(Ty) static unsigned char storage[sizeof(Ty)];
-
   InitOnceExecuteOnce(&flag, immortalize_impl<Ty>, &storage, nullptr);
   return reinterpret_cast<Ty&>(storage);
 }

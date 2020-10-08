@@ -14,18 +14,15 @@
 #include "sanitizer_common/sanitizer_platform.h"
 #if SANITIZER_WINDOWS
 
-#include <Windows.h>
-#include <errhandlingapi.h>
-
 #include <atomic>
 #include <cassert>
 #include <cstdio>
 #include <mutex>
-#include <queue>
 #include <unordered_map>
 #include <vector>
 
 #include "asan_malloc_win_moveable.h"
+#include "asan_win_immortalize.h"
 #include "sanitizer_common/sanitizer_atomic.h"
 #include "sanitizer_common/sanitizer_internal_defs.h"
 
@@ -68,18 +65,11 @@ struct MemoryManagerResources {
     want the manager to be last so that we can be aware of the other items being
     destroyed before their resources disappear.
 
-    We've encountered an issue where GlobalFree can be called *after* the
-    destructor for this class is called. This is undefined behavior for sure,
-    it's occuring late in the process teardown so the best we can do is just
-    pass back to the original allocator. This seems to be good enough for most
-    cases, but it could potentially lead to passing asan-ized pointers into
-    GlobalFree.
-
     The only item that has a wrapped GetInstance function is the
     MoveableMemoryManager because it is the only item used outside this file.
   */
-  std::vector<MoveableAllocEntry *> MoveableEntires;
-  std::queue<MoveableAllocEntry *> HandleReuseList;
+  std::vector<MoveableAllocEntry *> MoveableEntries;
+  std::vector<MoveableAllocEntry *> HandleReuseList;
 
   /* To resolve pointer->handle_entry quickly, create a map to track pointer to
    * handle_entry associations. */
@@ -90,11 +80,17 @@ struct MemoryManagerResources {
    * like an appropriate case for a recursive lock */
   std::recursive_mutex GlobalHeapMutex;
   MoveableMemoryManager MoveableManager;
+
+  static void *operator new(size_t, void *p) { return p; }
 };
 
-static MemoryManagerResources MoveableManagerWrapper;
+// Create an immortal memory resources class singleton.
+MemoryManagerResources &GetResourcesInstance() {
+  return immortalize<MemoryManagerResources>();
+}
+// fetch instance, will create the object on the first call.
 MoveableMemoryManager *MoveableMemoryManager::GetInstance() {
-  return &(MoveableManagerWrapper.MoveableManager);
+  return &(GetResourcesInstance().MoveableManager);
 }
 
 /* This const will be both our handle limit and a mask to remove the handle
@@ -131,19 +127,9 @@ void free(void *);
 _declspec(restrict) void *realloc(void *, size_t);
 _declspec(restrict) void *_recalloc(void *, size_t, size_t);
 size_t _msize(void *);
-_declspec(dllimport) void WINAPI SetLastError(DWORD dwErrCode);
+extern "C" _declspec(dllimport) void WINAPI SetLastError(DWORD dwErrCode);
 
 #pragma warning(pop)
-
-static __sanitizer::atomic_uint8_t managerIsAlive = {};
-
-/* Interface for checking whether this manager is alive externally.
-   For some interceptors it makes more sense to check at the point of
-   interception.
-*/
-bool MoveableMemoryManager::ManagerIsAlive() {
-  return __sanitizer::atomic_load_relaxed(&managerIsAlive);
-}
 
 MoveableMemoryManager::MoveableMemoryManager() {
   /* Get the first aligned item within this region which will be used as the
@@ -156,35 +142,22 @@ MoveableMemoryManager::MoveableMemoryManager() {
 
   // static to make sure the LMEM/GMEM genericized flag values we are using
   // haven't somehow changed.
-  static_assert(GMEM_FIXED == LMEM_FIXED && GMEM_FIXED == FIXED);
-  static_assert(GMEM_ZEROINIT == LMEM_ZEROINIT && GMEM_ZEROINIT == ZEROINIT);
-  static_assert(GMEM_MOVEABLE == LMEM_MOVEABLE && GMEM_MOVEABLE == MOVEABLE);
-  static_assert(GMEM_MODIFY == LMEM_MODIFY && GMEM_MODIFY == MODIFY);
-  static_assert(GMEM_NOCOMPACT == LMEM_NOCOMPACT &&
-                GMEM_NOCOMPACT == NOCOMPACT);
-  static_assert(GMEM_INVALID_HANDLE == LMEM_INVALID_HANDLE &&
-                GMEM_INVALID_HANDLE == INVALID_HANDLE);
-  __sanitizer::atomic_store_relaxed(&managerIsAlive, (unsigned char)1);
-}
-
-MoveableMemoryManager::~MoveableMemoryManager() {
-  __sanitizer::atomic_store_relaxed(&managerIsAlive, (unsigned char)0);
 }
 
 void MoveableMemoryManager::Purge() {
   std::lock_guard<std::recursive_mutex> scoped_lock(
-      MoveableManagerWrapper.GlobalHeapMutex);
+      GetResourcesInstance().GlobalHeapMutex);
   // pointer to handle map first, find fixed free items and clear them.
   std::unordered_map<void *, MoveableAllocEntry *>::iterator iter =
-      MoveableManagerWrapper.PointerToHandleMap.begin();
+      GetResourcesInstance().PointerToHandleMap.begin();
   std::vector<void *> removal_list = {};
-  for (auto &kv : MoveableManagerWrapper.PointerToHandleMap) {
+  for (auto &kv : GetResourcesInstance().PointerToHandleMap) {
     if (kv.first == IsFreedFixedPointer) {
       removal_list.push_back(kv.first);
     }
   }
   for (auto &freed_pointer : removal_list) {
-    MoveableManagerWrapper.PointerToHandleMap.erase(freed_pointer);
+    GetResourcesInstance().PointerToHandleMap.erase(freed_pointer);
   }
 
   // Moveable Entries already free their backing memory, we just cleaned up the
@@ -223,7 +196,7 @@ void *MoveableMemoryManager::AddMoveableAllocation(size_t size,
                                                    bool zero_init) {
   void *new_region = AllocMaybeZero(size, zero_init);
   HANDLE_OUT_OF_MEMORY(new_region);
-  size_t next_available_handle = MoveableManagerWrapper.MoveableEntires.size();
+  size_t next_available_handle = GetResourcesInstance().MoveableEntries.size();
   if (next_available_handle <= 0xFFFF) {
     MoveableAllocEntry *new_handle = new (std::nothrow)
         MoveableAllocEntry(next_available_handle, new_region);
@@ -232,18 +205,19 @@ void *MoveableMemoryManager::AddMoveableAllocation(size_t size,
       SetLastError(ERROR_OUTOFMEMORY);
       return nullptr;
     }
-    MoveableManagerWrapper.MoveableEntires.push_back(new_handle);
-    MoveableManagerWrapper.PointerToHandleMap[new_region] = new_handle;
+    GetResourcesInstance().MoveableEntries.push_back(new_handle);
+    GetResourcesInstance().PointerToHandleMap[new_region] = new_handle;
     return TagHandleIndex(next_available_handle);
   }
-  if (MoveableManagerWrapper.HandleReuseList.empty()) {
+  if (GetResourcesInstance().HandleReuseList.empty()) {
     free(new_region);
     SetLastError(ERROR_OUTOFMEMORY);
     return nullptr;
   }
   MoveableAllocEntry *reuseEntry =
-      MoveableManagerWrapper.HandleReuseList.front();
-  MoveableManagerWrapper.HandleReuseList.pop();
+      GetResourcesInstance().HandleReuseList.front();
+  GetResourcesInstance().HandleReuseList.erase(
+      GetResourcesInstance().HandleReuseList.begin());
   // reuseEntry->handle value remains the same
   reuseEntry->freed = false;
   reuseEntry->addr = new_region;
@@ -254,7 +228,7 @@ void *MoveableMemoryManager::AddMoveableAllocation(size_t size,
 void *MoveableMemoryManager::AddFixedAllocation(size_t size, bool zero_init) {
   void *new_region = AllocMaybeZero(size, zero_init);
   HANDLE_OUT_OF_MEMORY(new_region);
-  MoveableManagerWrapper.PointerToHandleMap[new_region] =
+  GetResourcesInstance().PointerToHandleMap[new_region] =
       const_cast<MoveableAllocEntry *>(IsFixedPointer);
   return new_region;
 }
@@ -277,11 +251,11 @@ void *MoveableMemoryManager::ResolveHandleToPointer(void *ident) {
 MoveableAllocEntry *MoveableMemoryManager::ResolveHandleToTableEntry(
     void *handle) {
   size_t index = ResolveHandleToIndex(handle);
-  if (index >= MoveableManagerWrapper.MoveableEntires.size()) {
+  if (index >= GetResourcesInstance().MoveableEntries.size()) {
     SetLastError(ERROR_INVALID_HANDLE);
     return nullptr;
   }
-  return MoveableManagerWrapper.MoveableEntires.at(index);
+  return GetResourcesInstance().MoveableEntries.at(index);
 }
 
 // TODO: Resolve what needs to happen for these error cases.
@@ -289,11 +263,11 @@ MoveableAllocEntry *MoveableMemoryManager::ResolveHandleToTableEntry(
 //       A report would be nice...
 void *MoveableMemoryManager::ResolvePointerToHandle(void *ident) {
   std::lock_guard<std::recursive_mutex> scoped_lock(
-      MoveableManagerWrapper.GlobalHeapMutex);
+      GetResourcesInstance().GlobalHeapMutex);
 
   if (IsOwnedPointer(ident)) {
     MoveableAllocEntry *handle_entry =
-        MoveableManagerWrapper.PointerToHandleMap.at(ident);
+        GetResourcesInstance().PointerToHandleMap.at(ident);
     if (HandleIsActiveHandle(handle_entry)) {
       return handle_entry->handle;
     }
@@ -309,7 +283,7 @@ void *MoveableMemoryManager::ResolvePointerToHandle(void *ident) {
 // TODO: overflows and underflows
 void *MoveableMemoryManager::IncrementLockCount(void *ident) {
   std::lock_guard<std::recursive_mutex> scoped_lock(
-      MoveableManagerWrapper.GlobalHeapMutex);
+      GetResourcesInstance().GlobalHeapMutex);
   if (IsOwnedHandle(ident)) {
     MoveableAllocEntry *entry = ResolveHandleToTableEntry(ident);
     if (!entry) {
@@ -344,7 +318,7 @@ void *MoveableMemoryManager::ReallocFixedToHandle(void *original,
 
 size_t MoveableMemoryManager::GetAllocationSize(void *memory_ident) {
   std::lock_guard<std::recursive_mutex> scoped_lock(
-      MoveableManagerWrapper.GlobalHeapMutex);
+      GetResourcesInstance().GlobalHeapMutex);
   void *ptr;
   if (IsOwnedHandle(memory_ident)) {
     ptr = ResolveHandleToPointer(memory_ident);
@@ -385,14 +359,14 @@ void *MoveableMemoryManager::ReallocHandleToHandle(void *original,
   if (new_ptr != ptr) {
     // New backing memory, the old pointer is invalid so we need to update our
     // table to remember this
-    MoveableManagerWrapper.PointerToHandleMap[new_ptr] = handle_entry;
+    GetResourcesInstance().PointerToHandleMap[new_ptr] = handle_entry;
     handle_entry->addr = new_ptr;
 
     /* leave the pointer entry, since we want to know this is owned still, if
      * it's passed into a function it will be treated like a fixed pointer, and
      * will get passed to an asan_function to get reported on. It will have been
      * freed & quarantined at this point. */
-    MoveableManagerWrapper.PointerToHandleMap[ptr] =
+    GetResourcesInstance().PointerToHandleMap[ptr] =
         const_cast<MoveableAllocEntry *>(IsFreedFixedPointer);
   }
   return original;
@@ -400,7 +374,7 @@ void *MoveableMemoryManager::ReallocHandleToHandle(void *original,
 
 void *MoveableMemoryManager::DecrementLockCount(void *ident) {
   std::lock_guard<std::recursive_mutex> scoped_lock(
-      MoveableManagerWrapper.GlobalHeapMutex);
+      GetResourcesInstance().GlobalHeapMutex);
   if (IsOwnedHandle(ident)) {
     MoveableAllocEntry *entry = ResolveHandleToTableEntry(ident);
     if (!entry) {
@@ -427,7 +401,7 @@ void *MoveableMemoryManager::DecrementLockCount(void *ident) {
 
 size_t MoveableMemoryManager::GetLockCount(void *ident) {
   std::lock_guard<std::recursive_mutex> scoped_lock(
-      MoveableManagerWrapper.GlobalHeapMutex);
+      GetResourcesInstance().GlobalHeapMutex);
   if (IsOwnedHandle(ident)) {
     MoveableAllocEntry *entry = ResolveHandleToTableEntry(ident);
     return entry->lockCount;
@@ -449,21 +423,20 @@ bool MoveableMemoryManager::IsOwnedHandle(void *item) {
 }
 
 bool MoveableMemoryManager::IsOwnedPointer(void *item) {
-  return MoveableManagerWrapper.PointerToHandleMap.find(item) !=
-         MoveableManagerWrapper.PointerToHandleMap.end();
+  return GetResourcesInstance().PointerToHandleMap.find(item) !=
+         GetResourcesInstance().PointerToHandleMap.end();
 }
 
 bool MoveableMemoryManager::IsOwned(void *item) {
   std::lock_guard<std::recursive_mutex> scoped_lock(
-      MoveableManagerWrapper.GlobalHeapMutex);
-  return MoveableMemoryManager::ManagerIsAlive() &&
-         (IsOwnedPointer(item) || IsOwnedHandle(item));
+      GetResourcesInstance().GlobalHeapMutex);
+  return IsOwnedPointer(item) || IsOwnedHandle(item);
 }
 
 void *MoveableMemoryManager::ReAllocate(void *ident, size_t flags, size_t size,
                                         HeapCaller caller) {
   std::lock_guard<std::recursive_mutex> scoped_lock(
-      MoveableManagerWrapper.GlobalHeapMutex);
+      GetResourcesInstance().GlobalHeapMutex);
   if (flags & MODIFY) {
     if (IsOwnedPointer(ident)) {
       // conversion is one way, fixed to moveable only.
@@ -493,13 +466,13 @@ void *MoveableMemoryManager::ReAllocate(void *ident, size_t flags, size_t size,
 // TODO: Add an ASan report type for double free on a stale handle
 void *MoveableMemoryManager::Free(void *ident) {
   std::lock_guard<std::recursive_mutex> scoped_lock(
-      MoveableManagerWrapper.GlobalHeapMutex);
+      GetResourcesInstance().GlobalHeapMutex);
   if (IsOwnedHandle(ident)) {
     void *backing_memory = ResolveHandleToPointer(ident);
     free(backing_memory);
     MoveableAllocEntry *entry = ResolveHandleToTableEntry(ident);
     CHECK(entry != nullptr);
-    MoveableManagerWrapper.PointerToHandleMap[backing_memory] =
+    GetResourcesInstance().PointerToHandleMap[backing_memory] =
         const_cast<MoveableAllocEntry *>(IsFreedFixedPointer);
 
     /* NOTE: Lock count is not affected by free
@@ -507,7 +480,7 @@ void *MoveableMemoryManager::Free(void *ident) {
              the base memory is freed.
     */
     entry->freed = true;
-    MoveableManagerWrapper.HandleReuseList.push(entry);
+    GetResourcesInstance().HandleReuseList.push_back(entry);
     return nullptr;
   }
 
@@ -518,9 +491,9 @@ void *MoveableMemoryManager::Free(void *ident) {
 
 void *MoveableMemoryManager::Alloc(unsigned long flags, size_t size) {
   std::lock_guard<std::recursive_mutex> scoped_lock(
-      MoveableManagerWrapper.GlobalHeapMutex);
-  bool zero_alloc = flags & GMEM_ZEROINIT;
-  if (flags & GMEM_MOVEABLE) {
+      GetResourcesInstance().GlobalHeapMutex);
+  bool zero_alloc = flags & ZEROINIT;
+  if (flags & MOVEABLE) {
     return AddMoveableAllocation(size, zero_alloc);
   } else {
     return AddFixedAllocation(size, zero_alloc);

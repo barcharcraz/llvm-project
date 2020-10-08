@@ -310,6 +310,7 @@ typedef __sanitizer::AddrHashMap<AsanHeapMemoryNode *, 4099> AsanMemoryMap;
 
 struct AsanHeap {
   static void *operator new(size_t size) { return InternalAlloc(size); }
+  static void *operator new(size_t, void *p) { return p; }
   static void operator delete(void *p) { InternalFree(p); }
 
   explicit AsanHeap(unsigned long _flags = 0) : Flags(_flags) {}
@@ -356,10 +357,13 @@ class AsanHeapLock {
   bool serialized;
 };
 
-typedef __sanitizer::AddrHashMap<AsanHeap *, 37> AsanHeapMap;
+struct AsanHeapMap : public __sanitizer::AddrHashMap<AsanHeap *, 37> {
+  using __sanitizer::AddrHashMap<AsanHeap *, 37>::Handle;
+
+  static void *operator new(size_t, void *p) { return p; }
+};
 
 AsanHeapMap *GetAsanHeapMap() { return &immortalize<AsanHeapMap>(); }
-
 AsanHeap *GetDefaultHeap() { return &immortalize<AsanHeap>(); }
 
 struct AllocationOwnership {
@@ -839,10 +843,6 @@ INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
 }
 
 namespace __asan {
-// forward declaring a few items for the shared versions of some of these
-// Global/Local interceptors.
-static MoveableMemoryManager *MemManager = MoveableMemoryManager::GetInstance();
-
 // Global and Local have some distinct (but deprecated and ignored) flags,
 // we'll seperate them to validate these appropriately.
 constexpr unsigned long SHARED_ALLOC_SUPPORTED_FLAGS =
@@ -885,9 +885,9 @@ HANDLE SharedLockUnlock(HANDLE hMem, GlobalLocalLock lockFunc,
   CHECK(lockFunc != nullptr);
   if (asan_inited && !OWNED_BY_RTL(GetProcessHeap(), hMem)) {
     if (action == LockAction::Increment)
-      return MemManager->IncrementLockCount(hMem);
+      return MoveableMemoryManager::GetInstance()->IncrementLockCount(hMem);
     else
-      return MemManager->DecrementLockCount(hMem);
+      return MoveableMemoryManager::GetInstance()->DecrementLockCount(hMem);
   }
   // OWNED_BY_RTL was true or asan is not inited yet:
   return lockFunc(hMem);
@@ -900,7 +900,7 @@ INTERCEPTOR_WINAPI(HGLOBAL, GlobalAlloc, UINT uFlags, SIZE_T dwBytes) {
     return REAL(GlobalAlloc)(uFlags, dwBytes);
   }
 
-  return MemManager->Alloc(uFlags, dwBytes);
+  return MoveableMemoryManager::GetInstance()->Alloc(uFlags, dwBytes);
 }
 
 INTERCEPTOR_WINAPI(HGLOBAL, GlobalLock, HGLOBAL hMem) {
@@ -919,11 +919,17 @@ INTERCEPTOR_WINAPI(HLOCAL, LocalLock, HLOCAL hMem) {
 }
 
 INTERCEPTOR_WINAPI(HGLOBAL, GlobalHandle, HGLOBAL hMem) {
-  return MemManager->ResolvePointerToHandle(hMem);
+  if (!asan_inited) {
+    return REAL(GlobalHandle)(hMem);
+  }
+  return MoveableMemoryManager::GetInstance()->ResolvePointerToHandle(hMem);
 }
 
 INTERCEPTOR_WINAPI(HLOCAL, LocalHandle, HLOCAL hMem) {
-  return MemManager->ResolvePointerToHandle(hMem);
+  if (!asan_inited) {
+    return REAL(GlobalHandle)(hMem);
+  }
+  return MoveableMemoryManager::GetInstance()->ResolvePointerToHandle(hMem);
 }
 
 INTERCEPTOR_WINAPI(HGLOBAL, LocalUnlock, HGLOBAL hMem) {
@@ -938,7 +944,7 @@ INTERCEPTOR_WINAPI(SIZE_T, GlobalSize, HGLOBAL hMem) {
   if (!asan_inited || OWNED_BY_RTL(GetProcessHeap(), hMem))
     return REAL(GlobalSize)(hMem);
 
-  return MemManager->GetAllocationSize(hMem);
+  return MoveableMemoryManager::GetInstance()->GetAllocationSize(hMem);
 }
 
 namespace __asan {
@@ -955,7 +961,7 @@ HANDLE GlobalLocalGenericFree(GlobalLocalUnlock lockFunction,
                               GlobalLocalFree freeFunction, HANDLE hMem) {
   // If the memory we are trying to free is not owned
   // by ASan heap, then fall back to the original GlobalFree.
-  if (!MoveableMemoryManager::ManagerIsAlive() || !MemManager->IsOwned(hMem)) {
+  if (!MoveableMemoryManager::GetInstance()->IsOwned(hMem)) {
     HGLOBAL pointer = lockFunction(hMem);
     if (pointer != nullptr) {
       // This was either a handle, or it was a pointer to begin with.
@@ -969,7 +975,7 @@ HANDLE GlobalLocalGenericFree(GlobalLocalUnlock lockFunction,
   // a) an asan-owned pointer or handle
   // b) an invalid pointer which asan needs to report on.
 
-  return MemManager->Free(hMem);
+  return MoveableMemoryManager::GetInstance()->Free(hMem);
 }
 
 AllocationOwnership CheckGlobalLocalHeapOwnership(
@@ -988,7 +994,7 @@ AllocationOwnership CheckGlobalLocalHeapOwnership(
    */
 
   // Check whether this pointer belongs to the memory manager first.
-  if (MemManager->IsOwned(hMem)) {
+  if (MoveableMemoryManager::GetInstance()->IsOwned(hMem)) {
     return AllocationOwnership::OWNED_BY_ASAN;
   }
 
@@ -1032,7 +1038,7 @@ void *ReAllocGlobalLocal(GlobalLocalRealloc reallocFunc,
 
   if (ownershipState == AllocationOwnership::OWNED_BY_ASAN) {
     CHECK((COMBINED_GLOBALLOCAL_UNSUPPORTED_FLAGS & uFlags) == 0);
-    return MemManager->ReAllocate(hMem, uFlags, dwBytes, caller);
+    return MoveableMemoryManager::GetInstance()->ReAllocate(hMem, uFlags, dwBytes, caller);
   }
   return nullptr;
 }
@@ -1055,7 +1061,7 @@ INTERCEPTOR_WINAPI(HLOCAL, LocalAlloc, UINT uFlags, SIZE_T uBytes) {
     return REAL(LocalAlloc)(uFlags, uBytes);
   }
 
-  return MemManager->Alloc(uFlags, uBytes);
+  return MoveableMemoryManager::GetInstance()->Alloc(uFlags, uBytes);
 }
 
 INTERCEPTOR_WINAPI(HLOCAL, LocalFree, HGLOBAL hMem) {
@@ -1071,7 +1077,7 @@ INTERCEPTOR_WINAPI(SIZE_T, LocalSize, HGLOBAL hMem) {
   if (!asan_inited || OWNED_BY_RTL(GetProcessHeap(), hMem)) {
     return REAL(LocalSize)(hMem);
   }
-  return MemManager->GetAllocationSize(hMem);
+  return MoveableMemoryManager::GetInstance()->GetAllocationSize(hMem);
 }
 
 INTERCEPTOR_WINAPI(HLOCAL, LocalReAlloc, HGLOBAL hMem, DWORD dwBytes,

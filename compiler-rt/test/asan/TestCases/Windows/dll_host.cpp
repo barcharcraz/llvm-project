@@ -24,10 +24,6 @@
 //
 // Add functions interecepted in asan_malloc.win.cpp and asan_win.cpp.
 // RUN: grep '[I]MPORT:' %s | sed -e 's/.*[I]MPORT: //' > %t.imports2
-// IMPORT: __asan_wrap_HeapAlloc
-// IMPORT: __asan_wrap_HeapFree
-// IMPORT: __asan_wrap_HeapReAlloc
-// IMPORT: __asan_wrap_HeapSize
 // IMPORT: __asan_wrap_GlobalAlloc
 // IMPORT: __asan_wrap_GlobalFree
 // IMPORT: __asan_wrap_GlobalReAlloc
@@ -50,6 +46,8 @@
 // IMPORT: __asan_wrap_RtlAllocateHeap
 // IMPORT: __asan_wrap_RtlReAllocateHeap
 // IMPORT: __asan_wrap_RtlFreeHeap
+// IMPORT: __asan_wrap_RtlCreateHeap
+// IMPORT: __asan_wrap_RtlDestroyHeap
 // IMPORT: __asan_wrap__strdup
 //
 // RUN: cat %t.imports1 %t.imports2 | sort | uniq > %t.imports-sorted

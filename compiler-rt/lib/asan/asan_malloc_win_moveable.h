@@ -15,6 +15,11 @@
 #define GLOBAL_VALID_FLAGS 0x7F72
 #define LOCAL_VALID_FLAGS 0x0F72
 
+#define ERROR_OUTOFMEMORY 0xE
+#define NO_ERROR 0
+#define ERROR_NOT_LOCKED 0x9E
+#define ERROR_INVALID_HANDLE 0x6
+
 class MoveableAllocEntry {
   // the physical address entry, split so the pointers can be sorted separately
   // for faster ptr->handle lookup.
