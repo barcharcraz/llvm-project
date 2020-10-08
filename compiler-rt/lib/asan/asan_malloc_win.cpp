@@ -22,6 +22,7 @@
 #include "asan_internal.h"
 #include "asan_malloc_win_moveable.h"
 #include "asan_stack.h"
+#include "asan_win_immortalize.h"
 #include "interception/interception.h"
 
 // Intentionally not including windows.h here, to avoid the risk of
@@ -311,7 +312,7 @@ struct AsanHeap {
   static void *operator new(size_t size) { return InternalAlloc(size); }
   static void operator delete(void *p) { InternalFree(p); }
 
-  AsanHeap(unsigned long _Flags) : Flags(_Flags) {}
+  explicit AsanHeap(unsigned long _flags = 0) : Flags(_flags) {}
 
   // There is no way to query what flags a heap was created with so we need to
   // keep them here.
@@ -332,17 +333,34 @@ struct AsanHeap {
   AsanMemoryMap memory_map;
 };
 
+// Takes the lock on an AsanHeap if this thread does not already hold it.
+class AsanHeapLock {
+ public:
+  explicit AsanHeapLock(AsanHeap *_heap) : heap(_heap), serialized(false) {
+    if (atomic_load_relaxed(&heap->thread_id) != GetCurrentThreadId()) {
+      heap->lock.Lock();
+      atomic_store_relaxed(&heap->thread_id, GetCurrentThreadId());
+      serialized = true;
+    }
+  }
+
+  ~AsanHeapLock() {
+    if (serialized) {
+      atomic_store_relaxed(&heap->thread_id, 0);
+      heap->lock.Unlock();
+    }
+  }
+
+ private:
+  AsanHeap *heap;
+  bool serialized;
+};
+
 typedef __sanitizer::AddrHashMap<AsanHeap *, 37> AsanHeapMap;
 
-AsanHeapMap *GetAsanHeapMap() {
-  static AsanHeapMap asan_heap_map = {};
-  return &asan_heap_map;
-}
+AsanHeapMap *GetAsanHeapMap() { return &immortalize<AsanHeapMap>(); }
 
-AsanHeap *GetDefaultHeap() {
-  static AsanHeap default_heap(0x0);
-  return &default_heap;
-}
+AsanHeap *GetDefaultHeap() { return &immortalize<AsanHeap>(); }
 
 struct AllocationOwnership {
   enum { NEITHER = 0, ASAN = 1, RTL = 2 };
@@ -548,15 +566,8 @@ INTERCEPTOR_WINAPI(void *, RtlAllocateHeap, HANDLE HeapHandle, DWORD Flags,
     return REAL(RtlAllocateHeap)(HeapHandle, Flags, Size);
   }
 
-  // We always serialize, ignoring HEAP_NO_SERIALIZE, unless this thread
-  // already holds the lock.
-  bool serialized = false;
-  if (atomic_load_relaxed(&asan_heap->thread_id) != GetCurrentThreadId()) {
-    asan_heap->lock.Lock();
-    atomic_store_relaxed(&asan_heap->thread_id, GetCurrentThreadId());
-    serialized = true;
-  }
-  asan_heap->lock.CheckLocked();
+  // Take the lock in the AsanHeap
+  AsanHeapLock raii_lock(asan_heap);
 
   GET_STACK_TRACE_MALLOC;
   void *p = asan_malloc(Size, &stack);
@@ -580,11 +591,6 @@ INTERCEPTOR_WINAPI(void *, RtlAllocateHeap, HANDLE HeapHandle, DWORD Flags,
     *h = prev_tail;
   }
 
-  if (serialized) {
-    asan_heap->lock.CheckLocked();
-    atomic_store_relaxed(&asan_heap->thread_id, 0);
-    asan_heap->lock.Unlock();
-  }
   return p;
 }
 
@@ -620,15 +626,8 @@ INTERCEPTOR_WINAPI(LOGICAL, RtlFreeHeap, void *HeapHandle, DWORD Flags,
     asan_heap = *h_find;
   }
 
-  // We always serialize, ignoring HEAP_NO_SERIALIZE, unless this thread
-  // already holds the lock.
-  bool serialized = false;
-  if (atomic_load_relaxed(&asan_heap->thread_id) != GetCurrentThreadId()) {
-    asan_heap->lock.Lock();
-    atomic_store_relaxed(&asan_heap->thread_id, GetCurrentThreadId());
-    serialized = true;
-  }
-  asan_heap->lock.CheckLocked();
+  // Take the lock in the AsanHeap
+  AsanHeapLock raii_lock(asan_heap);
 
   AsanHeapMemoryNode *found;
   {
@@ -637,11 +636,6 @@ INTERCEPTOR_WINAPI(LOGICAL, RtlFreeHeap, void *HeapHandle, DWORD Flags,
                                    false);
 
     if (!h_delete.exists()) {
-      if (serialized) {
-        asan_heap->lock.CheckLocked();
-        atomic_store_relaxed(&asan_heap->thread_id, 0);
-        asan_heap->lock.Unlock();
-      }
       return false;
     }
 
@@ -683,12 +677,6 @@ INTERCEPTOR_WINAPI(LOGICAL, RtlFreeHeap, void *HeapHandle, DWORD Flags,
   GET_STACK_TRACE_FREE;
   asan_free(BaseAddress, &stack, FROM_MALLOC);
 
-  if (serialized) {
-    asan_heap->lock.CheckLocked();
-    atomic_store_relaxed(&asan_heap->thread_id, 0);
-    asan_heap->lock.Unlock();
-  }
-
   return true;
 }
 
@@ -728,12 +716,8 @@ INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
   const bool only_asan_supported_flags =
       (HEAP_REALLOC_UNSUPPORTED_FLAGS & all_flags) == 0;
 
-  bool serialized = false;
-  if (atomic_load_relaxed(&asan_heap->thread_id) != GetCurrentThreadId()) {
-    asan_heap->lock.Lock();
-    atomic_store_relaxed(&asan_heap->thread_id, GetCurrentThreadId());
-    serialized = true;
-  }
+  // Take the lock in the AsanHeap
+  AsanHeapLock raii_lock(asan_heap);
 
   GET_STACK_TRACE_MALLOC;
   GET_CURRENT_PC_BP_SP;
@@ -768,8 +752,9 @@ INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
     // passing a 0 size into asan_realloc will free the allocation.
     // To avoid this and keep behavior consistent, fudge the size if 0.
     // (asan_malloc already does this)
-    if (Size == 0)
+    if (Size == 0) {
       Size = 1;
+    }
 
     if (all_flags & HEAP_ZERO_MEMORY) {
       old_size = asan_malloc_usable_size(BaseAddress, pc, bp);
@@ -782,11 +767,6 @@ INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
                                      false);
 
       if (!h_delete.exists()) {
-        if (serialized) {
-          asan_heap->lock.CheckLocked();
-          atomic_store_relaxed(&asan_heap->thread_id, 0);
-          asan_heap->lock.Unlock();
-        }
         return nullptr;
       }
 
@@ -795,11 +775,6 @@ INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
 
     replacement_alloc = asan_realloc(BaseAddress, Size, &stack);
     if (replacement_alloc == nullptr) {
-      if (serialized) {
-        asan_heap->lock.CheckLocked();
-        atomic_store_relaxed(&asan_heap->thread_id, 0);
-        asan_heap->lock.Unlock();
-      }
       return nullptr;
     }
 
@@ -832,11 +807,6 @@ INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
     if (old_size != ~size_t{0}) {
       replacement_alloc = WRAP(RtlAllocateHeap)(HeapHandle, Flags, Size);
       if (replacement_alloc == nullptr) {
-        if (serialized) {
-          asan_heap->lock.CheckLocked();
-          atomic_store_relaxed(&asan_heap->thread_id, 0);
-          asan_heap->lock.Unlock();
-        }
         return nullptr;
       } else {
         REAL(memcpy)
@@ -844,11 +814,6 @@ INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
         REAL(RtlFreeHeap)(HeapHandle, Flags, BaseAddress);
       }
     } else {
-      if (serialized) {
-        asan_heap->lock.CheckLocked();
-        atomic_store_relaxed(&asan_heap->thread_id, 0);
-        asan_heap->lock.Unlock();
-      }
       return nullptr;
     }
   } else if (UNLIKELY(!only_asan_supported_flags &&
@@ -868,12 +833,6 @@ INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
     // just pass back to original allocator.
     replacement_alloc =
         REAL(RtlReAllocateHeap)(HeapHandle, Flags, BaseAddress, Size);
-  }
-
-  if (serialized) {
-    asan_heap->lock.CheckLocked();
-    atomic_store_relaxed(&asan_heap->thread_id, 0);
-    asan_heap->lock.Unlock();
   }
 
   return replacement_alloc;

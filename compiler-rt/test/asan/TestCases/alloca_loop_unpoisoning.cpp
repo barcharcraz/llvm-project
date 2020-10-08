@@ -12,7 +12,7 @@
 #include <stdlib.h>
 // MSVC provides _alloca instead of alloca.
 #if defined(_MSC_VER) && !defined(alloca)
-# define alloca _alloca
+#define alloca _alloca
 #endif
 
 #if defined(__sun__) && defined(__svr4__)
@@ -24,6 +24,8 @@ void *top, *bot;
 ATTRIBUTE_NOINLINE void foo(int len) {
   char x;
   top = &x;
+
+  ATTRIBUTE_ALIGNED(32)
 #ifdef MSVC
   char *array = (char *)alloca(len);
 #else
@@ -32,6 +34,7 @@ ATTRIBUTE_NOINLINE void foo(int len) {
   assert(!(reinterpret_cast<uintptr_t>(array) & 31L));
   alloca(len);
   for (int i = 0; i < 32; ++i) {
+    ATTRIBUTE_ALIGNED(32)
 #ifdef MSVC
     char *array = (char *)alloca(i);
 #else
