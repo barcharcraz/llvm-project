@@ -1,3 +1,5 @@
+// UNSUPPORTED: msvc-host
+// Tracked by vso1226261, ( GeneralTestSuite_amd64chk_MD.txt GeneralTestSuite_amd64chk_MDd.txt GeneralTestSuite_amd64chk_MT.txt GeneralTestSuite_amd64chk_MTd.txt GeneralTestSuite_x86chk_MD.txt GeneralTestSuite_x86chk_MDd.txt GeneralTestSuite_x86chk_MT.txt GeneralTestSuite_x86chk_MTd.txt )
 // RUN: %clangxx_asan -O1 -fsanitize-address-use-after-scope %s -o %t && \
 // RUN:     not %run %t 2>&1 | FileCheck %s
 

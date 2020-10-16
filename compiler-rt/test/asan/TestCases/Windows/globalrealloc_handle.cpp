@@ -1,3 +1,5 @@
+// UNSUPPORTED: msvc-host
+// Tracked by vso1226261, ( WindowsSuite_x86chk_MD.txt WindowsSuite_x86chk_MT.txt )
 #include <windows.h>
 #include <winbase.h>
 #include <stdlib.h>

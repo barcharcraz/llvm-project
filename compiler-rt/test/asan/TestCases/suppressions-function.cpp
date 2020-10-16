@@ -1,3 +1,5 @@
+// UNSUPPORTED: msvc-host
+// Tracked by vso1226261, ( GeneralTestSuite_amd64chk_MD.txt GeneralTestSuite_amd64chk_MDd.txt GeneralTestSuite_x86chk_MD.txt GeneralTestSuite_x86chk_MDd.txt )
 // Check that without suppressions, we catch the issue.
 // RUN: %clangxx_asan -O0 %s -o %t
 // RUN: not %run %t 2>&1 | FileCheck --check-prefix=CHECK-CRASH %s

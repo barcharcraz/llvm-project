@@ -1,3 +1,5 @@
+// UNSUPPORTED: msvc-host
+// Tracked by vso1226261, ( GeneralTestSuite_amd64chk_MD.txt GeneralTestSuite_amd64chk_MDd.txt GeneralTestSuite_amd64chk_MT.txt GeneralTestSuite_amd64chk_MTd.txt )
 // RUN: %clangxx_asan %s -o %t && %run %t
 // RUN: %clangxx_asan %s -o %t %linux_static_libstdcplusplus && %run %t
 #include "defines.h"

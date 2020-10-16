@@ -1,3 +1,5 @@
+// UNSUPPORTED: msvc-host
+// Tracked by vso1226261, ( WindowsSuite_x86chk_MD.txt WindowsSuite_x86chk_MT.txt )
 // RUN: %clang_cl /Od %s -Fe%t
 // RUN:  %run %t 2>&1 | FileCheck %s
 // RUN: %clang_cl_asan /Od %s -Fe%t

@@ -1,3 +1,5 @@
+// UNSUPPORTED: msvc-host
+// Tracked by vso1226261, ( WindowsSuite_x86chk_MD.txt WindowsSuite_x86chk_MDd.txt )
 // RUN: %clang_cl_asan /Od %s -Fe%t /link /force:multiple
 // RUN: not %run %t
 // RUN: env ASAN_WIN_CONTINUE_ON_INTERCEPTION_FAILURE=1 %run %t

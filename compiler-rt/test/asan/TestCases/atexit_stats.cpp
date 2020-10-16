@@ -1,3 +1,5 @@
+// UNSUPPORTED: msvc-host
+// Tracked by vso1226261, ( GeneralTestSuite_amd64chk_MT.txt GeneralTestSuite_amd64chk_MTd.txt GeneralTestSuite_x86chk_MT.txt GeneralTestSuite_x86chk_MTd.txt )
 // Make sure we report atexit stats.
 // RUN: %clangxx_asan -O3 %s -o %t
 // RUN: %env_asan_opts=atexit=1:print_stats=1 %run %t 2>&1 | FileCheck %s

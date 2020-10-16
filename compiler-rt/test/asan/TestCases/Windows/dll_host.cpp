@@ -1,3 +1,5 @@
+// UNSUPPORTED: msvc-host
+// Tracked by vso1226261, ( WindowsSuite_amd64chk_MT.txt WindowsSuite_amd64chk_MTd.txt WindowsSuite_x86chk_MT.txt WindowsSuite_x86chk_MTd.txt )
 // This is a host program for DLL tests.
 //
 // Just make sure we can compile this.

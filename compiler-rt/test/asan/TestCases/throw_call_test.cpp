@@ -1,3 +1,5 @@
+// UNSUPPORTED: msvc-host
+// Tracked by vso1226261, ( GeneralTestSuite_x86chk_MD.txt GeneralTestSuite_x86chk_MDd.txt GeneralTestSuite_x86chk_MT.txt GeneralTestSuite_x86chk_MTd.txt )
 // RUN: %clangxx_asan %s -o %t && %run %t
 // http://code.google.com/p/address-sanitizer/issues/detail?id=147 (not fixed).
 // BROKEN: %clangxx_asan %s -o %t -static-libstdc++ && %run %t

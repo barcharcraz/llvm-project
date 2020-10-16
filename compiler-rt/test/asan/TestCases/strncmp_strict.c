@@ -1,3 +1,5 @@
+// UNSUPPORTED: msvc-host
+// Tracked by vso1226261, ( GeneralTestSuite_amd64chk_MDd.txt GeneralTestSuite_amd64chk_MTd.txt GeneralTestSuite_x86chk_MDd.txt GeneralTestSuite_x86chk_MTd.txt )
 // Test strict_string_checks option in strncmp function
 // RUN: %clang_asan %s -o %t
 

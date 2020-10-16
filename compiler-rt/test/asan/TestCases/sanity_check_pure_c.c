@@ -1,3 +1,5 @@
+// UNSUPPORTED: msvc-host
+// Tracked by vso1226261, ( GeneralTestSuite_amd64chk_MT.txt GeneralTestSuite_amd64chk_MTd.txt )
 // Sanity checking a test in pure C.
 // RUN: %clang_asan -O2 %s -o %t
 // RUN: not %run %t 2>&1 | FileCheck %s

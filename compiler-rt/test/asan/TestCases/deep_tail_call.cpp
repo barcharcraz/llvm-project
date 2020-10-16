@@ -1,3 +1,5 @@
+// UNSUPPORTED: msvc-host
+// Tracked by vso1226261, ( GeneralTestSuite_amd64chk_MT.txt GeneralTestSuite_amd64chk_MTd.txt )
 // RUN: %clangxx_asan -O0 %s -o %t && not %run %t 2>&1 | FileCheck %s
 // RUN: %clangxx_asan -O1 %s -o %t && not %run %t 2>&1 | FileCheck %s
 // RUN: %clangxx_asan -O2 %s -o %t && not %run %t 2>&1 | FileCheck %s

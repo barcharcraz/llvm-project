@@ -1,3 +1,5 @@
+// UNSUPPORTED: msvc-host
+// Tracked by vso1226261, ( GeneralTestSuite_amd64chk_MD.txt GeneralTestSuite_amd64chk_MDd.txt GeneralTestSuite_amd64chk_MT.txt GeneralTestSuite_amd64chk_MTd.txt )
 // Verifies that speculative loads from unions do not happen under asan.
 // RUN: %clangxx_asan -O0 %s -o %t && %run %t 2>&1
 // RUN: %clangxx_asan -O1 %s -o %t && %run %t 2>&1

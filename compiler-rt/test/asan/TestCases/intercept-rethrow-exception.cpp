@@ -1,3 +1,5 @@
+// UNSUPPORTED: msvc-host
+// Tracked by vso1226261, ( GeneralTestSuite_amd64chk_MDd.txt GeneralTestSuite_amd64chk_MTd.txt GeneralTestSuite_x86chk_MDd.txt GeneralTestSuite_x86chk_MTd.txt )
 // Regression test for
 // https://bugs.llvm.org/show_bug.cgi?id=32434
 

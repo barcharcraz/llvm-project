@@ -1,3 +1,5 @@
+// UNSUPPORTED: msvc-host
+// Tracked by vso1226261, ( GeneralTestSuite_amd64chk_MD.txt )
 // RUN: %clangxx_asan -O0 -mllvm -asan-instrument-dynamic-allocas %s -o %t
 // RUN: %clangxx_asan -O3 -mllvm -asan-instrument-dynamic-allocas %s -o %t
 // RUN: %run %t 2>&1
