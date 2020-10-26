@@ -24,7 +24,9 @@
 #include "asan_malloc_win_moveable.h"
 #include "asan_win_immortalize.h"
 #include "sanitizer_common/sanitizer_atomic.h"
+#include "sanitizer_common/sanitizer_mutex.h"
 #include "sanitizer_common/sanitizer_internal_defs.h"
+#include "asan_win_scoped_lock.h"
 
 /* Background:
   These vintage allocators provided a primitive DIY interface for paging. We're
@@ -75,10 +77,10 @@ struct MemoryManagerResources {
    * handle_entry associations. */
   std::unordered_map<void *, MoveableAllocEntry *> PointerToHandleMap;
 
-  /* The ReAlloc case needs to call Free, which also grabs the mutex.
-   * rather then have some bool to skip the lock in some cases this seems
-   * like an appropriate case for a recursive lock */
-  std::recursive_mutex GlobalHeapMutex;
+  // lock elements which will be passed into the shared RAII lock
+  __sanitizer::SpinMutex lock = {};
+  __sanitizer::atomic_uint32_t thread_id = {};
+
   MoveableMemoryManager MoveableManager;
 
   static void *operator new(size_t, void *p) { return p; }
@@ -145,8 +147,8 @@ MoveableMemoryManager::MoveableMemoryManager() {
 }
 
 void MoveableMemoryManager::Purge() {
-  std::lock_guard<std::recursive_mutex> scoped_lock(
-      GetResourcesInstance().GlobalHeapMutex);
+  RecursiveScopedLock scoped_lock(GetResourcesInstance().lock,
+                                  GetResourcesInstance().thread_id);
   // pointer to handle map first, find fixed free items and clear them.
   std::unordered_map<void *, MoveableAllocEntry *>::iterator iter =
       GetResourcesInstance().PointerToHandleMap.begin();
@@ -262,9 +264,8 @@ MoveableAllocEntry *MoveableMemoryManager::ResolveHandleToTableEntry(
 //       Windows just crashes inconsistently on some of these.
 //       A report would be nice...
 void *MoveableMemoryManager::ResolvePointerToHandle(void *ident) {
-  std::lock_guard<std::recursive_mutex> scoped_lock(
-      GetResourcesInstance().GlobalHeapMutex);
-
+  RecursiveScopedLock scoped_lock(GetResourcesInstance().lock,
+                                  GetResourcesInstance().thread_id);
   if (IsOwnedPointer(ident)) {
     MoveableAllocEntry *handle_entry =
         GetResourcesInstance().PointerToHandleMap.at(ident);
@@ -282,8 +283,8 @@ void *MoveableMemoryManager::ResolvePointerToHandle(void *ident) {
 // These might need a refactor but I'll wait until they're finished.
 // TODO: overflows and underflows
 void *MoveableMemoryManager::IncrementLockCount(void *ident) {
-  std::lock_guard<std::recursive_mutex> scoped_lock(
-      GetResourcesInstance().GlobalHeapMutex);
+  RecursiveScopedLock scoped_lock(GetResourcesInstance().lock,
+                                  GetResourcesInstance().thread_id);
   if (IsOwnedHandle(ident)) {
     MoveableAllocEntry *entry = ResolveHandleToTableEntry(ident);
     if (!entry) {
@@ -317,8 +318,8 @@ void *MoveableMemoryManager::ReallocFixedToHandle(void *original,
 }
 
 size_t MoveableMemoryManager::GetAllocationSize(void *memory_ident) {
-  std::lock_guard<std::recursive_mutex> scoped_lock(
-      GetResourcesInstance().GlobalHeapMutex);
+  RecursiveScopedLock scoped_lock(GetResourcesInstance().lock,
+                                  GetResourcesInstance().thread_id);
   void *ptr;
   if (IsOwnedHandle(memory_ident)) {
     ptr = ResolveHandleToPointer(memory_ident);
@@ -373,8 +374,8 @@ void *MoveableMemoryManager::ReallocHandleToHandle(void *original,
 }
 
 void *MoveableMemoryManager::DecrementLockCount(void *ident) {
-  std::lock_guard<std::recursive_mutex> scoped_lock(
-      GetResourcesInstance().GlobalHeapMutex);
+  RecursiveScopedLock scoped_lock(GetResourcesInstance().lock,
+                                  GetResourcesInstance().thread_id);
   if (IsOwnedHandle(ident)) {
     MoveableAllocEntry *entry = ResolveHandleToTableEntry(ident);
     if (!entry) {
@@ -400,8 +401,8 @@ void *MoveableMemoryManager::DecrementLockCount(void *ident) {
 }
 
 size_t MoveableMemoryManager::GetLockCount(void *ident) {
-  std::lock_guard<std::recursive_mutex> scoped_lock(
-      GetResourcesInstance().GlobalHeapMutex);
+  RecursiveScopedLock scoped_lock(GetResourcesInstance().lock,
+                                  GetResourcesInstance().thread_id);
   if (IsOwnedHandle(ident)) {
     MoveableAllocEntry *entry = ResolveHandleToTableEntry(ident);
     return entry->lockCount;
@@ -428,15 +429,15 @@ bool MoveableMemoryManager::IsOwnedPointer(void *item) {
 }
 
 bool MoveableMemoryManager::IsOwned(void *item) {
-  std::lock_guard<std::recursive_mutex> scoped_lock(
-      GetResourcesInstance().GlobalHeapMutex);
+  RecursiveScopedLock scoped_lock(GetResourcesInstance().lock,
+                                  GetResourcesInstance().thread_id);
   return IsOwnedPointer(item) || IsOwnedHandle(item);
 }
 
 void *MoveableMemoryManager::ReAllocate(void *ident, size_t flags, size_t size,
                                         HeapCaller caller) {
-  std::lock_guard<std::recursive_mutex> scoped_lock(
-      GetResourcesInstance().GlobalHeapMutex);
+  RecursiveScopedLock scoped_lock(GetResourcesInstance().lock,
+                                  GetResourcesInstance().thread_id);
   if (flags & MODIFY) {
     if (IsOwnedPointer(ident)) {
       // conversion is one way, fixed to moveable only.
@@ -465,8 +466,8 @@ void *MoveableMemoryManager::ReAllocate(void *ident, size_t flags, size_t size,
 
 // TODO: Add an ASan report type for double free on a stale handle
 void *MoveableMemoryManager::Free(void *ident) {
-  std::lock_guard<std::recursive_mutex> scoped_lock(
-      GetResourcesInstance().GlobalHeapMutex);
+  RecursiveScopedLock scoped_lock(GetResourcesInstance().lock,
+                                  GetResourcesInstance().thread_id);
   if (IsOwnedHandle(ident)) {
     void *backing_memory = ResolveHandleToPointer(ident);
     free(backing_memory);
@@ -490,8 +491,8 @@ void *MoveableMemoryManager::Free(void *ident) {
 }
 
 void *MoveableMemoryManager::Alloc(unsigned long flags, size_t size) {
-  std::lock_guard<std::recursive_mutex> scoped_lock(
-      GetResourcesInstance().GlobalHeapMutex);
+  RecursiveScopedLock scoped_lock(GetResourcesInstance().lock,
+                                  GetResourcesInstance().thread_id);
   bool zero_alloc = flags & ZEROINIT;
   if (flags & MOVEABLE) {
     return AddMoveableAllocation(size, zero_alloc);

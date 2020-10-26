@@ -23,6 +23,7 @@
 #include "asan_malloc_win_moveable.h"
 #include "asan_stack.h"
 #include "asan_win_immortalize.h"
+#include "asan_win_scoped_lock.h"
 #include "interception/interception.h"
 
 // Intentionally not including windows.h here, to avoid the risk of
@@ -334,28 +335,6 @@ struct AsanHeap {
   AsanMemoryMap memory_map;
 };
 
-// Takes the lock on an AsanHeap if this thread does not already hold it.
-class AsanHeapLock {
- public:
-  explicit AsanHeapLock(AsanHeap *_heap) : heap(_heap), serialized(false) {
-    if (atomic_load_relaxed(&heap->thread_id) != GetCurrentThreadId()) {
-      heap->lock.Lock();
-      atomic_store_relaxed(&heap->thread_id, GetCurrentThreadId());
-      serialized = true;
-    }
-  }
-
-  ~AsanHeapLock() {
-    if (serialized) {
-      atomic_store_relaxed(&heap->thread_id, 0);
-      heap->lock.Unlock();
-    }
-  }
-
- private:
-  AsanHeap *heap;
-  bool serialized;
-};
 
 struct AsanHeapMap : public __sanitizer::AddrHashMap<AsanHeap *, 37> {
   using __sanitizer::AddrHashMap<AsanHeap *, 37>::Handle;
@@ -571,8 +550,8 @@ INTERCEPTOR_WINAPI(void *, RtlAllocateHeap, HANDLE HeapHandle, DWORD Flags,
   }
 
   // Take the lock in the AsanHeap
-  AsanHeapLock raii_lock(asan_heap);
-
+  RecursiveScopedLock raii_lock(asan_heap->lock, asan_heap->thread_id);
+  
   GET_STACK_TRACE_MALLOC;
   void *p = asan_malloc(Size, &stack);
   // Reading MSDN suggests that the *entire* usable allocation is zeroed out.
@@ -631,7 +610,7 @@ INTERCEPTOR_WINAPI(LOGICAL, RtlFreeHeap, void *HeapHandle, DWORD Flags,
   }
 
   // Take the lock in the AsanHeap
-  AsanHeapLock raii_lock(asan_heap);
+  RecursiveScopedLock raii_lock(asan_heap->lock, asan_heap->thread_id);
 
   AsanHeapMemoryNode *found;
   {
@@ -721,7 +700,7 @@ INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
       (HEAP_REALLOC_UNSUPPORTED_FLAGS & all_flags) == 0;
 
   // Take the lock in the AsanHeap
-  AsanHeapLock raii_lock(asan_heap);
+  RecursiveScopedLock raii_lock(asan_heap->lock, asan_heap->thread_id);
 
   GET_STACK_TRACE_MALLOC;
   GET_CURRENT_PC_BP_SP;
