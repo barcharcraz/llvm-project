@@ -102,6 +102,7 @@ enum stats_state_e {
   macro(OMP_BARRIER, 0, arg)                                                   \
   macro(OMP_CRITICAL, 0, arg)                                                  \
   macro(OMP_SINGLE, 0, arg)                                                    \
+  macro(OMP_SECTIONS, 0, arg)                                                  \
   macro(OMP_MASTER, 0, arg)                                                    \
   macro(OMP_MASKED, 0, arg)                                                    \
   macro(OMP_TEAMS, 0, arg)                                                     \
@@ -150,6 +151,7 @@ enum stats_state_e {
   macro (OMP_critical, 0, arg)                                                 \
   macro (OMP_critical_wait, 0, arg)                                            \
   macro (OMP_single, 0, arg)                                                   \
+  macro (OMP_sections, 0, arg)                                                 \
   macro (OMP_master, 0, arg)                                                   \
   macro (OMP_masked, 0, arg)                                                   \
   macro (OMP_task_immediate, 0, arg)                                           \
@@ -199,6 +201,7 @@ enum stats_state_e {
 // OMP_critical_wait      -- Time thread spends waiting to enter
 //                           a critical section
 // OMP_single             -- Time spent executing a "single" region
+// OMP_sections           -- Time spent executing "sections" region
 // OMP_master             -- Time spent executing a "master" region
 // OMP_masked             -- Time spent executing a "masked" region
 // OMP_task_immediate     -- Time spent executing non-deferred tasks

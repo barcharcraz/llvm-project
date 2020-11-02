@@ -228,7 +228,7 @@ def compPie(data):
     compKeys = {}
     nonCompKeys = {}
     for key in data.keys():
-        if key in ('OMP_critical', 'OMP_single', 'OMP_serial',
+        if key in ('OMP_critical', 'OMP_single', 'OMP_sections', 'OMP_serial',
                    'OMP_parallel', 'OMP_master', 'OMP_task_immediate',
                    'OMP_task_taskwait', 'OMP_task_taskyield', 'OMP_task_taskgroup',
                    'OMP_task_join_bar', 'OMP_task_plain_bar', 'OMP_task_taskyield'):
