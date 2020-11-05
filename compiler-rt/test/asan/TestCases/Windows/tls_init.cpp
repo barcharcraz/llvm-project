@@ -13,9 +13,13 @@
 static bool ran_before_main = false;
 
 extern "C" void __asan_init(void);
-
-static void NTAPI /*__attribute__((no_sanitize_address))*/
-my_thread_callback(PVOID module, DWORD reason, PVOID reserved) {
+static void 
+#ifdef MSVC
+_declspec(no_sanitize_address) NTAPI 
+#else
+NTAPI __attribute__((no_sanitize_address))
+#endif
+ my_thread_callback(PVOID module, DWORD reason, PVOID reserved) {
   ran_before_main = true;
   static const char str[] = "my_thread_callback\n";
 

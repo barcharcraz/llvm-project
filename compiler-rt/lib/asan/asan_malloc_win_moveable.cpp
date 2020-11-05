@@ -301,7 +301,9 @@ void *MoveableMemoryManager::IncrementLockCount(void *ident) {
   return nullptr;
 }
 /* GMEM_MODIFY allows you to convert between moveable and fixed allocations.
-  The flag means that these functions ignore any size parameter passed into it.
+    The flag means that these functions ignore any size parameter passed into it.
+  LMEM_MODIFY doesn't have this same behavior and only changes the 
+    'discardable' attribute which is deprecated.
 */
 
 void *MoveableMemoryManager::ReallocFixedToHandle(void *original,

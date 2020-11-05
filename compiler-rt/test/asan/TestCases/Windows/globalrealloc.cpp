@@ -14,11 +14,11 @@
 int main() {
   char *oldbuf;
   size_t sz = 8;
-  oldbuf = (char *)ALLOC(GMEM_FIXED, sz);
+  oldbuf = (char *)ALLOC(FIXED, sz);
   char *newbuf = oldbuf;
   while (oldbuf == newbuf) {
     sz *= 2;
-    newbuf = (char *)REALLOC(oldbuf, sz, GMEM_ZEROINIT);
+    newbuf = (char *)REALLOC(oldbuf, sz, ZEROINIT);
   }
 
   newbuf[0] = 'a';

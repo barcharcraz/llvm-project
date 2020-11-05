@@ -5,7 +5,7 @@
 
 #define ATTRIBUTE_NOINLINE __declspec(noinline)
 #define ATTRIBUTE_ALIGNED(x) __declspec(align(x))
-#define ATTRIBUTE_NO_SANITIZE_ADDRESS /* FIXME: Implement MSVC __declspec(no_sanitize_address) */
+#define ATTRIBUTE_NO_SANITIZE_ADDRESS __declspec(no_sanitize_address)
 #define ATTRIBUTE_USED                /* FIXME: Is there a __declspec used? */
 #define ATTRIBUTE_ALWAYS_INLINE __forceinline
 #define VOLATILE volatile

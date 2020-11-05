@@ -11,7 +11,7 @@
 #include "globallocal_shared.h"
 
 int main() { 
-    void *alloc = ALLOC(GMEM_MOVEABLE, 100);
+    void *alloc = ALLOC(MOVEABLE, 100);
     fprintf(stderr, "RETURNED_PTR: %x\n", (unsigned int)alloc);
     void *ptr = LOCK(alloc);
     ptr = LOCK(alloc);

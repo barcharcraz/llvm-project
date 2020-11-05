@@ -2,7 +2,8 @@
 
 // Test that no_sanitize_address attribute applies even when the function would
 // be normally inlined.
-// XFAIL: msvc-host
+// XFAIL: msvc-host && asan-static-runtime
+/* This is still a bug, the check is inlined and still takes place despite the nosanitize declspec on MSVC */
 
 #include <stdlib.h>
 #include "defines.h"

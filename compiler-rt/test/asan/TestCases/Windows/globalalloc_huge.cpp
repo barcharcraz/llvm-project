@@ -13,7 +13,7 @@
 #include "globallocal_shared.h"
 
 int main() {
-  void *nope = ALLOC(GMEM_FIXED, ((size_t)0) - 1);
+  void *nope = ALLOC(FIXED, ((size_t)0) - 1);
   if (nope != nullptr) {
     puts("Fail");
     return 1;

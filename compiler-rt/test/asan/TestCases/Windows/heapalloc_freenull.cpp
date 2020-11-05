@@ -1,6 +1,6 @@
 // RUN: %clang_cl_asan -Od %s -Fe%t
 // RUN: %env_asan_opts=windows_hook_rtl_allocators=true %run %t 2>&1
-// UNSUPPORTED: asan-64-bits
+
 #include <cassert>
 #include <windows.h>
 

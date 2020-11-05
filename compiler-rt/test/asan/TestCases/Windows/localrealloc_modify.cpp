@@ -39,7 +39,7 @@ int main() {
       fprintf(stderr, "ERROR: MOVEABLE TO FIXED CONVERSION FAIL");
       return 0;
   }
-  //GMEM_MODIFY should still ignore the size change.
+  //LMEM_MODIFY should still ignore the size change.
   returned_size = LocalSize(still_fixed);
   if (returned_size == new_sz) {
       fprintf(stderr, "ERROR: NEW SIZE (2nd CALL) WAS NOT IGNORED");

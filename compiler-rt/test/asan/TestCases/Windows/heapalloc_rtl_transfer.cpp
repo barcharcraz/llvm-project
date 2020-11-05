@@ -7,7 +7,6 @@
 
 // RUN: %clang_cl_asan %s -o%t
 // RUN: %env_asan_opts=windows_hook_rtl_allocators=true %run %t 2>&1 | FileCheck %s
-// UNSUPPORTED: asan-64-bits
 
 using AllocateFunctionPtr = PVOID(__stdcall *)(PVOID, ULONG, SIZE_T);
 using ReAllocateFunctionPtr = PVOID(__stdcall *)(PVOID, ULONG, PVOID, SIZE_T);

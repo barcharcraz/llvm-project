@@ -335,7 +335,7 @@ litConfig.compiler_id = "MSVC"
 litConfig.cxx_mode_flags = []
 litConfig.debug_info_flags = []
 litConfig.asan_dynamic = False
-litConfig.clang = os.environ['TEST_C_COMPILER'] #"C:\Users\mamcgove.REDMOND\Desktop\\binaries\\bin\i386\cl.exe" #"C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin\amd64\cl.exe"
+litConfig.clang = os.environ['TEST_C_COMPILER'] # "ex .\\binaries\\bin\i386\cl.exe"
 setattr(litConfig,"target_cflags","")
 litConfig.environment = os.environ
 litConfig.target_suffix = litConfig.target_arch
@@ -362,7 +362,7 @@ if opts.force_dynamic:
     "shadow-scale-3", "msvc-host", "win32", 'windows-msvc','win32-dynamic-asan']
 else:
     litConfig.available_features = ['clang-static-runtime', 'asan-static-runtime','stable-runtime',
-    "shadow-scale-3", "msvc-host", "win32" , "windows-msvc" ]
+    "shadow-scale-3", "msvc-host", "win32" , "windows-msvc" , 'win32-static-asan' ]
 
 litConfig.available_features += arch_specific_features
 
@@ -392,28 +392,19 @@ else:
     fuzzer_no_main_lib = "clang_rt.fuzzer_no_main-" + test_target_arch + ".lib"
     profile_lib = "clang_rt.profile-" + test_target_arch + ".lib"
 
-#create some short hand names for libs packages that we'll link to most exes later
-link_these_libs = litConfig.compiler_rt_libdir + "\\" + static_lib + " " + litConfig.compiler_rt_libdir + "\\" + static_cxx_lib+" "
-
 if opts.force_dynamic:
-    link_these_libs = litConfig.compiler_rt_libdir + "\\" + dynamic_import_lib
-    litConfig.environment['_LINK_'] ="/debug /wholearchive:" + litConfig.compiler_rt_libdir + "\\" + dynamic_import_lib + "  /wholearchive:"+litConfig.compiler_rt_libdir+"\\" + dynamic_runtime_thunk + " /incremental:no "
+    litConfig.environment['_LINK_'] ="/debug /incremental:no "
     litConfig.environment['_CL_'] = DYNAMIC_RT_FLAG + " /Od "
     selected_runtime = DYNAMIC_RT_FLAG
     default_flags += " /Od "
     default_flags += DYNAMIC_RT_FLAG
 else:
-    link_these_libs = litConfig.compiler_rt_libdir + "\\" + static_lib + " "
-    litConfig.environment['_LINK_'] ="/debug /wholearchive:" + litConfig.compiler_rt_libdir + "\\" + static_lib + " /wholearchive:" + litConfig.compiler_rt_libdir + "\\" +static_cxx_lib + " /incremental:no  "
+    litConfig.environment['_LINK_'] ="/debug  /incremental:no  "
     litConfig.environment['_CL_'] = STATIC_RT_FLAG
     selected_runtime = STATIC_RT_FLAG
     default_flags += STATIC_RT_FLAG
 
-#create some tuples to stick into the subsitutions set later.
-full_cxx_asan_sub =  ("%clangxx_asan", litConfig.clang +  default_flags + " /fsanitize=address " + link_these_libs )
-truncated_cxx_asan_sub = ("%clangxx_asan", litConfig.clang +  default_flags + " /fsanitize=address " )
-truncated_cl_asan_sub = ("%clang_cl_asan", litConfig.clang + default_flags + " /fsanitize=address " )
-full_cl_asan_sub = ("%clang_cl_asan", litConfig.clang + default_flags + " /fsanitize=address " +  litConfig.compiler_rt_libdir + "\\" + static_lib + " " +  litConfig.compiler_rt_libdir + "\\"+ static_cxx_lib + "")
+
 subsitute_obj = lit.TestingConfig.SubstituteCaptures("/Fe:%t\g<1>")
 object_substitute_tuple = ("-o %t( |)",subsitute_obj)
 
@@ -444,8 +435,8 @@ if opts.disable_opt:
 litConfig.substitutions = {
                             ("-fsanitize-coverage=func ", lit.TestingConfig.SubstituteCaptures("/d2Sancov " )),
                             ("%sancov", "sancov.exe"),
-                            truncated_cl_asan_sub,
-                            truncated_cxx_asan_sub,
+                            ("%clangxx_asan", litConfig.clang +  default_flags + " /fsanitize=address " ),
+                            ("%clang_cl_asan", litConfig.clang + default_flags + " /fsanitize=address " ),
                             ("%clang_asan", litConfig.clang +  default_flags + " /fsanitize=address "),
                             ("%clang_cl ", litConfig.clang + default_flags),
                             ("%clang ", litConfig.clang + default_flags),
@@ -532,70 +523,22 @@ for cc_file in cc_files:
         #all
         saved_cl = __litConfig.environment["_CL_"]
         saved_link = __litConfig.environment["_LINK_"]
-        if not opts.force_dynamic and "single_dll_thunk" in cc_file:
-            __litConfig.substitutions.add(("%clang_cl_asan", __litConfig.clang + default_flags ))
-            __litConfig.substitutions.add(("-fsanitize=address", " /fsanitize=address "))
-            __litConfig.substitutions.add(("[-/]DEXE(.*)", lit.TestingConfig.SubstituteCaptures(" /DEXE \g<1>" + " /link /wholearchive:" \
-                        + slashsan(__litConfig.compiler_rt_libdir +  "\\" + static_lib + " " ) + " /wholearchive:" \
-                        + slashsan(__litConfig.compiler_rt_libdir +  "\\" + static_cxx_lib + " " ) )))
-            #__litConfig.substitutions.add(("[-/]DDLL(.*)", lit.TestingConfig.SubstituteCaptures(" /DDLL \g<1> ")))
-        if not opts.force_dynamic and ("dll" in cc_file or "report_globals_vs_freelibrary" in cc_file):
-            __litConfig.environment["_CL_"] = " /Zi "
-            __litConfig.environment["_LINK_"] = "/debug /incremental:no "
-            __litConfig.substitutions.remove(truncated_cl_asan_sub)
-            __litConfig.substitutions.add(("%clang_cl_asan(.*)dll_host.cc", lit.TestingConfig.SubstituteCaptures(__litConfig.environment["TEST_C_COMPILER"] + " \g<1>dll_host.cc ")))
-            dll_combined = __litConfig.environment["TEST_C_COMPILER"] + " " + default_flags + " /fsanitize=address \g<1> -Fe\g<2>.dll " + __litConfig.compiler_rt_libdir.replace("\\","\\\\") + "\\" + static_lib + " " + "\g<3>"
-            #this will work for most tests. There are some that require special cases.
-            heap_alloc_capture = "%clang_cl_asan(.*)\.lib(.*)[/-]Fe(.*) -MT"
-            heap_alloc_replace = slashsan(__litConfig.clang) + default_flags + " \g<1>.lib \g<2>/Fe\g<3> -MT"
-            __litConfig.substitutions.add((heap_alloc_capture, lit.TestingConfig.SubstituteCaptures(heap_alloc_replace)))
-            dll_large_func_capture = "%clang_cl_asan (.*).obj"
-            dll_large_func_replace = slashsan(__litConfig.clang) + default_flags + " /fsanitize=address \g<1>.obj " + __litConfig.compiler_rt_libdir.replace("\\","\\\\") +  "\\" + static_lib + " " + __litConfig.compiler_rt_libdir.replace("\\","\\\\") +  "\\" + static_cxx_lib + " "
-            __litConfig.substitutions.add((dll_large_func_capture, lit.TestingConfig.SubstituteCaptures(dll_large_func_replace)))
-
-            if "dll_null_deref" in cc_file:
-                __litConfig.substitutions.add(("[-/]DDLL(.*)", lit.TestingConfig.SubstituteCaptures("/fsanitize=address /DDLL \g<1> /link /wholearchive:" + slashsan(__litConfig.compiler_rt_libdir) + slashsan( "\\" + static_lib + "")) ))
-            if "dll_host" in cc_file:
-                __litConfig.substitutions.add(("%clang_cl_asan", lit.TestingConfig.SubstituteCaptures(slashsan(__litConfig.clang) + default_flags + " /fsanitize=address ")))
-                __litConfig.environment["_LINK_"] = saved_link
-            if "multiple_dlls" in cc_file or "report_globals" in cc_file:
-                __litConfig.environment["_CL_"] = " /Zi "
-                __litConfig.environment["_LINK_"] = "/debug /incremental:no "
-                __litConfig.substitutions.add(("%clang_cl_asan", __litConfig.clang + default_flags ))
-                __litConfig.substitutions.add(("[-/]DEXE(.*)", lit.TestingConfig.SubstituteCaptures(" /DEXE \g<1>" )))
-                if "report_globals_vs" not in cc_file :
-                    __litConfig.substitutions.add(("[-/]DDLL(.*)", lit.TestingConfig.SubstituteCaptures("/fsanitize=address /DDLL\g<1>" + " /link /wholearchive:" \
-                        + slashsan(__litConfig.compiler_rt_libdir +  "\\" + dynamic_import_lib + "  " + " /wholearchive:" + __litConfig.compiler_rt_libdir +\
-                        "\\" + dynamic_runtime_thunk + "  "))))
-                else:
-                    __litConfig.substitutions.add(("[-/]DDLL(.*)", lit.TestingConfig.SubstituteCaptures("/fsanitize=address /DDLL\g<1>" + " /link /wholearchive:" \
-                        + slashsan(__litConfig.compiler_rt_libdir +  "\\" + static_lib + " " + " /wholearchive:" + __litConfig.compiler_rt_libdir +\
-                        "\\" + static_cxx_lib + " "))))
-            elif "heapalloc_dll" in cc_file or "dll_unload" in cc_file:
-                __litConfig.substitutions.add(("%clang_cl_asan(.*)[-/]Fe(.*)\.dll(.*)", lit.TestingConfig.SubstituteCaptures(\
-                    __litConfig.environment["TEST_C_COMPILER"] + " " + default_flags + " /fsanitize=address \g<1> -Fe\g<2>.dll "  + "\g<3>" + __litConfig.compiler_rt_libdir.replace("\\","\\\\") + "\\" + dynamic_import_lib + "  ")))
-            else:
-                __litConfig.substitutions.add(("%clang_cl_asan(.*)[-/]Fe(.*)\.dll(.*)", lit.TestingConfig.SubstituteCaptures(dll_combined)))
-
+              
         if "unsymbolized" in cc_file:
             __litConfig.environment["_CL_"] = "/Zi /fsanitize=address"
             __litConfig.environment["_LINK_"] = " "
             __litConfig.substitutions -= {
                 ("-O2","/O2i-"),
             }
-            if opts.force_dynamic:
-                __litConfig.substitutions |= {
+            # this test assumes you'll need to manually link these libs,
+            # our linker is now smart enough to omit these from the link line for this test on MT and MD.
+            __litConfig.substitutions |= {
                     ("-o %t.obj","/Fo:%t.obj"),
-                    ("%asan_lib", "/wholearchive:" + __litConfig.compiler_rt_libdir + "\\" + dynamic_import_lib + ""),
-                    ("%asan_cxx_lib", "/wholearchive:" + __litConfig.compiler_rt_libdir + "\\" + dynamic_runtime_thunk + "")
-                }
-            else:
-                __litConfig.substitutions |= {
-                    ("-o %t.obj","/Fo:%t.obj"),
-                    ("%asan_lib", "/wholearchive:" + __litConfig.compiler_rt_libdir + "\\" + static_lib + ""),
-                    ("%asan_cxx_lib", "/wholearchive:" + __litConfig.compiler_rt_libdir + "\\" + static_cxx_lib + "")
+                    ("%asan_lib", ""),
+                    ("%asan_cxx_lib", "")
                 }
         else:
+            #elsewhere asan_lib and asan_cxx_lib should still resolve to the regular library names
             __litConfig.substitutions |= {
                 object_substitute_tuple,
                 ("%asan_lib", __litConfig.compiler_rt_libdir + "\\" + static_lib + ""),
@@ -607,40 +550,11 @@ for cc_file in cc_files:
                 ("/EHs","/EHa"),
                 ("/GS ", " /GS- ")
             }
-
-
-
-        if "interception_failure_test" in cc_file:
-            __litConfig.environment["_CL_"] = " /Z7 "
-            __litConfig.environment["_LINK_"] = "/debug /force:multiple  /incremental:no /wholearchive:" + __litConfig.compiler_rt_libdir + \
-                "\\" + dynamic_import_lib + "  " +" /wholearchive:" + __litConfig.compiler_rt_libdir + "\\" + dynamic_runtime_thunk + "  "
-        if "throw_call_test.cc" in cc_file:
-            __litConfig.environment["_CL_"] = " /Z7 /Od /fsanitize=address "
-
-        if "inline" in cc_file:
-             __litConfig.environment["_CL_"] = " /Z7 "
-        if ("global_dead_strip" in cc_file and "dll" not in cc_file) and not opts.force_dynamic:
-             __litConfig.substitutions.add(full_cl_asan_sub)
-             __litConfig.substitutions.add(("(.*)2>&1(.*)\|", lit.TestingConfig.SubstituteCaptures("\g<1> \g<2> \" 2>&1 |  ")))
-        if "dll_global_dead_strip" in cc_file and not opts.force_dynamic:
-            __litConfig.substitutions.add(truncated_cl_asan_sub)
-            #__litConfig.substitutions.add(("(.*)2>&1(.*)\|", lit.TestingConfig.SubstituteCaptures("\g<1> \g<2> 2>&1 |  ")))
-            __litConfig.substitutions.add(("2>&1", lit.TestingConfig.SubstituteCaptures("\" 2>&1")))
-            __litConfig.environment['_LINK_'] ="/debug /wholearchive:" + litConfig.compiler_rt_libdir + "\\" + static_lib + " /wholearchive:"+litConfig.compiler_rt_libdir+"\\" + static_cxx_lib + " /incremental:no  "
-        if "global_dead_strip" in cc_file and "dll" not in cc_file and opts.force_dynamic:
-            pass
-        if "dll_heap_allocation" in cc_file and not opts.force_dynamic:
-            __litConfig.environment['_CL_'] = __litConfig.environment['_CL_'].replace("/MT".strip()," ")
-            __litConfig.environment['_link_'] += __litConfig.compiler_rt_libdir +  "\\" + static_lib + " "
-        
+       
         if "user-exception" in cc_file:
             __litConfig.substitutions |= {
                 ("env ASAN_OPTIONS=([\w=0-9]+) ",lit.TestingConfig.SubstituteCaptures("set ASAN_OPTIONS=\g<1> && "))
             }
-
-        if "coverage" in cc_file:
-            __litConfig.environment["_LINK_"] = "/wholearchive:" + litConfig.compiler_rt_libdir + "\\" + fuzzer_no_main_lib + " /wholearchive:" + litConfig.compiler_rt_libdir + "\\libsancov.lib" + \
-            " /wholearchive:" + litConfig.compiler_rt_libdir + "\\" + profile_lib + " "
 
         if "use-after-scope" in cc_file:
             __litConfig.substitutions.remove(("-O1", "/O1i-"))

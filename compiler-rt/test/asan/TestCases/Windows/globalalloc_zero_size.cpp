@@ -1,4 +1,6 @@
-// RUN: %clang_cl_asan /Od -o %t %s
+// RUN: %clang_cl_asan /Od -o %t %s -DTEST_GLOBAL
+// RUN: %env_asan_opts=windows_hook_rtl_allocators=true %run %t 2>&1 | FileCheck %s
+// RUN: %clang_cl_asan /Od -o %t %s -DTEST_LOCAL
 // RUN: %env_asan_opts=windows_hook_rtl_allocators=true %run %t 2>&1 | FileCheck %s
 
 #include <cassert>
@@ -6,17 +8,18 @@
 #include <windows.h>
 #include <winbase.h>
 #include "../defines.h"
+#include "globallocal_shared.h"
 
 int main() {
-  void *ptr = GlobalAlloc(GMEM_FIXED, 4);
+  void *ptr = ALLOC(FIXED, 4);
   assert(ptr);
-  void *ptr2 = GlobalReAlloc(ptr, 0, GMEM_ZEROINIT);
+  void *ptr2 = REALLOC(ptr, 0, ZEROINIT);
   assert(ptr2);
   GlobalFree(ptr2);
   
-  ptr = GlobalAlloc(LMEM_MOVEABLE,4);
+  ptr = ALLOC(MOVEABLE,4);
   assert(ptr);
-  ptr2 = GlobalReAlloc(ptr,0,LMEM_ZEROINIT);
+  ptr2 = REALLOC(ptr, 0, ZEROINIT);
   assert(!ptr2);
 
   fprintf(stderr, "passed!\n");

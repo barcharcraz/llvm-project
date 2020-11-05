@@ -12,7 +12,7 @@
 #include "globallocal_shared.h"
 
 int main(){
-    void* allocation = ALLOC(GMEM_FIXED, 10);
+    void* allocation = ALLOC(FIXED, 10);
     assert(allocation != 0);
     assert( FREE(allocation) == NULL );
     FREE(allocation); //will dump

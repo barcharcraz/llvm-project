@@ -8,7 +8,7 @@
 #include "globallocal_shared.h"
 
 int main(){
-    HGLOBAL moveable = ALLOC(GMEM_MOVEABLE, 100);
+    HGLOBAL moveable = ALLOC(MOVEABLE, 100);
     if (moveable == nullptr) {
         fprintf(stderr,"Alloc Failure! %lx \n", GetLastError());
         return -1;

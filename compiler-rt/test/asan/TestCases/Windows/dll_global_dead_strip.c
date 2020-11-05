@@ -5,8 +5,6 @@
 // RUN: %clang_cl_asan /Gw -LD -O2 %s -Fe%t.dll -link -opt:ref
 // RUN: %env_asan_opts=report_globals=2 %run %t %t.dll 2>&1 | FileCheck %s --check-prefix=STRIP
 
-// UNSUPPORTED: msvc-host
-
 #include <stdio.h>
 
 int dead_global = 42;
