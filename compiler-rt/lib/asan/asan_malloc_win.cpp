@@ -345,6 +345,25 @@ struct AsanHeapMap : public __sanitizer::AddrHashMap<AsanHeap *, 37> {
 AsanHeapMap *GetAsanHeapMap() { return &immortalize<AsanHeapMap>(); }
 AsanHeap *GetDefaultHeap() { return &immortalize<AsanHeap>(); }
 
+AsanHeap *GetAsanHeap(void *heap, unsigned long flags = 0) {
+  AsanHeap *asan_heap;
+  if (heap == GetProcessHeap()) {
+    asan_heap = GetDefaultHeap();
+  } else {
+    AsanHeapMap::Handle h_find_or_create(
+        GetAsanHeapMap(), reinterpret_cast<uptr>(heap), false, true);
+
+    if (h_find_or_create.created()) {
+      asan_heap = new AsanHeap(flags);
+      *h_find_or_create = asan_heap;
+    } else {
+      asan_heap = *h_find_or_create;
+    }
+  }
+
+  return asan_heap;
+}
+
 struct AllocationOwnership {
   enum { NEITHER = 0, ASAN = 1, RTL = 2 };
   const int ownership;
@@ -454,13 +473,7 @@ INTERCEPTOR_WINAPI(void *, RtlDestroyHeap, void *HeapHandle) {
     return REAL(RtlDestroyHeap)(HeapHandle);
   }
 
-  AsanHeap *asan_heap = nullptr;
-  if (h_delete.exists()) {
-    asan_heap = *h_delete;
-  } else if (HeapHandle == GetProcessHeap()) {
-    asan_heap = GetDefaultHeap();
-  }
-  CHECK(asan_heap);
+  AsanHeap *asan_heap = GetAsanHeap(HeapHandle);
 
   GET_STACK_TRACE_FREE;
   asan_heap->lock.Lock();
@@ -486,27 +499,11 @@ INTERCEPTOR_WINAPI(size_t, RtlSizeHeap, HANDLE HeapHandle, DWORD Flags,
   }
 
   AllocationOwnership owner(HeapHandle, BaseAddress);
-  if (UNLIKELY(owner == AllocationOwnership::RTL)) {
+  if (UNLIKELY(owner != AllocationOwnership::ASAN)) {
     return REAL(RtlSizeHeap)(HeapHandle, Flags, BaseAddress);
   }
 
-  if (owner == AllocationOwnership::NEITHER) {
-    return -1;
-  }
-
-  // ASAN owns the memory
-  AsanHeap *asan_heap = nullptr;
-  if (HeapHandle == GetProcessHeap()) {
-    asan_heap = GetDefaultHeap();
-  } else {
-    AsanHeapMap::Handle h_find(
-        GetAsanHeapMap(), reinterpret_cast<uptr>(HeapHandle), false, false);
-    if (h_find.exists()) {
-      asan_heap = *h_find;
-    }
-  }
-  CHECK(asan_heap && "This is a bug please report it.");
-
+  AsanHeap *asan_heap = GetAsanHeap(HeapHandle);
   {
     // We know that ASAN owns the memory but let's make sure it is owned by
     // this heap.
@@ -528,19 +525,7 @@ INTERCEPTOR_WINAPI(void *, RtlAllocateHeap, HANDLE HeapHandle, DWORD Flags,
     return REAL(RtlAllocateHeap)(HeapHandle, Flags, Size);
   }
 
-  AsanHeap *asan_heap = nullptr;
-  if (HeapHandle == GetProcessHeap()) {
-    asan_heap = GetDefaultHeap();
-  } else {
-    AsanHeapMap::Handle h_find(
-        GetAsanHeapMap(), reinterpret_cast<uptr>(HeapHandle), false, false);
-    if (UNLIKELY(!h_find.exists())) {
-      return REAL(RtlAllocateHeap)(HeapHandle, Flags, Size);
-    }
-
-    asan_heap = *h_find;
-  }
-  CHECK(asan_heap && "This is a bug please report it.");
+  AsanHeap *asan_heap = GetAsanHeap(HeapHandle);
 
   const DWORD all_flags = Flags | asan_heap->Flags;
   const DWORD unsupported_flags = all_flags & HEAP_ALLOCATE_UNSUPPORTED_FLAGS;
@@ -597,17 +582,7 @@ INTERCEPTOR_WINAPI(LOGICAL, RtlFreeHeap, void *HeapHandle, DWORD Flags,
   }
 
   // ASAN owns the memory
-  AsanHeap *asan_heap = nullptr;
-  if (HeapHandle == GetProcessHeap()) {
-    asan_heap = GetDefaultHeap();
-  } else {
-    AsanHeapMap::Handle h_find(
-        GetAsanHeapMap(), reinterpret_cast<uptr>(HeapHandle), false, false);
-
-    CHECK(h_find.exists() &&
-          "The memory being freed does not belong to this heap.");
-    asan_heap = *h_find;
-  }
+  AsanHeap *asan_heap = GetAsanHeap(HeapHandle);
 
   // Take the lock in the AsanHeap
   RecursiveScopedLock raii_lock(asan_heap->lock, asan_heap->thread_id);
@@ -618,9 +593,8 @@ INTERCEPTOR_WINAPI(LOGICAL, RtlFreeHeap, void *HeapHandle, DWORD Flags,
                                    reinterpret_cast<uptr>(BaseAddress), true,
                                    false);
 
-    if (!h_delete.exists()) {
-      return false;
-    }
+    CHECK(h_delete.exists() &&
+          "The memory being freed does not belong to this heap.");
 
     found = *h_delete;
   }
@@ -675,25 +649,7 @@ INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
 
   AllocationOwnership owner(HeapHandle, BaseAddress);
 
-  AsanHeap *asan_heap = nullptr;
-  if (HeapHandle == GetProcessHeap()) {
-    asan_heap = GetDefaultHeap();
-  } else {
-    AsanHeapMap::Handle h_find(
-        GetAsanHeapMap(), reinterpret_cast<uptr>(HeapHandle), false, false);
-    if (UNLIKELY(!h_find.exists())) {
-      CHECK(owner == AllocationOwnership::RTL &&
-            "The pointer to be reallocated does not belong to this heap, has "
-            "been freed, or is nonsense.\nThere is no ASAN tracking "
-            "information because the memory was allocated from a heap which "
-            "was created with unsupported flags.");
-
-      return REAL(RtlReAllocateHeap)(HeapHandle, Flags, BaseAddress, Size);
-    }
-
-    asan_heap = *h_find;
-  }
-  CHECK(asan_heap && "This is a bug please report it.");
+  AsanHeap *asan_heap = GetAsanHeap(HeapHandle);
 
   const DWORD all_flags = Flags | asan_heap->Flags;
   const bool only_asan_supported_flags =
