@@ -111,7 +111,16 @@ void InitializeShadowMemory() {
   } else {
     Report(
         "Shadow memory range interleaves with an existing memory mapping. "
-        "ASan cannot proceed correctly. ABORTING.\n");
+        "ASan cannot proceed correctly. ABORTING.\n"
+        "This can happen for multiple possible reasons:\n"
+        "   1. There is a module in the range of the shadow memory\n"
+        "   2. Some binaries are compiled with the Static CRT /MT(d) and some are built\n"
+        "      with the Dynamic CRT /MD(d)\n"
+        "       - this needs to be consistent across all binaries in a process, or ASan may\n"
+        "         try to initialize the runtime twice\n"
+        "   3. The function stack may be in the range of the shadow memory. This can\n"
+        "      sometimes be worked around by restarting the computer and trying again\n"
+    );
     Report("ASan shadow was supposed to be located in the [%p-%p] range.\n",
            (void*)shadow_start, (void*)kHighShadowEnd);
     MaybeReportLinuxPIEBug();
