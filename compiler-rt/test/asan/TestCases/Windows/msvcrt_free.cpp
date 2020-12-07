@@ -1,11 +1,12 @@
 // RUN: %clang_cl_asan /Od %s -Fe%t 
-// RUN: not %run %t 2>&1 | FileCheck %s
+// RUN: not %run %t | FileCheck %s
 // REQUIRES: asan-dynamic-runtime
 
 #include <Windows.h>
 #include <stdio.h>
 
-char*(*malloc_impl)(size_t) =  nullptr;
+char*(*malloc_impl)(size_t) = nullptr;
+void(*free_impl)(void*) = nullptr;
 
 int main() {
   HMODULE msvcrt = GetModuleHandleA("msvcrt.dll"); //get a handle to the system's version of msvcrt
@@ -15,14 +16,19 @@ int main() {
   }
 
   malloc_impl = (char*(*)(size_t)) GetProcAddress(msvcrt, "malloc"); //get the special malloc
-  if (!malloc_impl) {
+  free_impl = (void(*)(void*)) GetProcAddress(msvcrt, "free"); //get the special free
+
+  if (!malloc_impl || !free_impl) {
     printf("fail (GetProcAddress)\n");
     return -1;
   }
 
   char *buffer = (char*)malloc_impl(42);
-  return buffer[42] = 42;
+  free_impl(buffer);
+  printf("success\n");
+  return 0;
 }
 
-// CHECK: AddressSanitizer: heap-buffer-overflow
+// CHECK-NOT: AddressSanitizer
 // CHECK-NOT: fail
+// CHECK: success

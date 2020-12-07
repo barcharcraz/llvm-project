@@ -32,10 +32,26 @@ BOOL WINAPI immortalize_impl(PINIT_ONCE, PVOID storage_ptr, PVOID*) noexcept {
   return 1;
 }
 
+template <class Ty, typename Arg>
+BOOL WINAPI immortalize_impl(PINIT_ONCE, PVOID storage_ptr,
+                             PVOID* param) noexcept {
+  // Ty must provide a placement new operator
+  new (storage_ptr) Ty(*((Arg*)param));
+  return 1;
+}
+
 template <class Ty>
 Ty& immortalize() {  // return a reference to an object that will live forever
   static void* flag;
   alignas(Ty) static unsigned char storage[sizeof(Ty)];
   InitOnceExecuteOnce(&flag, immortalize_impl<Ty>, &storage, nullptr);
+  return reinterpret_cast<Ty&>(storage);
+}
+
+template <class Ty, typename Arg>
+Ty& immortalize(Arg arg) {  // return a reference to an object that will live forever
+  static void* flag;
+  alignas(Ty) static unsigned char storage[sizeof(Ty)];
+  InitOnceExecuteOnce(&flag, immortalize_impl<Ty, Arg>, &storage, &arg);
   return reinterpret_cast<Ty&>(storage);
 }

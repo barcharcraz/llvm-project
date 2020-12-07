@@ -41,41 +41,14 @@ typedef _RTL_HEAP_PARAMETERS *PRTL_HEAP_PARAMETERS;
 using __sanitizer::uptr;
 
 constexpr unsigned long HEAP_NO_SERIALIZE = 0x00000001;
-constexpr unsigned long HEAP_GROWABLE = 0x00000002;
 constexpr unsigned long HEAP_GENERATE_EXCEPTIONS = 0x00000004;
 constexpr unsigned long HEAP_ZERO_MEMORY = 0x00000008;
 constexpr unsigned long HEAP_REALLOC_IN_PLACE_ONLY = 0x00000010;
-constexpr unsigned long HEAP_TAIL_CHECKING_ENABLED = 0x00000020;
-constexpr unsigned long HEAP_FREE_CHECKING_ENABLED = 0x00000040;
-constexpr unsigned long HEAP_DISABLE_COALESCE_ON_FREE = 0x00000080;
 constexpr unsigned long HEAP_CREATE_ENABLE_EXECUTE = 0x00040000;
-constexpr unsigned long HEAP_CAPTURE_STACK_BACKTRACES = 0x08000000;
-constexpr unsigned long HEAP_SKIP_VALIDATION_CHECKS = 0x10000000;
-constexpr unsigned long HEAP_VALIDATE_ALL_ENABLED = 0x20000000;
-constexpr unsigned long HEAP_VALIDATE_PARAMETERS_ENABLED = 0x40000000;
-
-constexpr unsigned long HEAP_SETTABLE_USER_MASK = 0x00000f00;
-
-constexpr unsigned long PRIVATE_HEAP = 0x00001000;
-constexpr unsigned long HEAP_TYPE_MASK = 0x0000f000;
-
-constexpr unsigned long HEAP_CREATE_SAVED_FLAGS =
-    (HEAP_NO_SERIALIZE | HEAP_ZERO_MEMORY);
-constexpr unsigned long HEAP_CREATE_SUPPORTED_FLAGS =
-    (HEAP_NO_SERIALIZE | HEAP_GROWABLE | HEAP_ZERO_MEMORY |
-     HEAP_TAIL_CHECKING_ENABLED | HEAP_FREE_CHECKING_ENABLED |
-     HEAP_DISABLE_COALESCE_ON_FREE | HEAP_SKIP_VALIDATION_CHECKS |
-     HEAP_SETTABLE_USER_MASK | PRIVATE_HEAP);
-constexpr unsigned long HEAP_CREATE_UNSUPPORTED_FLAGS =
-    (~HEAP_CREATE_SUPPORTED_FLAGS);
 
 constexpr unsigned long HEAP_ALLOCATE_SUPPORTED_FLAGS =
     (HEAP_NO_SERIALIZE | HEAP_ZERO_MEMORY);
 constexpr unsigned long HEAP_ALLOCATE_UNSUPPORTED_FLAGS =
-    (~HEAP_ALLOCATE_SUPPORTED_FLAGS);
-
-constexpr unsigned long HEAP_FREE_SUPPORTED_FLAGS = (HEAP_NO_SERIALIZE);
-constexpr unsigned long HEAP_FREE_UNSUPPORTED_FLAGS =
     (~HEAP_ALLOCATE_SUPPORTED_FLAGS);
 
 constexpr unsigned long HEAP_REALLOC_SUPPORTED_FLAGS =
@@ -310,15 +283,68 @@ typedef __sanitizer::IntrusiveList<AsanHeapMemoryNode> AsanMemoryList;
 typedef __sanitizer::AddrHashMap<AsanHeapMemoryNode *, 4099> AsanMemoryMap;
 
 struct AsanHeap {
+  // This data structure is undocumented and is subject to change.
+  struct HEAP {
+#if SANITIZER_WORDSIZE == 64
+    unsigned long padding[28];
+#elif SANITIZER_WORDSIZE == 32
+    unsigned long padding[16];
+#else
+#error "Platform not supported"
+#endif
+    unsigned long flags;
+    unsigned long forceFlags;
+  };
+
   static void *operator new(size_t size) { return InternalAlloc(size); }
   static void *operator new(size_t, void *p) { return p; }
   static void operator delete(void *p) { InternalFree(p); }
 
-  explicit AsanHeap(unsigned long _flags = 0) : Flags(_flags) {}
+  explicit AsanHeap(HANDLE _heap) : heap(*((HEAP *)_heap)) {
+    constexpr unsigned long HEAP_PROCESS_CLASS = 0x00000000;
+    constexpr unsigned long HEAP_PRIVATE_CLASS = 0x00001000;
+    constexpr unsigned long HEAP_CLASS_MASK = 0x0000F000;
 
-  // There is no way to query what flags a heap was created with so we need to
-  // keep them here.
-  unsigned long Flags;
+    constexpr unsigned long HEAP_SUPPORTED_CLASSES[] =
+      {HEAP_PROCESS_CLASS, HEAP_PRIVATE_CLASS};
+  
+    const unsigned long heapClass =
+      (heap.flags | heap.forceFlags) & HEAP_CLASS_MASK;
+
+    bool heapClassSupported = false;
+    for (const auto& heapClassType : HEAP_SUPPORTED_CLASSES) {
+      if (heapClass == heapClassType) {
+        heapClassSupported = true;
+        break;
+      }
+    }
+
+    if (!heapClassSupported) {
+      is_supported = false;
+      return;
+    }
+
+    constexpr unsigned long HEAP_UNSUPPORTED_FLAGS =
+      (HEAP_GENERATE_EXCEPTIONS | HEAP_REALLOC_IN_PLACE_ONLY |
+       HEAP_CREATE_ENABLE_EXECUTE);
+
+    if ((heap.flags | heap.forceFlags) & HEAP_UNSUPPORTED_FLAGS) {
+      is_supported = false;
+      return;
+    }
+
+    is_supported = true;
+  }
+
+  [[nodiscard]] unsigned long GetFlags() const {
+    constexpr unsigned long HEAP_EXAMINED_FLAGS =
+      (HEAP_NO_SERIALIZE | HEAP_ZERO_MEMORY | HEAP_REALLOC_IN_PLACE_ONLY);
+
+    return (heap.flags | heap.forceFlags) & HEAP_EXAMINED_FLAGS;
+  }
+
+  // A reference to some members of the opaque HEAP data structure.
+  const HEAP &heap;
 
   // A lock to keep the accesses to the map and the list atomic.
   __sanitizer::SpinMutex lock = {};
@@ -333,8 +359,9 @@ struct AsanHeap {
   // A mapping of asan managed pointers to the node before them in the list to
   // allow for efficient removal when freed.
   AsanMemoryMap memory_map;
-};
 
+  bool is_supported;
+};
 
 struct AsanHeapMap : public __sanitizer::AddrHashMap<AsanHeap *, 37> {
   using __sanitizer::AddrHashMap<AsanHeap *, 37>::Handle;
@@ -343,7 +370,28 @@ struct AsanHeapMap : public __sanitizer::AddrHashMap<AsanHeap *, 37> {
 };
 
 AsanHeapMap *GetAsanHeapMap() { return &immortalize<AsanHeapMap>(); }
-AsanHeap *GetDefaultHeap() { return &immortalize<AsanHeap>(); }
+AsanHeap *GetDefaultHeap() {
+  return &immortalize<AsanHeap, void *>(GetProcessHeap());
+}
+
+AsanHeap *GetAsanHeap(void *heap) {
+  AsanHeap *asan_heap;
+  if (heap == GetProcessHeap()) {
+    asan_heap = GetDefaultHeap();
+  } else {
+    AsanHeapMap::Handle h_find_or_create(
+        GetAsanHeapMap(), reinterpret_cast<uptr>(heap), false, true);
+
+    if (h_find_or_create.created()) {
+      asan_heap = new AsanHeap(heap);
+      *h_find_or_create = asan_heap;
+    } else {
+      asan_heap = *h_find_or_create;
+    }
+  }
+
+  return asan_heap;
+}
 
 AsanHeap *GetAsanHeap(void *heap, unsigned long flags = 0) {
   AsanHeap *asan_heap;
@@ -417,12 +465,6 @@ struct AllocationOwnership {
 
 // This function is documented as part of the Driver Development Kit but *not*
 // the Windows Development Kit.
-void *RtlCreateHeap(DWORD Flags, void *HeapBase, size_t ReserveSize,
-                    size_t CommitSize, void *Lock,
-                    PRTL_HEAP_PARAMETERS Parameters);
-
-// This function is documented as part of the Driver Development Kit but *not*
-// the Windows Development Kit.
 void *RtlDestroyHeap(void *HeapHandle);
 
 // This function is documented as part of the Driver Development Kit but *not*
@@ -439,30 +481,6 @@ void *RtlReAllocateHeap(void *HeapHandle, DWORD Flags, void *BaseAddress,
 
 // This function is completely undocumented.
 size_t RtlSizeHeap(void *HeapHandle, DWORD Flags, void *BaseAddress);
-
-INTERCEPTOR_WINAPI(void *, RtlCreateHeap, DWORD Flags, void *HeapBase,
-                   size_t ReserveSize, size_t CommitSize, void *Lock,
-                   PRTL_HEAP_PARAMETERS Parameters) {
-  void *HeapHandle = REAL(RtlCreateHeap)(Flags, HeapBase, ReserveSize,
-                                         CommitSize, Lock, Parameters);
-
-  if ((Flags & HEAP_SKIP_VALIDATION_CHECKS) != 0) {
-    Flags &= ~(HEAP_VALIDATE_ALL_ENABLED | HEAP_VALIDATE_PARAMETERS_ENABLED);
-  }
-
-  if (HeapHandle && (Flags & HEAP_CREATE_UNSUPPORTED_FLAGS) == 0) {
-    AsanHeapMap::Handle h_create(
-        GetAsanHeapMap(), reinterpret_cast<uptr>(HeapHandle), false, true);
-    // In debug mode RtlCreateHeap will call RtlDebugCreateHeap which in turn
-    // will call this hook. Therefore it is legitimate that by calling
-    // REAL(RtlCreateHeap) above we have already created this entry.
-    if (h_create.created()) {
-      *h_create = new AsanHeap(Flags & HEAP_CREATE_SAVED_FLAGS);
-    }
-  }
-
-  return HeapHandle;
-}
 
 // TODO: This doesn't gracefully handle the situation that one thread is trying
 // to use this heap while it is being destroyed.
@@ -526,17 +544,20 @@ INTERCEPTOR_WINAPI(void *, RtlAllocateHeap, HANDLE HeapHandle, DWORD Flags,
   }
 
   AsanHeap *asan_heap = GetAsanHeap(HeapHandle);
+  if (UNLIKELY(!asan_heap->is_supported)) {
+    return REAL(RtlAllocateHeap)(HeapHandle, Flags, Size);
+  }
 
-  const DWORD all_flags = Flags | asan_heap->Flags;
+  const DWORD all_flags = Flags | asan_heap->GetFlags();
   const DWORD unsupported_flags = all_flags & HEAP_ALLOCATE_UNSUPPORTED_FLAGS;
 
-  if (UNLIKELY(unsupported_flags != 0)) {
+  if (UNLIKELY(unsupported_flags)) {
     return REAL(RtlAllocateHeap)(HeapHandle, Flags, Size);
   }
 
   // Take the lock in the AsanHeap
   RecursiveScopedLock raii_lock(asan_heap->lock, asan_heap->thread_id);
-  
+
   GET_STACK_TRACE_MALLOC;
   void *p = asan_malloc(Size, &stack);
   // Reading MSDN suggests that the *entire* usable allocation is zeroed out.
@@ -650,10 +671,13 @@ INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
   AllocationOwnership owner(HeapHandle, BaseAddress);
 
   AsanHeap *asan_heap = GetAsanHeap(HeapHandle);
+  if (UNLIKELY(!asan_heap->is_supported)) {
+    return REAL(RtlReAllocateHeap)(HeapHandle, Flags, BaseAddress, Size);
+  }
 
-  const DWORD all_flags = Flags | asan_heap->Flags;
-  const bool only_asan_supported_flags =
-      (HEAP_REALLOC_UNSUPPORTED_FLAGS & all_flags) == 0;
+  const DWORD all_flags = Flags | asan_heap->GetFlags();
+  const DWORD asan_unsupported_flags =
+      (HEAP_REALLOC_UNSUPPORTED_FLAGS & all_flags);
 
   // Take the lock in the AsanHeap
   RecursiveScopedLock raii_lock(asan_heap->lock, asan_heap->thread_id);
@@ -686,7 +710,7 @@ INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
         *h = prev_tail;
       }
     }
-  } else if (only_asan_supported_flags && owner == AllocationOwnership::ASAN) {
+  } else if (!asan_unsupported_flags && owner == AllocationOwnership::ASAN) {
     // HeapReAlloc and HeapAlloc both happily accept 0 sized allocations.
     // passing a 0 size into asan_realloc will free the allocation.
     // To avoid this and keep behavior consistent, fudge the size if 0.
@@ -739,7 +763,7 @@ INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
                                   false, true);
       *h_new = found;
     }
-  } else if (UNLIKELY(only_asan_supported_flags &&
+  } else if (UNLIKELY(!asan_unsupported_flags &&
                       owner == AllocationOwnership::RTL)) {
     old_size = REAL(RtlSizeHeap)(HeapHandle, Flags, BaseAddress);
 
@@ -755,7 +779,7 @@ INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
     } else {
       return nullptr;
     }
-  } else if (UNLIKELY(!only_asan_supported_flags &&
+  } else if (UNLIKELY(asan_unsupported_flags &&
                       owner == AllocationOwnership::ASAN)) {
     // Conversion to unsupported flags allocation,
     // transfer this allocation to the original allocator.
@@ -766,7 +790,7 @@ INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
       REAL(memcpy)(replacement_alloc, BaseAddress, Min<size_t>(Size, old_size));
       WRAP(RtlFreeHeap)(HeapHandle, Flags, BaseAddress);
     }
-  } else if (UNLIKELY(!only_asan_supported_flags &&
+  } else if (UNLIKELY(asan_unsupported_flags &&
                       owner == AllocationOwnership::RTL)) {
     // Currently owned by rtl using unsupported ASAN flags,
     // just pass back to original allocator.
@@ -973,7 +997,8 @@ void *ReAllocGlobalLocal(GlobalLocalRealloc reallocFunc,
 
   if (ownershipState == AllocationOwnership::OWNED_BY_ASAN) {
     CHECK((COMBINED_GLOBALLOCAL_UNSUPPORTED_FLAGS & uFlags) == 0);
-    return MoveableMemoryManager::GetInstance()->ReAllocate(hMem, uFlags, dwBytes, caller);
+    return MoveableMemoryManager::GetInstance()->ReAllocate(hMem, uFlags,
+                                                            dwBytes, caller);
   }
   return nullptr;
 }
@@ -1093,8 +1118,6 @@ void ReplaceSystemMalloc() {
   __interception::OverrideFunction("RtlAllocateHeap",
                                    (uptr)WRAP(RtlAllocateHeap),
                                    (uptr *)&REAL(RtlAllocateHeap));
-  __interception::OverrideFunction("RtlCreateHeap", (uptr)WRAP(RtlCreateHeap),
-                                   (uptr *)&REAL(RtlCreateHeap));
   __interception::OverrideFunction("RtlDestroyHeap", (uptr)WRAP(RtlDestroyHeap),
                                    (uptr *)&REAL(RtlDestroyHeap));
 #endif  // defined(ASAN_DYNAMIC)

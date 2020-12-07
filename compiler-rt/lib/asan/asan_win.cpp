@@ -314,8 +314,55 @@ void InitializePlatformExceptionHandlers() {
 #endif
 }
 
+// This mocks an internal CRT data structure which is subject to change.
+struct AllocationDebugHeader {
+  void *a, *b, *c;
+  int d;
+
+  int block_use;
+  size_t data_size;
+
+  long g;
+  unsigned char h[4];
+};
+
+// We need to check if this address belongs to any of the heaps in the process.
 bool IsSystemHeapAddress(uptr addr) {
-  return ::HeapValidate(GetProcessHeap(), 0, (void *)addr) != FALSE;
+  HANDLE heaps[128]; 
+  PROCESS_HEAP_ENTRY lpEntry;
+
+  DWORD num_heaps = ::GetProcessHeaps(sizeof(heaps)/sizeof(HANDLE), heaps);
+  CHECK(num_heaps <= sizeof(heaps)/sizeof(HANDLE) &&
+        "You have exceeded the maximum number of supported heaps.");
+
+  for (DWORD i = 0; i < num_heaps; ++i) {
+    ::HeapLock(heaps[i]);
+    lpEntry.lpData = NULL;
+
+    while (HeapWalk(heaps[i], &lpEntry)) {
+      if (lpEntry.wFlags & PROCESS_HEAP_ENTRY_BUSY) {
+        if ( reinterpret_cast<uptr>(lpEntry.lpData) == addr) {
+          ::HeapUnlock(heaps[i]);
+          return true;
+        }
+
+// The CRT adds extra space in front of an allocation in debug mode so we do
+// our best detecting such allocations.
+#ifdef _DEBUG
+        if (reinterpret_cast<uptr>(lpEntry.lpData) + sizeof(AllocationDebugHeader) == addr &&
+            reinterpret_cast<AllocationDebugHeader*>(lpEntry.lpData)->block_use &&
+            reinterpret_cast<AllocationDebugHeader*>(lpEntry.lpData)->data_size < lpEntry.cbData) {
+          ::HeapUnlock(heaps[i]);
+          return true;
+        }
+#endif // _DEBUG
+      }
+    }
+
+    ::HeapUnlock(heaps[i]);
+  }
+
+  return false;
 }
 
 // We want to install our own exception handler (EH) to print helpful reports
