@@ -393,25 +393,6 @@ AsanHeap *GetAsanHeap(void *heap) {
   return asan_heap;
 }
 
-AsanHeap *GetAsanHeap(void *heap, unsigned long flags = 0) {
-  AsanHeap *asan_heap;
-  if (heap == GetProcessHeap()) {
-    asan_heap = GetDefaultHeap();
-  } else {
-    AsanHeapMap::Handle h_find_or_create(
-        GetAsanHeapMap(), reinterpret_cast<uptr>(heap), false, true);
-
-    if (h_find_or_create.created()) {
-      asan_heap = new AsanHeap(flags);
-      *h_find_or_create = asan_heap;
-    } else {
-      asan_heap = *h_find_or_create;
-    }
-  }
-
-  return asan_heap;
-}
-
 struct AllocationOwnership {
   enum { NEITHER = 0, ASAN = 1, RTL = 2 };
   const int ownership;
