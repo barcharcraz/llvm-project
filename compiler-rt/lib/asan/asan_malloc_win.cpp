@@ -435,9 +435,6 @@ struct AllocationOwnership {
   }
 };
 
-#define OWNED_BY_RTL(heap, memory) \
-  (!__sanitizer_get_ownership(memory) && HeapValidate(heap, 0, memory))
-
 // The following functions are undocumented and subject to change.
 // However, hooking them is necessary to hook Windows heap
 // allocations with detours and their definitions are unlikely to change.
@@ -595,8 +592,21 @@ INTERCEPTOR_WINAPI(LOGICAL, RtlFreeHeap, void *HeapHandle, DWORD Flags,
                                    reinterpret_cast<uptr>(BaseAddress), true,
                                    false);
 
-    CHECK(h_delete.exists() &&
-          "The memory being freed does not belong to this heap.");
+    // If the pointer is not in the heap's allocated memory map one of
+    // two things could be happening:
+    // 1. The memory passed into RtlFreeHeap was allocated with malloc or new.
+    // 2. ASAN owns the memory but the wrong heap was passed into RtlFreeHeap
+    // and we should emulate RtlFreeHeap's behavior.
+    if (!h_delete.exists()) {
+      if (HeapHandle == GetProcessHeap()) {
+        GET_STACK_TRACE_FREE;
+        asan_free(BaseAddress, &stack, FROM_MALLOC);
+
+        return true;
+      } else {
+        return REAL(RtlFreeHeap)(HeapHandle, Flags, BaseAddress);
+      }
+    }
 
     found = *h_delete;
   }
@@ -705,13 +715,24 @@ INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
     }
 
     AsanHeapMemoryNode *found;
+    bool new_malloc_rtl_mismatch = false;
     {
       AsanMemoryMap::Handle h_delete(&(asan_heap->memory_map),
                                      reinterpret_cast<uptr>(BaseAddress), true,
                                      false);
 
+      // If the pointer is not in the heap's allocated memory map one of
+      // two things could be happening:
+      // 1. The memory passed into RtlReAllocateHeap was allocated with malloc
+      // or new.
+      // 2. ASAN owns the memory but the wrong heap was passed into
+      // RtlReAllocateHeap and we should emulate RtlReAllocateHeap's behavior.
       if (!h_delete.exists()) {
-        return nullptr;
+        if (HeapHandle == GetProcessHeap()) {
+          new_malloc_rtl_mismatch = true;
+        } else {
+          return REAL(RtlReAllocateHeap)(HeapHandle, Flags, BaseAddress, Size);
+        }
       }
 
       found = *h_delete;
@@ -733,10 +754,20 @@ INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
     // We need to remove the old pointer from both the heap list and the heap
     // map and then add the new pointer.
     if (replacement_alloc != BaseAddress) {
-      if (found) {
-        found->next->memory = replacement_alloc;
+      if (!new_malloc_rtl_mismatch) {
+        if (found) {
+          found->next->memory = replacement_alloc;
+        } else {
+          asan_heap->asan_memory.front()->memory = replacement_alloc;
+        }
       } else {
-        asan_heap->asan_memory.front()->memory = replacement_alloc;
+        // If the function which created this allocation was not an Rtl
+        // function we just add the new memory onto the end of the linked
+        // list.
+        AsanHeapMemoryNode *mem_node =
+          new AsanHeapMemoryNode(replacement_alloc);
+        found = asan_heap->asan_memory.back();
+        asan_heap->asan_memory.push_back(mem_node);
       }
 
       AsanMemoryMap::Handle h_new(&(asan_heap->memory_map),
@@ -823,13 +854,13 @@ HANDLE GlobalLocalGenericFree(GlobalLocalUnlock lockFunction,
 HANDLE SharedLockUnlock(HANDLE hMem, GlobalLocalLock lockFunc,
                         LockAction action) {
   CHECK(lockFunc != nullptr);
-  if (asan_inited && !OWNED_BY_RTL(GetProcessHeap(), hMem)) {
+  if (asan_inited && !IsSystemHeapAddress(reinterpret_cast<uptr>(hMem))) {
     if (action == LockAction::Increment)
       return MoveableMemoryManager::GetInstance()->IncrementLockCount(hMem);
     else
       return MoveableMemoryManager::GetInstance()->DecrementLockCount(hMem);
   }
-  // OWNED_BY_RTL was true or asan is not inited yet:
+  // The memory belongs to an RtlHeap or asan is not yet initialized:
   return lockFunc(hMem);
 }
 
@@ -881,8 +912,9 @@ INTERCEPTOR_WINAPI(SIZE_T, GlobalSize, HGLOBAL hMem) {
   // we're about to use. Allocations might occur before interception
   // takes place, so if it is not owned by RTL heap, the we can
   // pass it to ASAN heap for inspection.
-  if (!asan_inited || OWNED_BY_RTL(GetProcessHeap(), hMem))
+  if (!asan_inited || IsSystemHeapAddress(reinterpret_cast<uptr>(hMem))) {
     return REAL(GlobalSize)(hMem);
+  }
 
   return MoveableMemoryManager::GetInstance()->GetAllocationSize(hMem);
 }
@@ -905,8 +937,8 @@ HANDLE GlobalLocalGenericFree(GlobalLocalUnlock lockFunction,
     HGLOBAL pointer = lockFunction(hMem);
     if (pointer != nullptr) {
       // This was either a handle, or it was a pointer to begin with.
-      // Either way, we can HeapValidate now.
-      if (HeapValidate(GetProcessHeap(), 0, pointer)) {
+      // Either way, we can check if this is a system heap pointer.
+      if (IsSystemHeapAddress(reinterpret_cast<uptr>(pointer))) {
         return freeFunction(hMem);
       }
     }
@@ -929,7 +961,7 @@ AllocationOwnership CheckGlobalLocalHeapOwnership(
    * TYPE_HANDLE or TYPE_UNKNOWN_PTR
    *
    * NOTE: As an implementation detail, movable memory objects also live on the
-   * heap. HeapValidate will return true if given a moveable memory handle.
+   * heap. IsSystemHeapAddress will return true if given a moveable memory handle.
    *
    */
 
@@ -939,7 +971,7 @@ AllocationOwnership CheckGlobalLocalHeapOwnership(
   }
 
   // It is not safe to pass wild pointers to GlobalLock/LocalLock.
-  if (HeapValidate(GetProcessHeap(), 0, hMem)) {
+  if (IsSystemHeapAddress(reinterpret_cast<uptr>(hMem))) {
     void *ptr = lockFunc(hMem);
     // We don't care whether ptr is moved after this point as we're just trying
     // to determine where it came from.
@@ -1015,7 +1047,7 @@ INTERCEPTOR_WINAPI(SIZE_T, LocalSize, HGLOBAL hMem) {
   /* We need to check whether the ASAN allocator owns the pointer we're about to
    * use. Allocations might occur before interception takes place, so if it is
    * not owned by RTL heap, the we can pass it to ASAN heap for inspection.*/
-  if (!asan_inited || OWNED_BY_RTL(GetProcessHeap(), hMem)) {
+  if (!asan_inited || IsSystemHeapAddress(reinterpret_cast<uptr>(hMem))) {
     return REAL(LocalSize)(hMem);
   }
   return MoveableMemoryManager::GetInstance()->GetAllocationSize(hMem);
