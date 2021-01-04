@@ -1,11 +1,8 @@
-// RUN: %clang_cl_asan -Od %s -Fe%t /MD
-// RUN: %env_asan_opts=windows_hook_rtl_allocators=true not %run %t 2>&1 | FileCheck %s
-// UNSUPPORTED: asan-64-bits
-// REQUIRES: asan-rtl-heap-interception
-
-#include <assert.h>
+// RUN: %clang_cl_asan %s -o %t
+// RUN: not %run %t 2>&1 | FileCheck %s
 #include <stdio.h>
 #include <windows.h>
+#include <cassert>
 
 using AllocateFunctionPtr = PVOID(__stdcall *)(PVOID, ULONG, SIZE_T);
 using ReAllocateFunctionPtr = PVOID(__stdcall *)(PVOID, ULONG, PVOID, SIZE_T);

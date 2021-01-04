@@ -1104,21 +1104,23 @@ void ReplaceSystemMalloc() {
   TryToOverrideFunction("_recalloc_dbg", (uptr)_recalloc_dbg);
   TryToOverrideFunction("_msize_dbg", (uptr)_msize_dbg);
 #endif
-  INTERCEPT_FUNCTION(GlobalAlloc);
-  INTERCEPT_FUNCTION(GlobalFree);
-  INTERCEPT_FUNCTION(GlobalSize);
-  INTERCEPT_FUNCTION(GlobalReAlloc);
-  INTERCEPT_FUNCTION(GlobalLock);
-  INTERCEPT_FUNCTION(GlobalUnlock);
-  INTERCEPT_FUNCTION(GlobalHandle);
+  if (flags()->windows_hook_legacy_allocators) {
+    INTERCEPT_FUNCTION(GlobalAlloc);
+    INTERCEPT_FUNCTION(GlobalFree);
+    INTERCEPT_FUNCTION(GlobalSize);
+    INTERCEPT_FUNCTION(GlobalReAlloc);
+    INTERCEPT_FUNCTION(GlobalLock);
+    INTERCEPT_FUNCTION(GlobalUnlock);
+    INTERCEPT_FUNCTION(GlobalHandle);
 
-  INTERCEPT_FUNCTION(LocalAlloc);
-  INTERCEPT_FUNCTION(LocalFree);
-  INTERCEPT_FUNCTION(LocalSize);
-  INTERCEPT_FUNCTION(LocalReAlloc);
-  INTERCEPT_FUNCTION(LocalLock);
-  INTERCEPT_FUNCTION(LocalUnlock);
-  INTERCEPT_FUNCTION(LocalHandle);
+    INTERCEPT_FUNCTION(LocalAlloc);
+    INTERCEPT_FUNCTION(LocalFree);
+    INTERCEPT_FUNCTION(LocalSize);
+    INTERCEPT_FUNCTION(LocalReAlloc);
+    INTERCEPT_FUNCTION(LocalLock);
+    INTERCEPT_FUNCTION(LocalUnlock);
+    INTERCEPT_FUNCTION(LocalHandle);
+  }
 
   // Undocumented functions must be intercepted by name, not by symbol.
   __interception::OverrideFunction("RtlSizeHeap", (uptr)WRAP(RtlSizeHeap),

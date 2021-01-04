@@ -1,5 +1,5 @@
 // RUN: %clang_cl_asan -Od %s -Fe%t /MD
-// RUN: %env_asan_opts=windows_hook_rtl_allocators=true %run %t 2>&1 | FileCheck %s
+// RUN: %run %t 2>&1 | FileCheck %s
 
 #include <assert.h>
 #include <stdio.h>

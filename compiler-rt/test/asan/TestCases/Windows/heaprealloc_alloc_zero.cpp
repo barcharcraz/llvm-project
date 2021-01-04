@@ -1,7 +1,7 @@
 // UNSUPPORTED: msvc-host
 // Tracked by vso1226261, ( WindowsSuite_x86chk_MD.txt WindowsSuite_x86chk_MT.txt )
 // RUN: %clang_cl_asan /Od /MT -o %t %s
-// RUN: %env_asan_opts=windows_hook_rtl_allocators=true %run %t 2>&1 | FileCheck %s
+// RUN: %run %t 2>&1 | FileCheck %s
 // UNSUPPORTED: asan-64-bits
 #include <cassert>
 #include <iostream>
