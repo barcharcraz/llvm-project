@@ -266,6 +266,39 @@ void AsanOnDeadlySignal(int, void *siginfo, void *context) { UNIMPLEMENTED(); }
 bool PlatformUnpoisonStacks() { return false; }
 
 #if SANITIZER_WINDOWS64
+
+// If you change these constants, make the same changes in vcasan.lib... and any other future 
+// Windows, AddressSanitizer functionalities, which are closely integrated with the Visual Studio IDE.
+
+// Two constants for vcasan.lib -> IDE
+static constexpr unsigned kVCAsanLibSanitzer = ('san' | 0xE0000000);            // 0xe073616e
+static constexpr unsigned kVCAsanLibAddressSanitzer = (kVCAsanLibSanitzer + 1); // 0xe073616f
+
+// Next threee constants for Asan RT -> IDE
+
+// 0xe0736170 debugger IDE specific
+static constexpr unsigned kVSEnlighten = (kVCAsanLibSanitzer + 2); 
+
+// 0xe0736171 – fake eh code used internally by the debugger to let users possibly stop on the first chance exception
+static constexpr unsigned kVSRawThrown = (kVCAsanLibSanitzer + 3);
+
+// 0xe0736172 – AV was not handled by the address sanitizer runtime. The debugger maps to STATUS_ACCESS_VIOLATION.
+static constexpr unsigned kVSRealExeAVThrown = (kVCAsanLibSanitzer + 4);
+
+__declspec(noinline) static void EnlightenVSDebugger() {
+#if SANITIZER_WINDOWS64
+
+  if (::IsDebuggerPresent()) {
+    // Must fire before shadow memory is boot strapped by throwing AV's
+    // This is called early from AsanInitInternal()
+    __try {
+      RaiseException(kVSEnlighten, 0, 0, nullptr);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    }
+  }
+#endif
+}
+
 // Exception handler for dealing with shadow memory.
 static LONG CALLBACK
 ShadowExceptionHandler(PEXCEPTION_POINTERS exception_pointers) {
@@ -284,6 +317,20 @@ ShadowExceptionHandler(PEXCEPTION_POINTERS exception_pointers) {
 
   // Check valid shadow range.
   if (!AddrIsInShadow(addr)) {
+
+    if (::IsDebuggerPresent()) {
+      __try {
+        ULONG_PTR args[] = {
+            reinterpret_cast<ULONG_PTR>(exception_pointers->ExceptionRecord),
+            reinterpret_cast<ULONG_PTR>(exception_pointers->ContextRecord)};
+
+        // Inform VS this is the AsanRuntime paging in shadow byte area.
+        // Effects only if VS was previously informed this was an ASan binary.
+        RaiseException(kVSRealExeAVThrown, 0,_countof(args), args);
+      } __except (EXCEPTION_EXECUTE_HANDLER) {
+      }
+    }
+
     __asan_handle_no_return();
     return EXCEPTION_CONTINUE_SEARCH;
   }
@@ -308,6 +355,7 @@ ShadowExceptionHandler(PEXCEPTION_POINTERS exception_pointers) {
 
 void InitializePlatformExceptionHandlers() {
 #if SANITIZER_WINDOWS64
+  EnlightenVSDebugger();
   // On Win64, we map memory on demand with access violation handler.
   // Install our exception handler.
   CHECK(AddVectoredExceptionHandler(TRUE, &ShadowExceptionHandler));
