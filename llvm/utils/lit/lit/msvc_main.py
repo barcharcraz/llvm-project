@@ -435,9 +435,9 @@ if opts.disable_opt:
 litConfig.substitutions = {
                             ("-fsanitize-coverage=func ", lit.TestingConfig.SubstituteCaptures("/d2Sancov " )),
                             ("%sancov", "sancov.exe"),
-                            ("%clangxx_asan", litConfig.clang +  default_flags + " /fsanitize=address " ),
+                            ("%clangxx_asan", litConfig.clang +  default_flags + " /fsanitize=address /Oy- " ),
                             ("%clang_cl_asan", litConfig.clang + default_flags + " /fsanitize=address " ),
-                            ("%clang_asan", litConfig.clang +  default_flags + " /fsanitize=address "),
+                            ("%clang_asan", litConfig.clang +  default_flags + " /fsanitize=address /Oy- "),
                             ("%clang_cl ", litConfig.clang + default_flags),
                             ("%clang ", litConfig.clang + default_flags),
                             ("%asan_dll_lib", litConfig.compiler_rt_libdir + "\\" + dynamic_import_lib + " "),
@@ -447,6 +447,7 @@ litConfig.substitutions = {
                             ("-o %t.obj","/Fo:%t.obj"),
                             ("%run"," cmd /v /c "),
                             ("-fomit-frame-pointer","/Oy"),
+                            ("-fno-omit-frame-pointer","/Oy-"),
                             ("-fstack-protector"," /GS "),
                             ("%stdcxx11","/std:c++14"), # Apparently we don't have a c++11 flag :(
                             ("-std=","/std:"),
