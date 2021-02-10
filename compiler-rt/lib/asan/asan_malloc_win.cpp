@@ -181,6 +181,82 @@ void *_expand(void *memblock, size_t size) {
   return 0;
 }
 
+ALLOCATION_FUNCTION_ATTRIBUTE
+void *_aligned_malloc(size_t size, size_t alignment) {
+  GET_STACK_TRACE_MALLOC;
+  return asan_memalign(alignment, size, &stack, FROM_MALLOC);
+}
+
+// We don't respect the offset
+ALLOCATION_FUNCTION_ATTRIBUTE
+void *_aligned_offset_malloc(size_t size, size_t alignment, size_t) {
+  return _aligned_malloc(size, alignment);
+}
+
+ALLOCATION_FUNCTION_ATTRIBUTE
+void _aligned_free(void *memblock) {
+  GET_STACK_TRACE_MALLOC;
+  asan_free(memblock, &stack, FROM_MALLOC);
+}
+
+ALLOCATION_FUNCTION_ATTRIBUTE
+size_t _aligned_msize(void *memblock, size_t alignment, size_t offset) {
+  // get the original pointer from the breadcrumb
+  GET_CURRENT_PC_BP;
+  return asan_malloc_usable_size(memblock, pc, bp);
+}
+
+ALLOCATION_FUNCTION_ATTRIBUTE
+void *_aligned_realloc(void *memblock, size_t size, size_t alignment) {
+  // msdn documentation states that if memblock is nullptr,
+  // this should just allocate a new block.
+  // if size is 0, the block should be freed and nullptr returned.
+  GET_STACK_TRACE_MALLOC;
+  if (size == 0 && memblock != nullptr) {
+    asan_free(memblock, &stack, FROM_MALLOC);
+    return nullptr;
+  }
+
+  void *new_ptr = asan_memalign(alignment, size, &stack, FROM_MALLOC);
+  if (new_ptr && memblock) {
+    GET_CURRENT_PC_BP;
+    size_t aligned_size = asan_malloc_usable_size(memblock, pc, bp);
+    internal_memcpy(new_ptr, memblock, Min<size_t>(aligned_size, size));
+    asan_free(memblock, &stack, FROM_MALLOC);
+  }
+
+  return new_ptr;
+}
+
+// We don't respect the offset
+ALLOCATION_FUNCTION_ATTRIBUTE
+void *_aligned_offset_realloc(void *memblock, size_t size, size_t alignment,
+                              size_t) {
+  return _aligned_realloc(memblock, size, alignment);
+}
+
+ALLOCATION_FUNCTION_ATTRIBUTE
+void *_aligned_recalloc(void *memblock, size_t num, size_t element_size,
+                        size_t alignment) {
+  size_t size = num * element_size;
+  size_t old_size = 0;
+  if (memblock) {
+    old_size = _aligned_msize(memblock, alignment, 0);
+  }
+  void *new_ptr = _aligned_realloc(memblock, size, alignment);
+  if (new_ptr && old_size < size) {
+    REAL(memset)(static_cast<u8 *>(new_ptr) + old_size, 0, size - old_size);
+  }
+  return new_ptr;
+}
+
+// We don't respect the offset
+ALLOCATION_FUNCTION_ATTRIBUTE
+void *_aligned_offset_recalloc(void *memblock, size_t num, size_t element_size,
+                               size_t alignment, size_t) {
+  return _aligned_recalloc(memblock, num, element_size, alignment);
+}
+
 #ifdef _DEBUG
 ALLOCATION_FUNCTION_ATTRIBUTE
 void *_malloc_dbg(size_t size, int, const char *, int) { return malloc(size); }
@@ -209,64 +285,149 @@ void *_recalloc_dbg(void *userData, size_t num, size_t size, int, const char *,
 
 ALLOCATION_FUNCTION_ATTRIBUTE
 size_t _msize_dbg(void *userData, int) { return _msize(userData); }
+
+ALLOCATION_FUNCTION_ATTRIBUTE
+void *_aligned_malloc_dbg(size_t const size, size_t const alignment,
+                          char const *const, int const) {
+  return _aligned_malloc(size, alignment);
+}
+
+// We don't respect the offset
+ALLOCATION_FUNCTION_ATTRIBUTE
+void *_aligned_offset_malloc_dbg(size_t const size, size_t const alignment,
+                                 size_t const offset, char const *const,
+                                 int const) {
+  return _aligned_offset_malloc(size, alignment, offset);
+}
+
+ALLOCATION_FUNCTION_ATTRIBUTE
+void *_aligned_realloc_dbg(void *const block, size_t const size,
+                           size_t const alignment, char const *const,
+                           int const) {
+  return _aligned_realloc(block, size, alignment);
+}
+
+// We don't respect the offset
+ALLOCATION_FUNCTION_ATTRIBUTE
+void *_aligned_offset_realloc_dbg(void *const block, size_t const size,
+                                  size_t const alignment, size_t const offset,
+                                  char const *const, int const) {
+  return _aligned_offset_realloc(block, size, alignment, offset);
+}
+
+ALLOCATION_FUNCTION_ATTRIBUTE
+void *_aligned_recalloc_dbg(void *const block, size_t const count,
+                            size_t const element_size, size_t const alignment,
+                            char const *const, int const) {
+  return _aligned_recalloc(block, count, element_size, alignment);
+}
+
+// We don't respect the offset
+ALLOCATION_FUNCTION_ATTRIBUTE
+void *_aligned_offset_recalloc_dbg(void *const block, size_t const count,
+                                   size_t const element_size,
+                                   size_t const alignment, size_t const offset,
+                                   char const *const, int const) {
+  return _aligned_offset_recalloc(block, count, element_size, alignment,
+                                  offset);
+}
+
+ALLOCATION_FUNCTION_ATTRIBUTE
+void _aligned_free_dbg(void *const block) { return _aligned_free(block); }
+
+// We need to provide symbols for all the debug CRT functions if we decide to
+// provide any. Most of these functions make no sense under ASan and so we
+// make them no-ops.
+ALLOCATION_FUNCTION_ATTRIBUTE
+long _CrtSetBreakAlloc(long const) { return ~0; }
+
+ALLOCATION_FUNCTION_ATTRIBUTE
+void _CrtSetDbgBlockType(void *const, int const) { return; }
+
+typedef int(__cdecl *CRT_ALLOC_HOOK)(int, void *, size_t, int, long,
+                                     const unsigned char *, int);
+
+ALLOCATION_FUNCTION_ATTRIBUTE
+CRT_ALLOC_HOOK _CrtGetAllocHook() { return nullptr; }
+
+ALLOCATION_FUNCTION_ATTRIBUTE
+CRT_ALLOC_HOOK _CrtSetAllocHook(CRT_ALLOC_HOOK const hook) { return hook; }
+
+ALLOCATION_FUNCTION_ATTRIBUTE
+int _CrtCheckMemory() { return 1; }
+
+ALLOCATION_FUNCTION_ATTRIBUTE
+int _CrtSetDbgFlag(int const new_bits) { return new_bits; }
+
+typedef void (*CrtDoForAllClientObjectsCallback)(void *, void *);
+
+ALLOCATION_FUNCTION_ATTRIBUTE
+void _CrtDoForAllClientObjects(CrtDoForAllClientObjectsCallback const,
+                               void *const) {
+  return;
+}
+
+ALLOCATION_FUNCTION_ATTRIBUTE
+int _CrtIsValidPointer(void const *const p, unsigned int const, int const) {
+  return p != nullptr;
+}
+
+ALLOCATION_FUNCTION_ATTRIBUTE
+int _CrtIsValidHeapPointer(void const *const block) {
+  if (!block) {
+    return 0;
+  }
+
+  return __sanitizer_get_ownership(block);
+}
+
+ALLOCATION_FUNCTION_ATTRIBUTE
+int _CrtIsMemoryBlock(void const *const, unsigned const, long *const,
+                      char **const, int *const) {
+  return 0;
+}
+
+ALLOCATION_FUNCTION_ATTRIBUTE
+int _CrtReportBlockType(void const *const) { return -1; }
+
+typedef void(__cdecl *CRT_DUMP_CLIENT)(void *, size_t);
+
+ALLOCATION_FUNCTION_ATTRIBUTE
+CRT_DUMP_CLIENT _CrtGetDumpClient() { return nullptr; }
+
+ALLOCATION_FUNCTION_ATTRIBUTE
+CRT_DUMP_CLIENT _CrtSetDumpClient(CRT_DUMP_CLIENT new_client) {
+  return new_client;
+}
+
+ALLOCATION_FUNCTION_ATTRIBUTE
+void _CrtMemCheckpoint(void *const) { return; }
+
+ALLOCATION_FUNCTION_ATTRIBUTE
+int _CrtMemDifference(void *const, void const *const, void const *const) {
+  return 0;
+}
+
+ALLOCATION_FUNCTION_ATTRIBUTE
+void _CrtMemDumpAllObjectsSince(void const *const) { return; }
+
+ALLOCATION_FUNCTION_ATTRIBUTE
+int _CrtDumpMemoryLeaks() { return 0; }
+
+ALLOCATION_FUNCTION_ATTRIBUTE
+void _CrtMemDumpStatistics(void const *const) { return; }
+
+int _crtDbgFlag{0};
+long _crtBreakAlloc{-1};
+CRT_DUMP_CLIENT _pfnDumpClient{nullptr};
+
+ALLOCATION_FUNCTION_ATTRIBUTE
+int *__p__crtDbgFlag() { return &_crtDbgFlag; }
+
+ALLOCATION_FUNCTION_ATTRIBUTE
+long *__p__crtBreakAlloc() { return &_crtBreakAlloc; }
+
 #endif  //_DEBUG
-
-ALLOCATION_FUNCTION_ATTRIBUTE void *_aligned_malloc(size_t size,
-                                                    size_t alignment) {
-  GET_STACK_TRACE_MALLOC;
-  return asan_memalign(alignment, size, &stack, FROM_MALLOC);
-}
-
-ALLOCATION_FUNCTION_ATTRIBUTE void _aligned_free(void *memblock) {
-  GET_STACK_TRACE_MALLOC;
-  asan_free(memblock, &stack, FROM_MALLOC);
-}
-
-ALLOCATION_FUNCTION_ATTRIBUTE size_t _aligned_msize(void *memblock,
-                                                    size_t alignment,
-                                                    size_t offset) {
-  // get the original pointer from the breadcrumb
-  GET_CURRENT_PC_BP;
-  return asan_malloc_usable_size(memblock, pc, bp);
-}
-
-ALLOCATION_FUNCTION_ATTRIBUTE void *_aligned_realloc(void *memblock,
-                                                     size_t size,
-                                                     size_t alignment) {
-  // msdn documentation states that if memblock is nullptr,
-  // this should just allocate a new block.
-  // if size is 0, the block should be freed and nullptr returned.
-  GET_STACK_TRACE_MALLOC;
-  if (size == 0 && memblock != nullptr) {
-    asan_free(memblock, &stack, FROM_MALLOC);
-    return nullptr;
-  }
-
-  void *new_ptr = asan_memalign(alignment, size, &stack, FROM_MALLOC);
-  if (new_ptr && memblock) {
-    GET_CURRENT_PC_BP;
-    size_t aligned_size = asan_malloc_usable_size(memblock, pc, bp);
-    internal_memcpy(new_ptr, memblock, Min<size_t>(aligned_size, size));
-    asan_free(memblock, &stack, FROM_MALLOC);
-  }
-
-  return new_ptr;
-}
-
-ALLOCATION_FUNCTION_ATTRIBUTE void *_aligned_recalloc(void *memblock,
-                                                      size_t size,
-                                                      size_t alignment) {
-  size_t old_size = 0;
-  if (memblock) {
-    old_size = _aligned_msize(memblock, alignment, 0);
-  }
-  void *new_ptr = _aligned_realloc(memblock, size, alignment);
-  if (new_ptr && old_size < size) {
-    REAL(memset)(static_cast<u8 *>(new_ptr) + old_size, 0, size - old_size);
-  }
-  return new_ptr;
-}
-
 }  // extern "C"
 
 struct AsanHeapMemoryNode {
@@ -305,14 +466,14 @@ struct AsanHeap {
     constexpr unsigned long HEAP_PRIVATE_CLASS = 0x00001000;
     constexpr unsigned long HEAP_CLASS_MASK = 0x0000F000;
 
-    constexpr unsigned long HEAP_SUPPORTED_CLASSES[] =
-      {HEAP_PROCESS_CLASS, HEAP_PRIVATE_CLASS};
-  
+    constexpr unsigned long HEAP_SUPPORTED_CLASSES[] = {HEAP_PROCESS_CLASS,
+                                                        HEAP_PRIVATE_CLASS};
+
     const unsigned long heapClass =
-      (heap.flags | heap.forceFlags) & HEAP_CLASS_MASK;
+        (heap.flags | heap.forceFlags) & HEAP_CLASS_MASK;
 
     bool heapClassSupported = false;
-    for (const auto& heapClassType : HEAP_SUPPORTED_CLASSES) {
+    for (const auto &heapClassType : HEAP_SUPPORTED_CLASSES) {
       if (heapClass == heapClassType) {
         heapClassSupported = true;
         break;
@@ -325,8 +486,8 @@ struct AsanHeap {
     }
 
     constexpr unsigned long HEAP_UNSUPPORTED_FLAGS =
-      (HEAP_GENERATE_EXCEPTIONS | HEAP_REALLOC_IN_PLACE_ONLY |
-       HEAP_CREATE_ENABLE_EXECUTE);
+        (HEAP_GENERATE_EXCEPTIONS | HEAP_REALLOC_IN_PLACE_ONLY |
+         HEAP_CREATE_ENABLE_EXECUTE);
 
     if ((heap.flags | heap.forceFlags) & HEAP_UNSUPPORTED_FLAGS) {
       is_supported = false;
@@ -338,7 +499,7 @@ struct AsanHeap {
 
   [[nodiscard]] unsigned long GetFlags() const {
     constexpr unsigned long HEAP_EXAMINED_FLAGS =
-      (HEAP_NO_SERIALIZE | HEAP_ZERO_MEMORY | HEAP_REALLOC_IN_PLACE_ONLY);
+        (HEAP_NO_SERIALIZE | HEAP_ZERO_MEMORY | HEAP_REALLOC_IN_PLACE_ONLY);
 
     return (heap.flags | heap.forceFlags) & HEAP_EXAMINED_FLAGS;
   }
@@ -643,8 +804,10 @@ INTERCEPTOR_WINAPI(LOGICAL, RtlFreeHeap, void *HeapHandle, DWORD Flags,
 
   delete remove;
 
-  GET_STACK_TRACE_FREE;
-  asan_free(BaseAddress, &stack, FROM_MALLOC);
+  {
+    GET_STACK_TRACE_FREE;
+    asan_free(BaseAddress, &stack, FROM_MALLOC);
+  }
 
   return true;
 }
@@ -765,7 +928,7 @@ INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
         // function we just add the new memory onto the end of the linked
         // list.
         AsanHeapMemoryNode *mem_node =
-          new AsanHeapMemoryNode(replacement_alloc);
+            new AsanHeapMemoryNode(replacement_alloc);
         found = asan_heap->asan_memory.back();
         asan_heap->asan_memory.push_back(mem_node);
       }
@@ -961,7 +1124,8 @@ AllocationOwnership CheckGlobalLocalHeapOwnership(
    * TYPE_HANDLE or TYPE_UNKNOWN_PTR
    *
    * NOTE: As an implementation detail, movable memory objects also live on the
-   * heap. IsSystemHeapAddress will return true if given a moveable memory handle.
+   * heap. IsSystemHeapAddress will return true if given a moveable memory
+   * handle.
    *
    */
 
@@ -1073,36 +1237,78 @@ static void TryToOverrideFunction(const char *fname, uptr new_func) {
 
 void ReplaceSystemMalloc() {
 #if defined(ASAN_DYNAMIC)
-  TryToOverrideFunction("free", (uptr)free);
-  TryToOverrideFunction("_free_base", (uptr)free);
-  TryToOverrideFunction("malloc", (uptr)malloc);
-  TryToOverrideFunction("_malloc_base", (uptr)malloc);
-  TryToOverrideFunction("_malloc_crt", (uptr)malloc);
-  TryToOverrideFunction("calloc", (uptr)calloc);
+  TryToOverrideFunction("_aligned_free", (uptr)_aligned_free);
+  TryToOverrideFunction("_aligned_malloc", (uptr)_aligned_malloc);
+  TryToOverrideFunction("_aligned_msize", (uptr)_aligned_msize);
+  TryToOverrideFunction("_aligned_offset_malloc", (uptr)_aligned_offset_malloc);
+  TryToOverrideFunction("_aligned_offset_realloc",
+                        (uptr)_aligned_offset_realloc);
+  TryToOverrideFunction("_aligned_offset_recalloc",
+                        (uptr)_aligned_offset_recalloc);
+  TryToOverrideFunction("_aligned_realloc", (uptr)_aligned_realloc);
+  TryToOverrideFunction("_aligned_recalloc", (uptr)_aligned_recalloc);
   TryToOverrideFunction("_calloc_base", (uptr)calloc);
   TryToOverrideFunction("_calloc_crt", (uptr)calloc);
-  TryToOverrideFunction("realloc", (uptr)realloc);
+  TryToOverrideFunction("_expand", (uptr)_expand);
+  TryToOverrideFunction("_expand_base", (uptr)_expand);
+  TryToOverrideFunction("_free_base", (uptr)free);
+  TryToOverrideFunction("_malloc_base", (uptr)malloc);
+  TryToOverrideFunction("_malloc_crt", (uptr)malloc);
+  TryToOverrideFunction("_msize", (uptr)_msize);
+  TryToOverrideFunction("_msize_base", (uptr)_msize);
   TryToOverrideFunction("_realloc_base", (uptr)realloc);
   TryToOverrideFunction("_realloc_crt", (uptr)realloc);
   TryToOverrideFunction("_recalloc", (uptr)_recalloc);
   TryToOverrideFunction("_recalloc_base", (uptr)_recalloc);
   TryToOverrideFunction("_recalloc_crt", (uptr)_recalloc);
-  TryToOverrideFunction("_msize", (uptr)_msize);
-  TryToOverrideFunction("_msize_base", (uptr)_msize);
-  TryToOverrideFunction("_expand", (uptr)_expand);
-  TryToOverrideFunction("_expand_base", (uptr)_expand);
-  TryToOverrideFunction("_aligned_malloc", (uptr)_aligned_malloc);
-  TryToOverrideFunction("_aligned_msize", (uptr)_aligned_msize);
-  TryToOverrideFunction("_aligned_free", (uptr)_aligned_free);
-  TryToOverrideFunction("_aligned_realloc", (uptr)_aligned_realloc);
+  TryToOverrideFunction("calloc", (uptr)calloc);
+  TryToOverrideFunction("free", (uptr)free);
+  TryToOverrideFunction("malloc", (uptr)malloc);
+  TryToOverrideFunction("realloc", (uptr)realloc);
 #ifdef _DEBUG
+  TryToOverrideFunction("_aligned_malloc_dbg", (uptr)_aligned_malloc_dbg);
+  TryToOverrideFunction("_aligned_offset_malloc_dbg",
+                        (uptr)_aligned_offset_malloc_dbg);
+  TryToOverrideFunction("_aligned_offset_realloc_dbg",
+                        (uptr)_aligned_offset_realloc_dbg);
+  TryToOverrideFunction("_aligned_offset_recalloc_dbg",
+                        (uptr)_aligned_offset_recalloc_dbg);
+  TryToOverrideFunction("_aligned_realloc_dbg", (uptr)_aligned_realloc_dbg);
+  TryToOverrideFunction("_aligned_recalloc_dbg", (uptr)_aligned_recalloc_dbg);
+  TryToOverrideFunction("_calloc_dbg", (uptr)_calloc_dbg);
   TryToOverrideFunction("_expand_dbg", (uptr)_expand_dbg);
   TryToOverrideFunction("_free_dbg", (uptr)_free_dbg);
   TryToOverrideFunction("_malloc_dbg", (uptr)_malloc_dbg);
-  TryToOverrideFunction("_calloc_dbg", (uptr)_calloc_dbg);
+  TryToOverrideFunction("_msize_dbg", (uptr)_msize_dbg);
   TryToOverrideFunction("_realloc_dbg", (uptr)_realloc_dbg);
   TryToOverrideFunction("_recalloc_dbg", (uptr)_recalloc_dbg);
-  TryToOverrideFunction("_msize_dbg", (uptr)_msize_dbg);
+
+  // We should intercept these functions but it's okay that we don't right now.
+  // All of these functions are currently implemented as no-ops for ASan and
+  // allowing an instrumented DLL to forward to the actual CRT functions
+  // shouldn't significantly affect ASan diagnostics.
+  // TryToOverrideFunction("_CrtCheckMemory", (uptr)_CrtCheckMemory);
+  // TryToOverrideFunction("_CrtDoForAllClientObjects",
+  //                      (uptr)_CrtDoForAllClientObjects);
+  // TryToOverrideFunction("_CrtDumpMemoryLeaks", (uptr)_CrtDumpMemoryLeaks);
+  // TryToOverrideFunction("_CrtGetAllocHook", (uptr)_CrtGetAllocHook);
+  // TryToOverrideFunction("_CrtGetDumpClient", (uptr)_CrtGetDumpClient);
+  // TryToOverrideFunction("_CrtIsMemoryBlock", (uptr)_CrtIsMemoryBlock);
+  // TryToOverrideFunction("_CrtIsValidHeapPointer",
+  // (uptr)_CrtIsValidHeapPointer); TryToOverrideFunction("_CrtIsValidPointer",
+  // (uptr)_CrtIsValidPointer); TryToOverrideFunction("_CrtMemCheckpoint",
+  // (uptr)_CrtMemCheckpoint); TryToOverrideFunction("_CrtMemDifference",
+  // (uptr)_CrtMemDifference);
+  // TryToOverrideFunction("_CrtMemDumpAllObjectsSince",
+  //                      (uptr)_CrtMemDumpAllObjectsSince);
+  // TryToOverrideFunction("_CrtMemDumpStatistics",
+  // (uptr)_CrtMemDumpStatistics); TryToOverrideFunction("_CrtReportBlockType",
+  // (uptr)_CrtReportBlockType); TryToOverrideFunction("_CrtSetAllocHook",
+  // (uptr)_CrtSetAllocHook); TryToOverrideFunction("_CrtSetBreakAlloc",
+  // (uptr)_CrtSetBreakAlloc); TryToOverrideFunction("_CrtSetDbgBlockType",
+  // (uptr)_CrtSetDbgBlockType); TryToOverrideFunction("_CrtSetDbgFlag",
+  // (uptr)_CrtSetDbgFlag); TryToOverrideFunction("_CrtSetDumpClient",
+  // (uptr)_CrtSetDumpClient);
 #endif
   if (flags()->windows_hook_legacy_allocators) {
     INTERCEPT_FUNCTION(GlobalAlloc);
