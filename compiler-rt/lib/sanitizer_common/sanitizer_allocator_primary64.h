@@ -216,6 +216,7 @@ class SizeClassAllocator64 {
       region->rtoi.last_released_bytes = 0;
     }
 #endif
+
     if (UNLIKELY(region->num_freed_chunks < n_chunks)) {
       if (UNLIKELY(!PopulateFreeArray(stat, class_id, region,
                                       n_chunks - region->num_freed_chunks)))
