@@ -17,9 +17,9 @@
 #ifdef SANITIZER_DLL_THUNK
 #include "asan_init_version.h"
 #include "interception/interception.h"
+#include "sanitizer_common/sanitizer_platform_interceptors.h"
 #include "sanitizer_common/sanitizer_win_defs.h"
 #include "sanitizer_common/sanitizer_win_dll_thunk.h"
-#include "sanitizer_common/sanitizer_platform_interceptors.h"
 
 // ASan own interface functions.
 #define INTERFACE_FUNCTION(Name) INTERCEPT_SANITIZER_FUNCTION(Name)
@@ -47,19 +47,50 @@ INTERCEPT_WRAP_W_W(_msize_base)
 INTERCEPT_WRAP_W_W(_expand)
 
 #ifdef _DEBUG
-INTERCEPT_WRAP_W_W(_expand_dbg)
-INTERCEPT_WRAP_W_WWWWW(_calloc_dbg)
-INTERCEPT_WRAP_W_WWWWWW(_recalloc_dbg)
-INTERCEPT_WRAP_W_WWW(_realloc_dbg)
-INTERCEPT_WRAP_W_WWWW(_malloc_dbg)
+INTERCEPT_WRAP_V_W(_CrtMemCheckpoint)
+INTERCEPT_WRAP_V_W(_CrtMemDumpAllObjectsSince)
+INTERCEPT_WRAP_V_W(_CrtMemDumpStatistics)
+INTERCEPT_WRAP_V_W(_aligned_free_dbg)
+INTERCEPT_WRAP_V_WW(_CrtDoForAllClientObjects)
+INTERCEPT_WRAP_V_WW(_CrtSetDbgBlockType)
 INTERCEPT_WRAP_V_WW(_free_dbg)
-INTERCEPT_WRAP_V_WW(_msize_dbg)
+INTERCEPT_WRAP_W_V(_CrtCheckMemory)
+INTERCEPT_WRAP_W_V(_CrtDumpMemoryLeaks)
+INTERCEPT_WRAP_W_V(_CrtGetAllocHook)
+INTERCEPT_WRAP_W_V(_CrtGetDumpClient)
+INTERCEPT_WRAP_W_V(__p__crtBreakAlloc)
+INTERCEPT_WRAP_W_V(__p__crtDbgFlag)
+INTERCEPT_WRAP_W_W(_CrtIsValidHeapPointer)
+INTERCEPT_WRAP_W_W(_CrtReportBlockType)
+INTERCEPT_WRAP_W_W(_CrtSetAllocHook)
+INTERCEPT_WRAP_W_W(_CrtSetBreakAlloc)
+INTERCEPT_WRAP_W_W(_CrtSetDbgFlag)
+INTERCEPT_WRAP_W_W(_CrtSetDumpClient)
+INTERCEPT_WRAP_W_WW(_msize_dbg)
+INTERCEPT_WRAP_W_WWW(_CrtIsValidPointer)
+INTERCEPT_WRAP_W_WWW(_CrtMemDifference)
+INTERCEPT_WRAP_W_WWW(_aligned_msize_dbg)
+INTERCEPT_WRAP_W_WWWW(_aligned_malloc_dbg)
+INTERCEPT_WRAP_W_WWWW(_malloc_dbg)
+INTERCEPT_WRAP_W_WWWWW(_CrtIsMemoryBlock)
+INTERCEPT_WRAP_W_WWWWW(_aligned_offset_malloc_dbg)
+INTERCEPT_WRAP_W_WWWWW(_aligned_realloc_dbg)
+INTERCEPT_WRAP_W_WWWWW(_calloc_dbg)
+INTERCEPT_WRAP_W_WWWWW(_expand_dbg)
+INTERCEPT_WRAP_W_WWWWW(_realloc_dbg)
+INTERCEPT_WRAP_W_WWWWWW(_aligned_offset_realloc_dbg)
+INTERCEPT_WRAP_W_WWWWWW(_aligned_recalloc_dbg)
+INTERCEPT_WRAP_W_WWWWWW(_recalloc_dbg)
+INTERCEPT_WRAP_W_WWWWWWW(_aligned_offset_recalloc_dbg)
 #endif
 
 INTERCEPT_WRAP_V_W(_aligned_free)
 INTERCEPT_WRAP_W_WW(_aligned_malloc)
+INTERCEPT_WRAP_W_WWW(_aligned_offset_malloc)
 INTERCEPT_WRAP_W_WWW(_aligned_realloc)
-INTERCEPT_WRAP_W_WWW(_aligned_recalloc)
+INTERCEPT_WRAP_W_WWWW(_aligned_offset_realloc)
+INTERCEPT_WRAP_W_WWWW(_aligned_recalloc)
+INTERCEPT_WRAP_W_WWWWW(_aligned_offset_recalloc)
 INTERCEPT_WRAP_W_WWW(_aligned_msize)
 
 // TODO(timurrrr): Do we need to add _Crt* stuff here? (see asan_malloc_win.cpp)
@@ -94,7 +125,7 @@ INTERCEPT_LIBRARY_FUNCTION(strncmp);
 INTERCEPT_LIBRARY_FUNCTION(strncpy);
 INTERCEPT_LIBRARY_FUNCTION(strnlen);
 INTERCEPT_LIBRARY_FUNCTION(strpbrk);
-//INTERCEPT_LIBRARY_FUNCTION(strrchr);
+// INTERCEPT_LIBRARY_FUNCTION(strrchr);
 INTERCEPT_LIBRARY_FUNCTION(strspn);
 INTERCEPT_LIBRARY_FUNCTION(strstr);
 INTERCEPT_LIBRARY_FUNCTION(strtok);
@@ -128,18 +159,19 @@ using namespace __sanitizer;
 extern "C" {
 int __asan_option_detect_stack_use_after_return;
 uptr __asan_shadow_memory_dynamic_address;
-} // extern "C"
+}  // extern "C"
 
 static int asan_dll_thunk_init() {
   typedef void (*fntype)();
   static fntype fn = 0;
   // asan_dll_thunk_init is expected to be called by only one thread.
-  if (fn) return 0;
+  if (fn)
+    return 0;
 
   // Ensure all interception was executed.
   __dll_thunk_init();
 
-  fn = (fntype) dllThunkGetRealAddrOrDie("__asan_init");
+  fn = (fntype)dllThunkGetRealAddrOrDie("__asan_init");
   fn();
   __asan_option_detect_stack_use_after_return =
       (__asan_should_detect_stack_use_after_return() != 0);
@@ -159,13 +191,14 @@ __declspec(allocate(".CRT$XIB")) int (*__asan_preinit)() = asan_dll_thunk_init;
 
 static void WINAPI asan_thread_init(void *mod, unsigned long reason,
                                     void *reserved) {
-  if (reason == /*DLL_PROCESS_ATTACH=*/1) asan_dll_thunk_init();
+  if (reason == /*DLL_PROCESS_ATTACH=*/1)
+    asan_dll_thunk_init();
 }
 
 #pragma section(".CRT$XLAB", long, read)
-__declspec(allocate(".CRT$XLAB")) void (WINAPI *__asan_tls_init)(void *,
-    unsigned long, void *) = asan_thread_init;
+__declspec(allocate(".CRT$XLAB")) void(WINAPI *__asan_tls_init)(
+    void *, unsigned long, void *) = asan_thread_init;
 
 WIN_FORCE_LINK(__asan_dso_reg_hook)
 
-#endif // SANITIZER_DLL_THUNK
+#endif  // SANITIZER_DLL_THUNK

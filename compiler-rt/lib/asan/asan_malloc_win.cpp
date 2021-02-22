@@ -259,13 +259,18 @@ void *_aligned_offset_recalloc(void *memblock, size_t num, size_t element_size,
 
 #ifdef _DEBUG
 ALLOCATION_FUNCTION_ATTRIBUTE
+size_t _aligned_msize_dbg(void *memblock, size_t alignment, size_t offset) {
+  return _aligned_msize(memblock, alignment, offset);
+}
+
+ALLOCATION_FUNCTION_ATTRIBUTE
 void *_malloc_dbg(size_t size, int, const char *, int) { return malloc(size); }
 
 ALLOCATION_FUNCTION_ATTRIBUTE
 void _free_dbg(void *ptr, int) { free(ptr); }
 
 ALLOCATION_FUNCTION_ATTRIBUTE
-void *_expand_dbg(void *memblock, size_t size) {
+void *_expand_dbg(void *memblock, size_t size, int, const char *, int) {
   return _expand(memblock, size);
 }
 
@@ -275,7 +280,9 @@ void *_calloc_dbg(size_t nmemb, size_t size, int, const char *, int) {
 }
 
 ALLOCATION_FUNCTION_ATTRIBUTE
-void *_realloc_dbg(void *ptr, size_t size, int) { return realloc(ptr, size); }
+void *_realloc_dbg(void *ptr, size_t size, int, const char *, int) {
+  return realloc(ptr, size);
+}
 
 ALLOCATION_FUNCTION_ATTRIBUTE
 void *_recalloc_dbg(void *userData, size_t num, size_t size, int, const char *,

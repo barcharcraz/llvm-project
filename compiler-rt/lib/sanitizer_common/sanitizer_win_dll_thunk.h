@@ -178,4 +178,13 @@ extern "C" int __dll_thunk_init();
   }                                                                            \
   INTERCEPT_OR_DIE(#name, name);
 
+#define INTERCEPT_WRAP_W_WWWWWWW(name)                                         \
+  extern "C" void *name(void *arg1, void *arg2, void *arg3, void *arg4,        \
+                        void *arg5, void *arg6, void *arg7) {                  \
+    typedef decltype(name) *fntype;                                            \
+    static fntype fn = (fntype)__sanitizer::dllThunkGetRealAddrOrDie(#name);   \
+    return fn(arg1, arg2, arg3, arg4, arg5, arg6, arg7);                       \
+  }                                                                            \
+  INTERCEPT_OR_DIE(#name, name);
+
 #endif // SANITIZER_WIN_DLL_THUNK_H

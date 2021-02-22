@@ -166,11 +166,6 @@ if platform.system() == 'Windows':
       clang_cl_asan_cxxflags.append("-D_MT")
       config.substitutions.append(("[\-\/]MT ","-MTd "))
       config.substitutions.append(("[\-\/]LD ","-LDd "))
-      if "_LINK_" in config.environment:
-        config.environment["_LINK_"] += " /force:multiple  "
-      else:
-        config.environment["_LINK_"] = " /force:multiple  "
-
 
   clang_cl_invocation = build_invocation(clang_cl_cxxflags)
   clang_cl_invocation = clang_cl_invocation.replace("clang.exe","clang-cl.exe")
