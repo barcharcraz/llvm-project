@@ -28,7 +28,7 @@ jobs:
     strategy:
       matrix:
         Win_x86:
-          LlvmArtifactID: llvm_asan_RelWithDebInfo_x86_bin
+          LlvmArtifactID: llvm_asan_Release_x86_bin
           MsvcTargetArch: x86
           VcVars: vcvars32.bat
           MsvcHostArch: x86chk
@@ -40,7 +40,7 @@ jobs:
           ASAN_RT_LIB_DIR: $(System.ArtifactsDirectory)\$(LlvmArtifactID)\lib\windows\x86
           ASAN_RT_BIN_DIR: $(System.ArtifactsDirectory)\$(LlvmArtifactID)\bin
         Win_x64_x86:
-          LlvmArtifactID: llvm_asan_RelWithDebInfo_x86_bin
+          LlvmArtifactID: llvm_asan_Release_x86_bin
           MsvcTargetArch: x86
           VcVars: vcvarsamd64_x86.bat
           MsvcHostArch: amd64chk
