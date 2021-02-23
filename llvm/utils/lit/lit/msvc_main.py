@@ -16,6 +16,7 @@ from xml.sax.saxutils import quoteattr
 
 import lit.ProgressBar
 import lit.LitConfig
+import lit.TestingConfig
 import lit.Test
 import lit.run
 import lit.util
@@ -202,9 +203,6 @@ execution_group.add_argument("--timeout", dest="maxIndividualTestTime",
                     help="Maximum time to spend running a single test (in seconds)."
                     "0 means no time limit. [Default: 0]",
                 type=int, default=None)
-execution_group.add_argument("--max-failures", dest="maxFailures",
-                    help="Stop execution after the given number of failures.",
-                    action="store", type=int, default=None)
 execution_group.add_argument("--test-target-arch", dest="testTargetArch",
     help="Select runtime library extension (i386,amd64,etc)",
     action="store", type=str, default="i386")
@@ -282,9 +280,6 @@ if not args:
 if opts.numThreads is None:
     opts.numThreads = lit.util.detectCPUs()
 
-if opts.maxFailures == 0:
-    parser.error("Setting --max-failures to 0 does not have any effect.")
-
 if opts.echoAllCommands:
     opts.showOutput = True
 
@@ -323,7 +318,6 @@ litConfig = lit.LitConfig.LitConfig(
         params = [],
         config_prefix = opts.configPrefix,
         maxIndividualTestTime = maxIndividualTestTime,
-        maxFailures = opts.maxFailures,
         parallelism_groups = {},
         echo_all_commands = opts.echoAllCommands)
 
@@ -337,14 +331,22 @@ litConfig.debug_info_flags = []
 litConfig.asan_dynamic = False
 litConfig.clang = os.environ['TEST_C_COMPILER'] # "ex .\\binaries\\bin\i386\cl.exe"
 setattr(litConfig,"target_cflags","")
-litConfig.environment = os.environ
 litConfig.target_suffix = litConfig.target_arch
-litConfig.compiler_rt_libdir = litConfig.environment['ASAN_RT_LIB_DIR']
-litConfig.compiler_rt_src_root = litConfig.environment['ASAN_RT_SRC_ROOT']
+litConfig.compiler_rt_libdir = os.environ['ASAN_RT_LIB_DIR']
+litConfig.compiler_rt_src_root = os.environ['ASAN_RT_SRC_ROOT']
 litConfig.python_executable = "c:\python27\python.exe"
 litConfig.android = False
 litConfig.pipefail = True
 litConfig.bashPath = ""
+
+litConfig.limit_to_features = False
+litConfig.unsupported = False
+default_flags = " /EHs  /DMSVC /D_WIN32 /Zi /GS- "
+selected_runtime = None
+test_target_arch = opts.testTargetArch
+
+testConfig = lit.TestingConfig.TestingConfig.fromdefaults(litConfig)
+testConfig.environment = os.environ
 
 arch_specific_features = []
 if opts.testTargetArch == "x86_64":
@@ -357,20 +359,14 @@ else:
     assert 0 and "Error: unsupported ASan runtime architecture."
 
 if opts.force_dynamic:
-     litConfig.available_features = [ 'clang-dynamic-runtime',
+    testConfig.available_features = [ 'clang-dynamic-runtime',
     'asan-dynamic-runtime','stable-runtime',
     "shadow-scale-3", "msvc-host", "win32", 'windows-msvc','win32-dynamic-asan']
 else:
-    litConfig.available_features = ['clang-static-runtime', 'asan-static-runtime','stable-runtime',
+    testConfig.available_features = ['clang-static-runtime', 'asan-static-runtime','stable-runtime',
     "shadow-scale-3", "msvc-host", "win32" , "windows-msvc" , 'win32-static-asan' ]
 
-litConfig.available_features += arch_specific_features
-
-litConfig.limit_to_features = False
-litConfig.unsupported = False
-default_flags = " /EHs  /DMSVC /D_WIN32 /Zi /GS- "
-selected_runtime = None
-test_target_arch = opts.testTargetArch
+testConfig.available_features += arch_specific_features
 
 #setup arch specific lib names for reference later
 if opts.debug_runtimes:
@@ -393,14 +389,14 @@ else:
     profile_lib = "clang_rt.profile-" + test_target_arch + ".lib"
 
 if opts.force_dynamic:
-    litConfig.environment['_LINK_'] ="/debug /incremental:no "
-    litConfig.environment['_CL_'] = DYNAMIC_RT_FLAG + " /Od "
+    testConfig.environment['_LINK_'] ="/debug /incremental:no "
+    testConfig.environment['_CL_'] = DYNAMIC_RT_FLAG + " /Od "
     selected_runtime = DYNAMIC_RT_FLAG
     default_flags += " /Od "
     default_flags += DYNAMIC_RT_FLAG
 else:
-    litConfig.environment['_LINK_'] ="/debug  /incremental:no  "
-    litConfig.environment['_CL_'] = STATIC_RT_FLAG
+    testConfig.environment['_LINK_'] ="/debug  /incremental:no  "
+    testConfig.environment['_CL_'] = STATIC_RT_FLAG
     selected_runtime = STATIC_RT_FLAG
     default_flags += STATIC_RT_FLAG
 
@@ -432,7 +428,7 @@ if opts.disable_opt:
 #general set of substitutions for Lit to use when processing compile/run lines.
 # these are a base that will be modified later for some sets of tests,
 # some for individual tests, too
-litConfig.substitutions = {
+testConfig.substitutions = {
                             ("-fsanitize-coverage=func ", lit.TestingConfig.SubstituteCaptures("/d2Sancov " )),
                             ("%sancov", "sancov.exe"),
                             ("%clangxx_asan", litConfig.clang +  default_flags + " /fsanitize=address /Oy- " ),
@@ -454,11 +450,11 @@ litConfig.substitutions = {
                             ("%clang_cfi", litConfig.clang + " /guard:cf "),
                             ("%asan_dll_thunk", litConfig.compiler_rt_libdir + "\\" + dll_thunk_lib + " "),
                             ("-link","/link /incremental:no"),
-                            ("sed ",litConfig.environment["UNIX_BIN_DIR"]+"\\sed.exe "),
-                            ("mv ",litConfig.environment["UNIX_BIN_DIR"]+"\\mv.exe "),
-                            ("mkdir ",litConfig.environment["UNIX_BIN_DIR"]+"\\mkdir.exe "),
-                            ("grep ", litConfig.environment["UNIX_BIN_DIR"]+"\\grep.exe "),
-                            ("awk ", litConfig.environment["UNIX_BIN_DIR"]+"\\awk.exe "),
+                            ("sed ",os.environ["UNIX_BIN_DIR"]+"\\sed.exe "),
+                            ("mv ",os.environ["UNIX_BIN_DIR"]+"\\mv.exe "),
+                            ("mkdir ",os.environ["UNIX_BIN_DIR"]+"\\mkdir.exe "),
+                            ("grep ", os.environ["UNIX_BIN_DIR"]+"\\grep.exe "),
+                            ("awk ", os.environ["UNIX_BIN_DIR"]+"\\awk.exe "),
                             ("-LD","/LD"),
                             (" -D"," /D"),
                             ("-x c "," /Tc%s "),
@@ -472,27 +468,27 @@ litConfig.substitutions = {
                             ("-fsanitize-address-use-after-scope", "/fsanitize=address"),
                             ("set ASAN_OPTIONS=suppressions=\"(.*)\"", lit.TestingConfig.SubstituteCaptures("set ASAN_OPTIONS=suppressions='\g<1>'")),
                             ("2>&1"," 2>&1 "),
-                            ("echo ", litConfig.environment["UNIX_BIN_DIR"]+"\\echo.exe "),
+                            ("echo ", os.environ["UNIX_BIN_DIR"]+"\\echo.exe "),
                             ("-Wno-fortify-source", " "),
                             ("-Wl,-debug"," ")
                             }
 
 if opts.force_dynamic:
-    litConfig.substitutions |= {
+    testConfig.substitutions |= {
         ("%asan_dll_thunk_lib", slashsan(litConfig.compiler_rt_libdir) + "\\" + dynamic_runtime_thunk + " " + slashsan(litConfig.compiler_rt_libdir)+ "\\" + dynamic_import_lib)
     }
-litConfig.substitutions |= optimization_subs
-litConfig.environment["INCLUDE"] = litConfig.environment["INCLUDE"] + litConfig.compiler_rt_src_root + "\\include" + ";" + litConfig.compiler_rt_src_root + "\\test\\asan\\TestCases" + ";"
-litConfig.environment["PATH"] += ";" + litConfig.environment["ASAN_RT_BIN_DIR"] +";"+ litConfig.environment["ASAN_RT_LIB_DIR"] + ";"
+testConfig.substitutions |= optimization_subs
+testConfig.environment["INCLUDE"] = testConfig.environment["INCLUDE"] + litConfig.compiler_rt_src_root + "\\include" + ";" + litConfig.compiler_rt_src_root + "\\test\\asan\\TestCases" + ";"
+testConfig.environment["PATH"] += ";" + os.environ["ASAN_RT_BIN_DIR"] +";"+ os.environ["ASAN_RT_LIB_DIR"] + ";"
 
 #print litConfig.getToolsPath(opts.path[0],"",["cl.exe"])
 if opts.debug_runtimes:
-    litConfig.substitutions |= {("[\/\-](MT|MD)(?!d)", lit.TestingConfig.SubstituteCaptures("/\g<1>d"))}
-    litConfig.available_features.append("debug-crt")
-    litConfig.environment["_CL_"] += " /U_DEBUG /DNDEBUG=1 "
+    testConfig.substitutions |= {("[\/\-](MT|MD)(?!d)", lit.TestingConfig.SubstituteCaptures("/\g<1>d"))}
+    testConfig.available_features.append("debug-crt")
+    testConfig.environment["_CL_"] += " /U_DEBUG /DNDEBUG=1 "
 else:
-    litConfig.available_features.append("non-debug-crt")
-suite = lit.Test.TestSuite("msvc",sys.argv[1], litConfig.environment['TEST_OUTPUT_DIR'], litConfig)
+    testConfig.available_features.append("non-debug-crt")
+suite = lit.Test.TestSuite("msvc",sys.argv[1], os.environ['TEST_OUTPUT_DIR'], testConfig)
 
 
 # grab the list of test source files in the directory we've selected
@@ -507,73 +503,74 @@ xfails = dict()
 for cc_file in cc_files:
     # we're making a copy of each config and environment since we're
     # passing a copy to each thread we start.
+    __testConfig = copy.deepcopy(testConfig)
     __litConfig = copy.deepcopy(litConfig)
-    saved_subs = set([ copy.deepcopy(i) for i in copy.deepcopy(litConfig.substitutions) ])
-    saved_env =  copy.deepcopy(litConfig.environment)
-    for key in litConfig.environment:
-        saved_env[key] = copy.deepcopy(litConfig.environment[key])
-    __litConfig.substitutions = saved_subs
-    __litConfig.environment = saved_env
+    saved_subs = set([ copy.deepcopy(i) for i in copy.deepcopy(testConfig.substitutions) ])
+    saved_env =  copy.deepcopy(testConfig.environment)
+    for key in testConfig.environment:
+        saved_env[key] = copy.deepcopy(testConfig.environment[key])
+    __testConfig.substitutions = saved_subs
+    __testConfig.environment = saved_env
 
     # start with a default test object, this may be re-created later.
     #test = lit.Test.Test(suite,[ cc_file],__litConfig)
 
     if opts.runTest == "" or opts.runTest in cc_file:
         if ".cpp" not in cc_file:
-            __litConfig.substitutions.add((" /EHs ", " "))
+            __testConfig.substitutions.add((" /EHs ", " "))
         #all
-        saved_cl = __litConfig.environment["_CL_"]
-        saved_link = __litConfig.environment["_LINK_"]
+        saved_cl = __testConfig.environment["_CL_"]
+        saved_link = __testConfig.environment["_LINK_"]
               
         if "unsymbolized" in cc_file:
-            __litConfig.environment["_CL_"] = "/Zi /fsanitize=address"
-            __litConfig.environment["_LINK_"] = " "
-            __litConfig.substitutions -= {
+            __testConfig.environment["_CL_"] = "/Zi /fsanitize=address"
+            __testConfig.environment["_LINK_"] = " "
+            __testConfig.substitutions -= {
                 ("-O2","/O2i-"),
             }
             # this test assumes you'll need to manually link these libs,
             # our linker is now smart enough to omit these from the link line for this test on MT and MD.
-            __litConfig.substitutions |= {
+            __testConfig.substitutions |= {
                     ("-o %t.obj","/Fo:%t.obj"),
                     ("%asan_lib", ""),
                     ("%asan_cxx_lib", "")
                 }
         else:
             #elsewhere asan_lib and asan_cxx_lib should still resolve to the regular library names
-            __litConfig.substitutions |= {
+            __testConfig.substitutions |= {
                 object_substitute_tuple,
                 ("%asan_lib", __litConfig.compiler_rt_libdir + "\\" + static_lib + ""),
                 ("%asan_cxx_lib", __litConfig.compiler_rt_libdir + "\\" + static_cxx_lib + ""),
             }
         if "seh.cpp" in cc_file:
-            __litConfig.environment["_CL_"] = __litConfig.environment["_CL_"].replace("/EHs", "/EHa")
-            __litConfig.substitutions |= {
+            __testConfig.environment["_CL_"] = __testConfig.environment["_CL_"].replace("/EHs", "/EHa")
+            __testConfig.substitutions |= {
                 ("/EHs","/EHa"),
                 ("/GS ", " /GS- ")
             }
        
         if "user-exception" in cc_file:
-            __litConfig.substitutions |= {
+            __testConfig.substitutions |= {
                 ("env ASAN_OPTIONS=([\w=0-9]+) ",lit.TestingConfig.SubstituteCaptures("set ASAN_OPTIONS=\g<1> && "))
             }
 
         if "use-after-scope" in cc_file:
-            __litConfig.substitutions.remove(("-O1", "/O1i-"))
-            __litConfig.substitutions.add(("-O1", "/Od"))
-            __litConfig.substitutions.add(("-O1i-", "/Od"))
+            __testConfig.substitutions.remove(("-O1", "/O1i-"))
+            __testConfig.substitutions.add(("-O1", "/Od"))
+            __testConfig.substitutions.add(("-O1i-", "/Od"))
             
-        __litConfig.environment['_CL_'] += " /Fd" + cc_file + ".pdb " + selected_runtime + " "
-        __litConfig.environment['_LINK_'] += " /force:multiple "
-        __suite = lit.Test.TestSuite("msvc",sys.argv[1], os.path.join(litConfig.environment['TEST_OUTPUT_DIR'],cc_file.replace(".","")+opts.testTargetArch), __litConfig)
-        litConfig.substitutions = sorted(litConfig.substitutions)[::-1]
-        __test = lit.Test.Test(__suite,[ cc_file],__litConfig)
+        __testConfig.environment['_CL_'] += " /Fd" + cc_file + ".pdb " + selected_runtime + " "
+        __testConfig.environment['_LINK_'] += " /force:multiple "
+        __suite = lit.Test.TestSuite("msvc",sys.argv[1], os.path.join(__testConfig.environment['TEST_OUTPUT_DIR'],cc_file.replace(".","")+opts.testTargetArch), __testConfig)
+        testConfig.substitutions = sorted(testConfig.substitutions)[::-1]
+        __test = lit.Test.Test(__suite,[ cc_file],__testConfig)
         print "found test %s"%(cc_file)
         tests_to_run.append( (cc_file, __test, __litConfig) )
         #print test.suite.getSourcePath(test.path_in_suite)
         if opts.print_env:
-            for item in sorted(litConfig.environment.keys()):
-                print str(item) + "=" + litConfig.environment[item]
-            for item in sorted(litConfig.substitutions):
+            for item in sorted(testConfig.environment.keys()):
+                print str(item) + "=" + testConfig.environment[item]
+            for item in sorted(testConfig.substitutions):
                 print item
         """
         #print result.output
