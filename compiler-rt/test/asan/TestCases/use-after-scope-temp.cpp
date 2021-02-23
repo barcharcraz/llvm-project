@@ -1,12 +1,13 @@
 // RUN: %clangxx_asan -O1 -fsanitize-address-use-after-scope %s -o %t && not %run %t 2>&1 | FileCheck %s
 
+#include "defines.h"
 struct IntHolder {
   int val;
 };
 
 const IntHolder *saved;
 
-__attribute__((noinline)) void save(const IntHolder &holder) {
+ATTRIBUTE_NOINLINE void save(const IntHolder &holder) {
   saved = &holder;
 }
 

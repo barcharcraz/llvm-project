@@ -2,12 +2,13 @@
 // RUN:     not %run %t 2>&1 | FileCheck %s
 
 #include <functional>
+#include "defines.h"
 
 int main() {
   std::function<int()> f;
   {
     int x = 0;
-    f = [&x]() __attribute__((noinline)) {
+    f = [&x]() ATTRIBUTE_NOINLINE {
       return x;  // BOOM
       // CHECK: ERROR: AddressSanitizer: stack-use-after-scope
       // CHECK: #0 0x{{.*}} in {{.*}}use-after-scope-capture.cpp:[[@LINE-2]]
