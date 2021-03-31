@@ -54,7 +54,7 @@ constexpr unsigned long HEAP_ALLOCATE_UNSUPPORTED_FLAGS =
 constexpr unsigned long HEAP_REALLOC_SUPPORTED_FLAGS =
     (HEAP_NO_SERIALIZE | HEAP_ZERO_MEMORY);
 constexpr unsigned long HEAP_REALLOC_UNSUPPORTED_FLAGS =
-    (~HEAP_ALLOCATE_SUPPORTED_FLAGS);
+    (~HEAP_REALLOC_SUPPORTED_FLAGS);
 
 extern "C" {
 HANDLE WINAPI GetProcessHeap();
@@ -668,13 +668,26 @@ INTERCEPTOR_WINAPI(size_t, RtlSizeHeap, HANDLE HeapHandle, DWORD Flags,
   }
 
   AsanHeap *asan_heap = GetAsanHeap(HeapHandle);
+
+  // Take the lock in the AsanHeap
+  RecursiveScopedLock raii_lock(asan_heap->lock, asan_heap->thread_id);
+
   {
     // We know that ASAN owns the memory but let's make sure it is owned by
     // this heap.
     AsanMemoryMap::Handle h(&(asan_heap->memory_map),
                             reinterpret_cast<uptr>(BaseAddress), false, false);
+    // If the pointer is not in the heap's allocated memory map one of
+    // two things could be happening:
+    // 1. The memory passed into RtlSizeHeap was allocated with malloc or new.
+    // 2. ASAN owns the memory but the wrong heap was passed into RtlSizeHeap.
+    // We should emit ASan error for this in the future.
     if (!h.exists()) {
-      return -1;
+      if (HeapHandle != GetProcessHeap()) {
+        // TODO: Emit an ASan error because the memory does not belong to the
+        // referenced heap. Until then we emulate the behavior of RtlSizeHeap.
+        return -1;
+      }
     }
   }
 
@@ -763,17 +776,18 @@ INTERCEPTOR_WINAPI(LOGICAL, RtlFreeHeap, void *HeapHandle, DWORD Flags,
     // If the pointer is not in the heap's allocated memory map one of
     // two things could be happening:
     // 1. The memory passed into RtlFreeHeap was allocated with malloc or new.
-    // 2. ASAN owns the memory but the wrong heap was passed into RtlFreeHeap
-    // and we should emulate RtlFreeHeap's behavior.
+    // 2. ASAN owns the memory but the wrong heap was passed into RtlFreeHeap.
+    // We should emit ASan error for this in the future.
     if (!h_delete.exists()) {
-      if (HeapHandle == GetProcessHeap()) {
-        GET_STACK_TRACE_FREE;
-        asan_free(BaseAddress, &stack, FROM_MALLOC);
-
-        return true;
-      } else {
-        return REAL(RtlFreeHeap)(HeapHandle, Flags, BaseAddress);
+      if (HeapHandle != GetProcessHeap()) {
+        // TODO: Emit an ASan error because the memory does not belong to the
+        // referenced heap.
       }
+
+      GET_STACK_TRACE_FREE;
+      asan_free(BaseAddress, &stack, FROM_MALLOC);
+
+      return true;
     }
 
     found = *h_delete;
@@ -811,10 +825,8 @@ INTERCEPTOR_WINAPI(LOGICAL, RtlFreeHeap, void *HeapHandle, DWORD Flags,
 
   delete remove;
 
-  {
-    GET_STACK_TRACE_FREE;
-    asan_free(BaseAddress, &stack, FROM_MALLOC);
-  }
+  GET_STACK_TRACE_FREE;
+  asan_free(BaseAddress, &stack, FROM_MALLOC);
 
   return true;
 }
@@ -847,7 +859,7 @@ INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
   GET_CURRENT_PC_BP_SP;
   (void)sp;
 
-  void *replacement_alloc;
+  void *replacement_alloc = nullptr;
   size_t old_size;
   if (owner == AllocationOwnership::NEITHER) {
     // This should cause a use-after-free or wild pointer error. If it is a
@@ -894,14 +906,15 @@ INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
       // If the pointer is not in the heap's allocated memory map one of
       // two things could be happening:
       // 1. The memory passed into RtlReAllocateHeap was allocated with malloc
-      // or new.
+      // or new. We should emit an error for this.
       // 2. ASAN owns the memory but the wrong heap was passed into
-      // RtlReAllocateHeap and we should emulate RtlReAllocateHeap's behavior.
+      // RtlReAllocateHeap. We should emit an ASan error in the future.
       if (!h_delete.exists()) {
         if (HeapHandle == GetProcessHeap()) {
           new_malloc_rtl_mismatch = true;
         } else {
-          return REAL(RtlReAllocateHeap)(HeapHandle, Flags, BaseAddress, Size);
+          // TODO: Emit an ASan error here
+          new_malloc_rtl_mismatch = true;
         }
       }
 
@@ -934,6 +947,7 @@ INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
         // If the function which created this allocation was not an Rtl
         // function we just add the new memory onto the end of the linked
         // list.
+        // TODO: Emit an ASan error here
         AsanHeapMemoryNode *mem_node =
             new AsanHeapMemoryNode(replacement_alloc);
         found = asan_heap->asan_memory.back();
