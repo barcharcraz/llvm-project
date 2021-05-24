@@ -144,6 +144,12 @@
 #  define SANITIZER_X64 0
 #endif
 
+#if defined(__x86_64__) || defined(_M_AMD64)
+# define SANITIZER_AMD64 1
+#else
+# define SANITIZER_AMD64 0
+#endif
+
 #if defined(__i386__) || defined(_M_IX86)
 #  define SANITIZER_I386 1
 #else

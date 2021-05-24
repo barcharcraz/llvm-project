@@ -133,13 +133,16 @@ extern const short *_tolower_tab_;
 #endif
 
 // Platform-specific options.
-#if SANITIZER_MAC
+#if SANITIZER_MAC || (SANITIZER_WINDOWS && SANITIZER_AMD64)
 #define PLATFORM_HAS_DIFFERENT_MEMCPY_AND_MEMMOVE 0
-#elif SANITIZER_WINDOWS64
-#define PLATFORM_HAS_DIFFERENT_MEMCPY_AND_MEMMOVE 0
+#define PLATFORM_MEMCPY_MEMMOVE_CAN_BE_FOLDED 0
+#elif SANITIZER_WINDOWS && SANITIZER_I386
+#define PLATFORM_HAS_DIFFERENT_MEMCPY_AND_MEMMOVE 1
+#define PLATFORM_MEMCPY_MEMMOVE_CAN_BE_FOLDED 1
 #else
 #define PLATFORM_HAS_DIFFERENT_MEMCPY_AND_MEMMOVE 1
-#endif  // SANITIZER_MAC
+#define PLATFORM_MEMCPY_MEMMOVE_CAN_BE_FOLDED 0
+#endif  
 
 #ifndef COMMON_INTERCEPTOR_INITIALIZE_RANGE
 #define COMMON_INTERCEPTOR_INITIALIZE_RANGE(p, size) {}
@@ -823,16 +826,22 @@ INTERCEPTOR(void *, memcpy, void *dst, const void *src, uptr size) {
   // N.B.: If we switch this to internal_ we'll have to use internal_memmove
   // due to memcpy being an alias of memmove on OS X.
   void *ctx;
-#if PLATFORM_HAS_DIFFERENT_MEMCPY_AND_MEMMOVE
+#if PLATFORM_HAS_DIFFERENT_MEMCPY_AND_MEMMOVE &&
+      !PLATFORM_MEMCPY_MEMMOVE_CAN_BE_FOLDED
     COMMON_INTERCEPTOR_MEMCPY_IMPL(ctx, dst, src, size);
 #else
     COMMON_INTERCEPTOR_MEMMOVE_IMPL(ctx, dst, src, size);
 #endif
 }
 
+// On i386 Windows memcpy and memmove are implemented identically but they
+// have two different definitions, so they can have distinct locations in
+// memory. This means that memcpy may still needs to be intercepted.
 #define INIT_MEMCPY                                  \
   do {                                               \
-    if (PLATFORM_HAS_DIFFERENT_MEMCPY_AND_MEMMOVE) { \
+    if (PLATFORM_HAS_DIFFERENT_MEMCPY_AND_MEMMOVE || \
+        (PLATFORM_MEMCPY_MEMMOVE_CAN_BE_FOLDED &&    \
+         REAL(memcpy) != REAL(memmove))) {           \
       COMMON_INTERCEPT_FUNCTION(memcpy);             \
     } else {                                         \
       ASSIGN_REAL(memcpy, memmove);                  \
