@@ -165,8 +165,9 @@ static int asan_dll_thunk_init() {
   typedef void (*fntype)();
   static fntype fn = 0;
   // asan_dll_thunk_init is expected to be called by only one thread.
-  if (fn)
+  if (fn) {
     return 0;
+  }
 
   // Ensure all interception was executed.
   __dll_thunk_init();
@@ -187,17 +188,20 @@ static int asan_dll_thunk_init() {
 }
 
 #pragma section(".CRT$XIB", long, read)
-__declspec(allocate(".CRT$XIB")) int (*__asan_preinit)() = asan_dll_thunk_init;
+extern "C" __declspec(allocate(".CRT$XIB")) int (*__asan_preinit)() = asan_dll_thunk_init;
+WIN_FORCE_LINK(__asan_preinit);
 
 static void WINAPI asan_thread_init(void *mod, unsigned long reason,
                                     void *reserved) {
-  if (reason == /*DLL_PROCESS_ATTACH=*/1)
+  if (reason == /*DLL_PROCESS_ATTACH=*/1) {
     asan_dll_thunk_init();
+  }
 }
 
 #pragma section(".CRT$XLAB", long, read)
-__declspec(allocate(".CRT$XLAB")) void(WINAPI *__asan_tls_init)(
+extern "C" __declspec(allocate(".CRT$XLAB")) void(WINAPI *__asan_tls_init)(
     void *, unsigned long, void *) = asan_thread_init;
+WIN_FORCE_LINK(__asan_tls_init);
 
 WIN_FORCE_LINK(__asan_dso_reg_hook)
 

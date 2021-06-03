@@ -26,41 +26,63 @@ static const u32 kDefaultMallocContextSize = 30;
 void SetMallocContextSize(u32 size);
 u32 GetMallocContextSize();
 
-} // namespace __asan
+}  // namespace __asan
 
 // NOTE: A Rule of thumb is to retrieve stack trace in the interceptors
 // as early as possible (in functions exposed to the user), as we generally
 // don't want stack trace to contain functions from ASan internals.
 
-#define GET_STACK_TRACE(max_size, fast)                          \
-  BufferedStackTrace stack;                                      \
-  if (max_size <= 2) {                                           \
-    stack.size = max_size;                                       \
-    if (max_size > 0) {                                          \
-      stack.top_frame_bp = GET_CURRENT_FRAME();                  \
-      stack.trace_buffer[0] = StackTrace::GetCurrentPc();        \
-      if (max_size > 1) stack.trace_buffer[1] = GET_CALLER_PC(); \
-    }                                                            \
-  } else {                                                       \
-    stack.Unwind(StackTrace::GetCurrentPc(),                     \
-                 GET_CURRENT_FRAME(), nullptr, fast, max_size);  \
+#define GET_STACK_TRACE(max_size, fast)                                    \
+  BufferedStackTrace stack;                                                \
+  if (max_size <= 2) {                                                     \
+    stack.size = max_size;                                                 \
+    if (max_size > 0) {                                                    \
+      stack.top_frame_bp = GET_CURRENT_FRAME();                            \
+      stack.trace_buffer[0] = StackTrace::GetCurrentPc();                  \
+      if (max_size > 1)                                                    \
+        stack.trace_buffer[1] = GET_CALLER_PC();                           \
+    }                                                                      \
+  } else {                                                                 \
+    stack.Unwind(StackTrace::GetCurrentPc(), GET_CURRENT_FRAME(), nullptr, \
+                 fast, max_size);                                          \
   }
 
-#define GET_STACK_TRACE_FATAL(pc, bp)              \
-  BufferedStackTrace stack;                        \
-  stack.Unwind(pc, bp, nullptr,                    \
-               common_flags()->fast_unwind_on_fatal)
+#define GET_STACK_TRACE_EXPLICIT(max_size, fast, pc, bp, caller_pc, \
+                                 extra_context)                     \
+  BufferedStackTrace stack;                                         \
+  if (max_size <= 2) {                                              \
+    stack.size = max_size;                                          \
+    if (max_size > 0) {                                             \
+      stack.top_frame_bp = bp;                                      \
+      stack.trace_buffer[0] = pc;                                   \
+      if (max_size > 1)                                             \
+        stack.trace_buffer[1] = caller_pc;                          \
+    }                                                               \
+  } else {                                                          \
+    stack.Unwind(pc, bp, nullptr, fast, max_size + extra_context);  \
+  }
 
-#define GET_STACK_TRACE_FATAL_HERE                                \
+#define GET_STACK_TRACE_FATAL(pc, bp) \
+  BufferedStackTrace stack;           \
+  stack.Unwind(pc, bp, nullptr, common_flags()->fast_unwind_on_fatal)
+
+#define GET_STACK_TRACE_FATAL_HERE \
   GET_STACK_TRACE(kStackTraceMax, common_flags()->fast_unwind_on_fatal)
 
-#define GET_STACK_TRACE_THREAD                                    \
-  GET_STACK_TRACE(kStackTraceMax, true)
+#define GET_STACK_TRACE_THREAD GET_STACK_TRACE(kStackTraceMax, true)
 
-#define GET_STACK_TRACE_MALLOC                                                 \
+#define GET_STACK_TRACE_MALLOC \
   GET_STACK_TRACE(GetMallocContextSize(), common_flags()->fast_unwind_on_malloc)
 
+#define GET_STACK_TRACE_MALLOC_WIN(pc, bp, caller_pc, extra_context)      \
+  GET_STACK_TRACE_EXPLICIT(GetMallocContextSize(),                        \
+                           common_flags()->fast_unwind_on_malloc, pc, bp, \
+                           caller_pc, extra_context)
+
 #define GET_STACK_TRACE_FREE GET_STACK_TRACE_MALLOC
+
+#define GET_STACK_TRACE_FREE_WIN(pc, bp, caller_pc, extra_context) \
+  GET_STACK_TRACE_MALLOC_WIN(pc, bp, caller_pc, extra_context)
 
 #define PRINT_CURRENT_STACK()   \
   {                             \
