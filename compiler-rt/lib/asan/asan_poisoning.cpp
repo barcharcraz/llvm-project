@@ -18,6 +18,10 @@
 #include "sanitizer_common/sanitizer_libc.h"
 #include "sanitizer_common/sanitizer_flags.h"
 
+#if SANITIZER_WINDOWS64
+#include <Windows.h>
+#endif
+
 namespace __asan {
 
 static atomic_uint8_t can_poison_memory;

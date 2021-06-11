@@ -16,7 +16,7 @@
 
 #define WIN32_LEAN_AND_MEAN
 #define NOGDI
-#include <windows.h>
+#include <Windows.h>
 #include <io.h>
 #include <psapi.h>
 #include <stdlib.h>
@@ -52,14 +52,14 @@ TRACELOGGING_DEFINE_PROVIDER(g_asan_provider, "AddressSanitizerLoggingProvider",
 // code that is called when terminating the process, the expansion of the
 // macro should not terminate the process to avoid infinite recursion.
 #if defined(__clang__)
-# define BUILTIN_UNREACHABLE() __builtin_unreachable()
+#define BUILTIN_UNREACHABLE() __builtin_unreachable()
 #elif defined(__GNUC__) && \
     (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 5))
-# define BUILTIN_UNREACHABLE() __builtin_unreachable()
+#define BUILTIN_UNREACHABLE() __builtin_unreachable()
 #elif defined(_MSC_VER)
-# define BUILTIN_UNREACHABLE() __assume(0)
+#define BUILTIN_UNREACHABLE() __assume(0)
 #else
-# define BUILTIN_UNREACHABLE()
+#define BUILTIN_UNREACHABLE()
 #endif
 
 namespace __sanitizer {
@@ -85,31 +85,21 @@ uptr GetMaxUserVirtualAddress() {
   return (uptr)si.lpMaximumApplicationAddress;
 }
 
-uptr GetMaxVirtualAddress() {
-  return GetMaxUserVirtualAddress();
-}
+uptr GetMaxVirtualAddress() { return GetMaxUserVirtualAddress(); }
 
 bool FileExists(const char *filename) {
   return ::GetFileAttributesA(filename) != INVALID_FILE_ATTRIBUTES;
 }
 
-uptr internal_getpid() {
-  return GetProcessId(GetCurrentProcess());
-}
+uptr internal_getpid() { return GetProcessId(GetCurrentProcess()); }
 
-int internal_dlinfo(void *handle, int request, void *p) {
-  UNIMPLEMENTED();
-}
+int internal_dlinfo(void *handle, int request, void *p) { UNIMPLEMENTED(); }
 
 // In contrast to POSIX, on Windows GetCurrentThreadId()
 // returns a system-unique identifier.
-tid_t GetTid() {
-  return GetCurrentThreadId();
-}
+tid_t GetTid() { return GetCurrentThreadId(); }
 
-uptr GetThreadSelf() {
-  return GetTid();
-}
+uptr GetThreadSelf() { return GetTid(); }
 
 #if !SANITIZER_GO
 void GetThreadStackTopAndBottom(bool at_initialization, uptr *stack_top,
@@ -129,28 +119,168 @@ void GetThreadStackTopAndBottom(bool at_initialization, uptr *stack_top,
 void *MmapOrDie(uptr size, const char *mem_type, bool raw_report) {
   void *rv = VirtualAlloc(0, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
   if (rv == 0)
-    ReportMmapFailureAndDie(size, mem_type, "allocate",
-                            GetLastError(), raw_report);
+    ReportMmapFailureAndDie(size, mem_type, "allocate", GetLastError(),
+                            raw_report);
   return rv;
+}
+
+#ifndef NTSTATUS
+#define NTSTATUS long
+#endif
+
+typedef enum _MEMORY_INFORMATION_CLASS {
+  MemoryBasicInformation,
+  MemoryWorkingSetInformation,
+  MemoryMappedFilenameInformation,
+  MemoryRegionInformation,
+  MemoryWorkingSetExInformation,
+  MemorySharedCommitInformation,
+  MemoryImageInformation,
+  MemoryRegionInformationEx,
+  MemoryPrivilegedBasicInformation,
+  MemoryEnclaveImageInformation,
+  MemoryBasicInformationCapped,
+  MemoryPhysicalContiguityInformation,
+  MemoryBadInformation
+} MEMORY_INFORMATION_CLASS;
+
+typedef struct _MEMORY_REGION_INFORMATION {
+  PVOID AllocationBase;
+  ULONG AllocationProtect;
+  ULONG RegionType;
+  SIZE_T RegionSize;
+  SIZE_T CommitSize;
+} MEMORY_REGION_INFORMATION;
+
+#if !SANITIZER_WINDOWS64
+typedef struct __declspec(align(8)) _MEMORY_REGION_INFORMATION_WOW64 {
+  PVOID AllocationBase;
+  PVOID __alignment1;
+  ULONG AllocationProtect;
+  ULONG RegionType;
+  DWORD RegionSize;
+  PVOID __alignment2;
+  DWORD CommitSize;
+  PVOID __alignment3;
+} MEMORY_REGION_INFORMATION_WOW64;
+#endif
+
+using NtQueryVirtualMemory_t = NTSTATUS(NTAPI *)(
+    HANDLE ProcessHandle, PVOID BaseAddress,
+    MEMORY_INFORMATION_CLASS MemoryInformationClass, PVOID MemoryInformation,
+    SIZE_T MemoryInformationLength, PSIZE_T ReturnLength);
+NtQueryVirtualMemory_t NtQueryVirtualMemory = nullptr;
+
+MEMORY_REGION_INFORMATION QueryVirtualMemory(void *addr) {
+  DCHECK(NtQueryVirtualMemory);
+
+  MEMORY_REGION_INFORMATION mem_info;
+  NTSTATUS result_status;
+
+#if !SANITIZER_WINDOWS64
+  BOOL isWoW64;
+  CHECK(IsWow64Process(GetCurrentProcess(), &isWoW64));
+
+  if (isWoW64) {
+    MEMORY_REGION_INFORMATION_WOW64 mem_info_wow64;
+    result_status =
+        NtQueryVirtualMemory(GetCurrentProcess(), addr, MemoryRegionInformation,
+                             &mem_info_wow64, sizeof(mem_info_wow64), NULL);
+
+    mem_info.AllocationBase = mem_info_wow64.AllocationBase;
+    mem_info.AllocationProtect = mem_info_wow64.AllocationProtect;
+    mem_info.RegionType = mem_info_wow64.RegionType;
+    mem_info.RegionSize = mem_info_wow64.RegionSize;
+    mem_info.CommitSize = mem_info_wow64.CommitSize;
+  } else {
+#endif
+    result_status =
+        NtQueryVirtualMemory(GetCurrentProcess(), addr, MemoryRegionInformation,
+                             &mem_info, sizeof(mem_info), NULL);
+#if !SANITIZER_WINDOWS64
+  }
+#endif
+
+  if (UNLIKELY(result_status >= 0x80000000)) {
+    Report(
+        "ERROR: %s failed to query virtual memory at %p, "
+        "with error %llx",
+        SanitizerToolName, addr, (long long)result_status);
+    CHECK("unable to query virtual memory" && 0);
+  }
+
+  return mem_info;
 }
 
 void UnmapOrDie(void *addr, uptr size) {
   if (!size || !addr)
     return;
 
-  MEMORY_BASIC_INFORMATION mbi;
-  CHECK(VirtualQuery(addr, &mbi, sizeof(mbi)));
+  // If addr points to the base of a VirtualAlloc reservation and size is the
+  // full size of that reservation, then we can MEM_RELEASE. Otherwise we need
+  // to MEM_DECOMMIT and keep the reservation intact.
+  MEMORY_REGION_INFORMATION mem_info = QueryVirtualMemory(addr);
 
-  // MEM_RELEASE can only be used to unmap whole regions previously mapped with
-  // VirtualAlloc. So we first try MEM_RELEASE since it is better, and if that
-  // fails try MEM_DECOMMIT.
-  if (VirtualFree(addr, 0, MEM_RELEASE) == 0) {
-    if (VirtualFree(addr, size, MEM_DECOMMIT) == 0) {
-      Report("ERROR: %s failed to "
-             "deallocate 0x%zx (%zd) bytes at address %p (error code: %d)\n",
-             SanitizerToolName, size, size, addr, GetLastError());
+  // Confirm that the range we are attempting to unmap is legal.
+  if (UNLIKELY((uptr)mem_info.AllocationBase + (uptr)mem_info.RegionSize <
+               (uptr)addr + size)) {
+    Report(
+        "ERROR: %s failed to deallocate 0x%zx (%zd) bytes at address %p. "
+        "Allocation begins at %p and is of size %zd\n",
+        SanitizerToolName, size, size, addr, mem_info.AllocationBase,
+        mem_info.RegionSize);
+    CHECK("unable to unmap" && 0);
+  }
+
+  // Fast path for when we're unmapping a whole allocation.
+  if (mem_info.AllocationBase == addr && mem_info.RegionSize == size) {
+    if (VirtualFree(addr, 0, MEM_RELEASE) == 0) {
+      Report(
+          "ERROR: %s failed to "
+          "deallocate 0x%zx (%zd) bytes at address %p (error code: %d)\n",
+          SanitizerToolName, size, size, addr, GetLastError());
       CHECK("unable to unmap" && 0);
     }
+
+    return;
+  }
+
+  // We only want to unmap whole pages.
+  uptr page_size = GetPageSizeCached();
+  uptr beg_aligned = RoundUpTo((uptr)addr, page_size);
+  uptr end_aligned = RoundDownTo((uptr)addr + size, page_size);
+
+  // We need to be unmapping at least one page
+  if (end_aligned <= beg_aligned) {
+    return;
+  }
+
+  // Decommit the whole range we want to unmap. It is not an error to
+  // decommit uncommitted pages.
+  if (VirtualFree(reinterpret_cast<LPVOID>(beg_aligned),
+                  static_cast<size_t>(end_aligned - beg_aligned),
+                  MEM_DECOMMIT) == 0) {
+    Report(
+        "ERROR: %s failed to "
+        "deallocate 0x%zx (%zd) bytes at address %p (error code: %d)\n",
+        SanitizerToolName, size, size, addr, GetLastError());
+    CHECK("unable to unmap" && 0);
+  }
+
+  // Check to see if we have decommitted all pages in this reservation. If
+  // we have we can release the reservation.
+  mem_info = QueryVirtualMemory(addr);
+
+  if (mem_info.CommitSize == 0) {
+    if (VirtualFree(mem_info.AllocationBase, 0, MEM_RELEASE) == 0) {
+      Report(
+          "ERROR: %s failed to "
+          "deallocate 0x%zx (%zd) bytes at address %p (error code: %d)\n",
+          SanitizerToolName, size, size, addr, GetLastError());
+      CHECK("unable to unmap" && 0);
+    }
+
+    return;
   }
 }
 
@@ -186,7 +316,7 @@ void *MmapAlignedOrDieOnFatalError(uptr size, uptr alignment,
   // If we got it right on the first try, return. Otherwise, unmap it and go to
   // the slow path.
   if (IsAligned(mapped_addr, alignment))
-    return (void*)mapped_addr;
+    return (void *)mapped_addr;
   if (VirtualFree((void *)mapped_addr, 0, MEM_RELEASE) == 0)
     ReportMmapFailureAndDie(size, mem_type, "deallocate", GetLastError());
 
@@ -238,9 +368,10 @@ bool MmapFixedNoReserve(uptr fixed_addr, uptr size, const char *name) {
                          PAGE_READWRITE);
 #endif
   if (p == 0) {
-    Report("ERROR: %s failed to "
-           "allocate %p (%zd) bytes at %p (error code: %d)\n",
-           SanitizerToolName, size, size, fixed_addr, GetLastError());
+    Report(
+        "ERROR: %s failed to "
+        "allocate %p (%zd) bytes at %p (error code: %d)\n",
+        SanitizerToolName, size, size, fixed_addr, GetLastError());
     return false;
   }
   return true;
@@ -254,8 +385,7 @@ bool MmapFixedSuperNoReserve(uptr fixed_addr, uptr size, const char *name) {
 // Memory space mapped by 'MmapFixedOrDie' must have been reserved by
 // 'MmapFixedNoAccess'.
 void *MmapFixedOrDie(uptr fixed_addr, uptr size, const char *name) {
-  void *p = VirtualAlloc((LPVOID)fixed_addr, size,
-      MEM_COMMIT, PAGE_READWRITE);
+  void *p = VirtualAlloc((LPVOID)fixed_addr, size, MEM_COMMIT, PAGE_READWRITE);
   if (p == 0) {
     char mem_type[30];
     internal_snprintf(mem_type, sizeof(mem_type), "memory at address 0x%zx",
@@ -282,12 +412,11 @@ void ReservedAddressRange::Unmap(uptr addr, uptr size) {
   // We unmap the whole range, just null out the base.
   base_ = nullptr;
   size_ = 0;
-  UnmapOrDie(reinterpret_cast<void*>(addr), size);
+  UnmapOrDie(reinterpret_cast<void *>(addr), size);
 }
 
 void *MmapFixedOrDieOnFatalError(uptr fixed_addr, uptr size, const char *name) {
-  void *p = VirtualAlloc((LPVOID)fixed_addr, size,
-      MEM_COMMIT, PAGE_READWRITE);
+  void *p = VirtualAlloc((LPVOID)fixed_addr, size, MEM_COMMIT, PAGE_READWRITE);
   if (p == 0) {
     char mem_type[30];
     internal_snprintf(mem_type, sizeof(mem_type), "memory at address 0x%zx",
@@ -310,24 +439,25 @@ uptr ReservedAddressRange::Init(uptr size, const char *name, uptr fixed_addr) {
   return reinterpret_cast<uptr>(base_);
 }
 
-
 void *MmapFixedNoAccess(uptr fixed_addr, uptr size, const char *name) {
-  (void)name; // unsupported
-  void *res = VirtualAlloc((LPVOID)fixed_addr, size,
-                           MEM_RESERVE, PAGE_NOACCESS);
+  (void)name;  // unsupported
+  void *res =
+      VirtualAlloc((LPVOID)fixed_addr, size, MEM_RESERVE, PAGE_NOACCESS);
   if (res == 0)
-    Report("WARNING: %s failed to "
-           "mprotect %p (%zd) bytes at %p (error code: %d)\n",
-           SanitizerToolName, size, size, fixed_addr, GetLastError());
+    Report(
+        "WARNING: %s failed to "
+        "mprotect %p (%zd) bytes at %p (error code: %d)\n",
+        SanitizerToolName, size, size, fixed_addr, GetLastError());
   return res;
 }
 
 void *MmapNoAccess(uptr size) {
   void *res = VirtualAlloc(nullptr, size, MEM_RESERVE, PAGE_NOACCESS);
   if (res == 0)
-    Report("WARNING: %s failed to "
-           "mprotect %p (%zd) bytes (error code: %d)\n",
-           SanitizerToolName, size, size, GetLastError());
+    Report(
+        "WARNING: %s failed to "
+        "mprotect %p (%zd) bytes (error code: %d)\n",
+        SanitizerToolName, size, size, GetLastError());
   return res;
 }
 
@@ -382,12 +512,12 @@ uptr FindAvailableMemoryRange(uptr size, uptr alignment, uptr left_padding,
   uptr address = 0;
   while (true) {
     MEMORY_BASIC_INFORMATION info;
-    if (!::VirtualQuery((void*)address, &info, sizeof(info)))
+    if (!::VirtualQuery((void *)address, &info, sizeof(info)))
       return 0;
 
     if (info.State == MEM_FREE) {
-      uptr shadow_address = RoundUpTo((uptr)info.BaseAddress + left_padding,
-                                      alignment);
+      uptr shadow_address =
+          RoundUpTo((uptr)info.BaseAddress + left_padding, alignment);
       if (shadow_address + size < (uptr)info.BaseAddress + info.RegionSize)
         return shadow_address;
     }
@@ -454,13 +584,9 @@ const char *GetEnv(const char *name) {
   return 0;
 }
 
-const char *GetPwd() {
-  UNIMPLEMENTED();
-}
+const char *GetPwd() { UNIMPLEMENTED(); }
 
-u32 GetUid() {
-  UNIMPLEMENTED();
-}
+u32 GetUid() { UNIMPLEMENTED(); }
 
 namespace {
 struct ModuleInfo {
@@ -513,31 +639,19 @@ void DisableCoreDumperIfNecessary() {
   // Do nothing.
 }
 
-void ReExec() {
-  UNIMPLEMENTED();
-}
+void ReExec() { UNIMPLEMENTED(); }
 
 void PlatformPrepareForSandboxing(__sanitizer_sandbox_arguments *args) {}
 
-bool StackSizeIsUnlimited() {
-  UNIMPLEMENTED();
-}
+bool StackSizeIsUnlimited() { UNIMPLEMENTED(); }
 
-void SetStackSizeLimitInBytes(uptr limit) {
-  UNIMPLEMENTED();
-}
+void SetStackSizeLimitInBytes(uptr limit) { UNIMPLEMENTED(); }
 
-bool AddressSpaceIsUnlimited() {
-  UNIMPLEMENTED();
-}
+bool AddressSpaceIsUnlimited() { UNIMPLEMENTED(); }
 
-void SetAddressSpaceUnlimited() {
-  UNIMPLEMENTED();
-}
+void SetAddressSpaceUnlimited() { UNIMPLEMENTED(); }
 
-bool IsPathSeparator(const char c) {
-  return c == '\\' || c == '/';
-}
+bool IsPathSeparator(const char c) { return c == '\\' || c == '/'; }
 
 static bool IsAlpha(char c) {
   c = ToLower(c);
@@ -566,9 +680,7 @@ u64 NanoTime() {
 
 u64 MonotonicNanoTime() { return NanoTime(); }
 
-void Abort() {
-  internal__exit(3);
-}
+void Abort() { internal__exit(3); }
 
 bool CreateDir(const char *pathname) {
   return CreateDirectoryA(pathname, nullptr) != 0;
@@ -710,15 +822,13 @@ static int RunAtexit() {
   return ret;
 }
 // Post switching to compiling the dynamic runtime with the MD runtime,
-// Placing a function in XID means that it is called in the wrong spot on initialization.
-// This is a hack to call this function after both asan_init and the crt initialize,
-// for both MT and MD runtimes.
+// Placing a function in XID means that it is called in the wrong spot on
+// initialization. This is a hack to call this function after both asan_init and
+// the crt initialize, for both MT and MD runtimes.
 #if defined(_DLL)
 class AtexitRunner {
-  public:
-    AtexitRunner() {
-      RunAtexit();
-    }
+ public:
+  AtexitRunner() { RunAtexit(); }
 };
 static AtexitRunner atExitRunner;
 #else
@@ -749,9 +859,7 @@ fd_t OpenFile(const char *filename, FileAccessMode mode, error_t *last_error) {
   return res;
 }
 
-void CloseFile(fd_t fd) {
-  CloseHandle(fd);
-}
+void CloseFile(fd_t fd) { CloseHandle(fd); }
 
 bool ReadFromFile(fd_t fd, void *buff, uptr buff_size, uptr *bytes_read,
                   error_t *error_p) {
@@ -824,9 +932,7 @@ void internal__exit(int exitcode) {
   BUILTIN_UNREACHABLE();
 }
 
-uptr internal_ftruncate(fd_t fd, uptr size) {
-  UNIMPLEMENTED();
-}
+uptr internal_ftruncate(fd_t fd, uptr size) { UNIMPLEMENTED(); }
 
 uptr GetRSS() {
   PROCESS_MEMORY_COUNTERS counters;
@@ -847,14 +953,11 @@ void FutexWake(atomic_uint32_t *p, u32 count) {
     WakeByAddressSingle(p);
   else
     WakeByAddressAll(p);
-}
+void BlockingMutex::CheckLocked() {
 
-uptr GetTlsSize() {
-  return 0;
-}
+uptr GetTlsSize() { return 0; }
 
-void InitTlsSize() {
-}
+void InitTlsSize() {}
 
 void GetThreadStackAndTls(bool main, uptr *stk_addr, uptr *stk_size,
                           uptr *tls_addr, uptr *tls_size) {
@@ -1085,7 +1188,7 @@ uptr ReadBinaryName(/*out*/char *buf, uptr buf_len) {
   return binary_name_len;
 }
 
-uptr ReadLongProcessName(/*out*/char *buf, uptr buf_len) {
+uptr ReadLongProcessName(/*out*/ char *buf, uptr buf_len) {
   return ReadBinaryName(buf, buf_len);
 }
 
@@ -1094,7 +1197,13 @@ void CheckVMASize() {
 }
 
 void InitializePlatformEarly() {
-  // Do nothing.
+  DCHECK(!NtQueryVirtualMemory);
+
+  HMODULE handle = GetModuleHandleA("NTDLL.DLL");
+  NtQueryVirtualMemory = reinterpret_cast<NtQueryVirtualMemory_t>(
+      GetProcAddress(handle, "NtQueryVirtualMemory"));
+
+  CHECK(NtQueryVirtualMemory);
 }
 
 void MaybeReexec() {
@@ -1144,9 +1253,7 @@ void CheckNoDeepBind(const char *filename, int flag) {
 }
 
 // FIXME: implement on this platform.
-bool GetRandom(void *buffer, uptr length, bool blocking) {
-  UNIMPLEMENTED();
-}
+bool GetRandom(void *buffer, uptr length, bool blocking) { UNIMPLEMENTED(); }
 
 u32 GetNumberOfCPUs() {
   SYSTEM_INFO sysinfo = {};
