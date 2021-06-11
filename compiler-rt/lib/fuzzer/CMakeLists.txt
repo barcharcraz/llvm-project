@@ -88,51 +88,105 @@ endif()
 
 add_compiler_rt_component(fuzzer)
 
-add_compiler_rt_object_libraries(RTfuzzer
-  OS ${FUZZER_SUPPORTED_OS}
-  ARCHS ${FUZZER_SUPPORTED_ARCH}
-  SOURCES ${LIBFUZZER_SOURCES}
-  ADDITIONAL_HEADERS ${LIBFUZZER_HEADERS}
-  CFLAGS ${LIBFUZZER_CFLAGS}
-  DEPS ${LIBFUZZER_DEPS})
+if(MSVC)
+  # Strip any definitions of MTd? or MDd?, these will be placed per-target
+  # to avoid definition mismatches at link time.
+  # Create a project global master list of supported windows runtimes
+  set(COMPILER_RT_WINDOWS_RT_VERSIONS_STATIC MT MTd)
+  set(COMPILER_RT_WINDOWS_RT_VERSIONS_DYNAMIC MD MDd)
+  set(COMPILER_RT_WINDOWS_RT_VERSIONS ${COMPILER_RT_WINDOWS_RT_VERSIONS_DYNAMIC} ${COMPILER_RT_WINDOWS_RT_VERSIONS_STATIC})
+  if(COMPILER_RT_HAS_MT_FLAG)
+    foreach(flag_var
+      CMAKE_C_FLAGS CMAKE_C_FLAGS_DEBUG CMAKE_C_FLAGS_RELEASE
+      CMAKE_C_FLAGS_MINSIZEREL CMAKE_C_FLAGS_RELWITHDEBINFO
+      CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE
+      CMAKE_CXX_FLAGS_MINSIZEREL CMAKE_CXX_FLAGS_RELWITHDEBINFO)
+      string(REGEX REPLACE "[\/\-]M[TD]d?" "" ${flag_var} "${${flag_var}}")
+    endforeach()
+  endif()
 
-add_compiler_rt_object_libraries(RTfuzzer_main
-  OS ${FUZZER_SUPPORTED_OS}
-  ARCHS ${FUZZER_SUPPORTED_ARCH}
-  SOURCES FuzzerMain.cpp
-  CFLAGS ${LIBFUZZER_CFLAGS}
-  DEPS ${LIBFUZZER_DEPS})
+  create_multiple_windows_obj_libs(RTfuzzer
+    "${COMPILER_RT_WINDOWS_RT_VERSIONS}"
+    OS ${FUZZER_SUPPORTED_OS}
+    ARCHS ${FUZZER_SUPPORTED_ARCH}
+    SOURCES ${LIBFUZZER_SOURCES}
+    ADDITIONAL_HEADERS ${LIBFUZZER_HEADERS}
+    CFLAGS ${LIBFUZZER_CFLAGS}
+    DEPS ${LIBFUZZER_DEPS})
 
-add_compiler_rt_object_libraries(RTfuzzer_interceptors
-  OS ${FUZZER_SUPPORTED_OS}
-  ARCHS ${FUZZER_SUPPORTED_ARCH}
-  SOURCES FuzzerInterceptors.cpp
-  CFLAGS ${LIBFUZZER_CFLAGS}
-  DEPS ${LIBFUZZER_DEPS})
+  create_multiple_windows_obj_libs(RTfuzzer_main
+    "${COMPILER_RT_WINDOWS_RT_VERSIONS}"
+    OS ${FUZZER_SUPPORTED_OS}
+    ARCHS ${FUZZER_SUPPORTED_ARCH}
+    SOURCES FuzzerMain.cpp
+    CFLAGS ${LIBFUZZER_CFLAGS}
+    DEPS ${LIBFUZZER_DEPS})
 
-add_compiler_rt_runtime(clang_rt.fuzzer
-  STATIC
-  OS ${FUZZER_SUPPORTED_OS}
-  ARCHS ${FUZZER_SUPPORTED_ARCH}
-  OBJECT_LIBS RTfuzzer RTfuzzer_main
+  set(FUZZER_COMMON_RUNTIME_OBJECT_LIBS
+    RTfuzzer
+    RTfuzzer_main)
+
+  foreach(rt_flag MT MD MDd MTd)
+    foreach(lib_name ${FUZZER_COMMON_RUNTIME_OBJECT_LIBS})
+      list(APPEND FUZZER_COMMON_RUNTIME_OBJECT_LIBS_${rt_flag} ${lib_name}_${rt_flag})
+    endforeach()
+
+    add_compiler_rt_runtime(libfuzzer_${rt_flag}
+      STATIC
+      OS ${FUZZER_SUPPORTED_OS}
+      ARCHS ${FUZZER_SUPPORTED_ARCH}
+      OBJECT_LIBS ${FUZZER_COMMON_RUNTIME_OBJECT_LIBS_${rt_flag}}
+      CFLAGS ${LIBFUZZER_CFLAGS}
+      PARENT_TARGET fuzzer)
+
+  endforeach()
+
+else()
+  add_compiler_rt_object_libraries(RTfuzzer
+    OS ${FUZZER_SUPPORTED_OS}
+    ARCHS ${FUZZER_SUPPORTED_ARCH}
+    SOURCES ${LIBFUZZER_SOURCES}
+    ADDITIONAL_HEADERS ${LIBFUZZER_HEADERS}
+    CFLAGS ${LIBFUZZER_CFLAGS}
+    DEPS ${LIBFUZZER_DEPS})
+
+  add_compiler_rt_object_libraries(RTfuzzer_main
+    OS ${FUZZER_SUPPORTED_OS}
+    ARCHS ${FUZZER_SUPPORTED_ARCH}
+    SOURCES FuzzerMain.cpp
+    CFLAGS ${LIBFUZZER_CFLAGS}
+    DEPS ${LIBFUZZER_DEPS})
+
+  add_compiler_rt_object_libraries(RTfuzzer_interceptors
+    OS ${FUZZER_SUPPORTED_OS}
+    ARCHS ${FUZZER_SUPPORTED_ARCH}
+    SOURCES FuzzerInterceptors.cpp
+    CFLAGS ${LIBFUZZER_CFLAGS}
+    DEPS ${LIBFUZZER_DEPS})
+  add_compiler_rt_runtime(clang_rt.fuzzer
+    STATIC
+    OS ${FUZZER_SUPPORTED_OS}
+    ARCHS ${FUZZER_SUPPORTED_ARCH}
+    OBJECT_LIBS RTfuzzer RTfuzzer_main
+    CFLAGS ${LIBFUZZER_CFLAGS}
+    PARENT_TARGET fuzzer)
+
+  add_compiler_rt_runtime(clang_rt.fuzzer_no_main
+    STATIC
+    OS ${FUZZER_SUPPORTED_OS}
+    ARCHS ${FUZZER_SUPPORTED_ARCH}
+    OBJECT_LIBS RTfuzzer
   CFLAGS ${LIBFUZZER_CFLAGS}
   PARENT_TARGET fuzzer)
 
-add_compiler_rt_runtime(clang_rt.fuzzer_no_main
-  STATIC
-  OS ${FUZZER_SUPPORTED_OS}
-  ARCHS ${FUZZER_SUPPORTED_ARCH}
-  OBJECT_LIBS RTfuzzer
-  CFLAGS ${LIBFUZZER_CFLAGS}
-  PARENT_TARGET fuzzer)
-
-add_compiler_rt_runtime(clang_rt.fuzzer_interceptors
-  STATIC
-  OS ${FUZZER_SUPPORTED_OS}
-  ARCHS ${FUZZER_SUPPORTED_ARCH}
-  OBJECT_LIBS RTfuzzer_interceptors
-  CFLAGS ${LIBFUZZER_CFLAGS}
-  PARENT_TARGET fuzzer)
+  add_compiler_rt_runtime(clang_rt.fuzzer_interceptors
+    STATIC
+    OS ${FUZZER_SUPPORTED_OS}
+    ARCHS ${FUZZER_SUPPORTED_ARCH}
+    OBJECT_LIBS RTfuzzer_interceptors
+    CFLAGS ${LIBFUZZER_CFLAGS}
+    PARENT_TARGET fuzzer)
+endif()
 
 if(OS_NAME MATCHES "Linux|Fuchsia" AND
    COMPILER_RT_LIBCXX_PATH AND
