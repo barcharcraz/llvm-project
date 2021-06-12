@@ -131,7 +131,7 @@ if(MSVC)
       list(APPEND FUZZER_COMMON_RUNTIME_OBJECT_LIBS_${rt_flag} ${lib_name}_${rt_flag})
     endforeach()
 
-    add_compiler_rt_runtime(libfuzzer_${rt_flag}
+    add_compiler_rt_runtime(clang_rt.fuzzer_${rt_flag}
       STATIC
       OS ${FUZZER_SUPPORTED_OS}
       ARCHS ${FUZZER_SUPPORTED_ARCH}
@@ -139,8 +139,15 @@ if(MSVC)
       CFLAGS ${LIBFUZZER_CFLAGS}
       PARENT_TARGET fuzzer)
 
-  endforeach()
+    add_compiler_rt_runtime(clang_rt.fuzzer_no_main_${rt_flag}
+      STATIC
+      OS ${FUZZER_SUPPORTED_OS}
+      ARCHS ${FUZZER_SUPPORTED_ARCH}
+      OBJECT_LIBS RTfuzzer_${rt_flag}
+      CFLAGS ${LIBFUZZER_CFLAGS}
+      PARENT_TARGET fuzzer)
 
+  endforeach()
 else()
   add_compiler_rt_object_libraries(RTfuzzer
     OS ${FUZZER_SUPPORTED_OS}
