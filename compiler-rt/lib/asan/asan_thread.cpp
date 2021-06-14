@@ -318,11 +318,16 @@ void AsanThread::SetThreadStackAndTls(const InitOptions *options) {
 #endif  // !SANITIZER_FUCHSIA
 
 void AsanThread::ClearShadowForThreadStackAndTLS() {
-  if (stack_top_ != stack_bottom_)
+  if (stack_top_ != stack_bottom_) {
+    CommitShadowMemory(stack_bottom_, stack_top_ - stack_bottom_);
     PoisonShadow(stack_bottom_, stack_top_ - stack_bottom_, 0);
+  }
+
   if (tls_begin_ != tls_end_) {
     uptr tls_begin_aligned = RoundDownTo(tls_begin_, ASAN_SHADOW_GRANULARITY);
     uptr tls_end_aligned = RoundUpTo(tls_end_, ASAN_SHADOW_GRANULARITY);
+
+    CommitShadowMemory(tls_begin_aligned, tls_end_aligned - tls_begin_aligned);
     FastPoisonShadowPartialRightRedzone(tls_begin_aligned,
                                         tls_end_ - tls_begin_aligned,
                                         tls_end_aligned - tls_end_, 0);

@@ -30,7 +30,8 @@
 #include "sanitizer_common/sanitizer_list.h"
 #include "sanitizer_common/sanitizer_quarantine.h"
 #include "sanitizer_common/sanitizer_stackdepot.h"
-#ifdef SANITIZER_WINDOWS
+
+#if SANITIZER_WINDOWS
 #include "asan_malloc_win_moveable.h"
 #endif
 
@@ -245,6 +246,7 @@ typedef Quarantine<QuarantineCallback, AsanChunk> AsanQuarantine;
 typedef AsanQuarantine::Cache QuarantineCache;
 
 void AsanMapUnmapCallback::OnMap(uptr p, uptr size) const {
+  CommitShadowMemory(p, size);
   PoisonShadow(p, size, kAsanHeapLeftRedzoneMagic);
   // Statistics.
   AsanStats &thread_stats = GetCurrentThreadStats();
@@ -252,6 +254,7 @@ void AsanMapUnmapCallback::OnMap(uptr p, uptr size) const {
   thread_stats.mmaped += size;
 }
 void AsanMapUnmapCallback::OnUnmap(uptr p, uptr size) const {
+  // FIXME: Why bother unpoisoning this memory if we're about to unmap it?
   PoisonShadow(p, size, 0);
   // We are about to unmap a chunk of user memory.
   // Mark the corresponding shadow memory as not needed.
@@ -566,6 +569,8 @@ struct Allocator {
 
     uptr size_rounded_down_to_granularity =
         RoundDownTo(size, ASAN_SHADOW_GRANULARITY);
+    // FIXME: Why bother having the allocator poison shadow memory if we just
+    // immediately unpoison it?
     // Unpoison the bulk of the memory region.
     if (size_rounded_down_to_granularity)
       PoisonShadow(user_beg, size_rounded_down_to_granularity, 0);
@@ -642,6 +647,9 @@ struct Allocator {
       }
     }
 
+    // FIXME: We should check if we're about to recycle the quarantined memory
+    // before poisoning it here. If it is recycled it will be poisoned with a
+    // different value.
     // Poison the region.
     PoisonShadow(m->Beg(), RoundUpTo(m->UsedSize(), ASAN_SHADOW_GRANULARITY),
                  kAsanHeapFreeMagic);
@@ -1213,7 +1221,7 @@ uptr __sanitizer_get_allocated_size(const void *p) {
 
 void __sanitizer_purge_allocator() {
   GET_STACK_TRACE_MALLOC;
-#ifdef SANITIZER_WINDOWS
+#if SANITIZER_WINDOWS
   MoveableMemoryManager::GetInstance()->Purge();  
 #endif
   instance.Purge(&stack);

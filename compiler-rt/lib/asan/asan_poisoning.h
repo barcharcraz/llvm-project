@@ -17,6 +17,24 @@
 #include "sanitizer_common/sanitizer_flags.h"
 #include "sanitizer_common/sanitizer_platform.h"
 
+#if SANITIZER_WINDOWS64
+#include "sanitizer_common/sanitizer_win_defs.h"
+// These definitions are duplicated from Window.h in order to avoid conflicts
+// with other types in Windows.h.
+// These functions and types are used to manipulate the shadow memory on
+// x64 Windows.
+typedef unsigned long DWORD;
+typedef void *LPVOID;
+typedef int BOOL;
+
+constexpr DWORD MEM_COMMIT = 0x00001000;
+constexpr DWORD MEM_DECOMMIT = 0x00004000;
+constexpr DWORD PAGE_READWRITE = 0x04;
+
+extern "C" LPVOID WINAPI VirtualAlloc(LPVOID, size_t, DWORD, DWORD);
+extern "C" BOOL WINAPI VirtualFree(LPVOID, size_t, DWORD);
+#endif
+
 namespace __asan {
 
 // Enable/disable memory poisoning.
@@ -33,6 +51,19 @@ void PoisonShadowPartialRightRedzone(uptr addr,
                                      uptr redzone_size,
                                      u8 value);
 
+// Commits the shadow memory for a range of aligned memory. This only matters
+// on 64-bit Windows where relying on pages to get paged in on access
+// violation is inefficient when we know the memory range ahead of time.
+ALWAYS_INLINE void CommitShadowMemory(uptr aligned_beg, uptr aligned_size) {
+#if SANITIZER_WINDOWS64
+    uptr shadow_beg = MEM_TO_SHADOW(aligned_beg);
+    uptr shadow_end = MEM_TO_SHADOW(aligned_beg + aligned_size -
+                                    SHADOW_GRANULARITY) + 1;
+    ::VirtualAlloc((LPVOID)shadow_beg, (size_t)(shadow_end - shadow_beg),
+                   MEM_COMMIT, PAGE_READWRITE);
+#endif
+}
+
 // Fast versions of PoisonShadow and PoisonShadowPartialRightRedzone that
 // assume that memory addresses are properly aligned. Use in
 // performance-critical code with care.
@@ -46,11 +77,15 @@ ALWAYS_INLINE void FastPoisonShadow(uptr aligned_beg, uptr aligned_size,
   uptr shadow_beg = MEM_TO_SHADOW(aligned_beg);
   uptr shadow_end =
       MEM_TO_SHADOW(aligned_beg + aligned_size - ASAN_SHADOW_GRANULARITY) + 1;
-  // FIXME: Page states are different on Windows, so using the same interface
-  // for mapping shadow and zeroing out pages doesn't "just work", so we should
-  // probably provide higher-level interface for these operations.
-  // For now, just memset on Windows.
-  if (value || SANITIZER_WINDOWS == 1 ||
+  // Windows has a similar ability to mmap page zeroing that is used for posix
+  // systems here via decomitting and recomitting virtual pages. However, it
+  // is unclear that the benefits of such a strategy are worth it, as the
+  // zero pages will end up getting lazily backed by real resources once a
+  // write to them occurs. (e.g. on quarantine/free). We've likely just gone
+  // through the effort of comitting and poisoning these pages on allocation,
+  // which will have caused the system to back them with real resources. Let's
+  // not double that work. Also, memset is pretty fast.
+  if (value || SANITIZER_WINDOWS ||
       shadow_end - shadow_beg < common_flags()->clear_shadow_mmap_threshold) {
     REAL(memset)((void*)shadow_beg, value, shadow_end - shadow_beg);
   } else {

@@ -32,7 +32,6 @@
 #include "ubsan/ubsan_init.h"
 #include "ubsan/ubsan_platform.h"
 
-
 uptr __asan_shadow_memory_dynamic_address;  // Global interface symbol.
 int __asan_option_detect_stack_use_after_return;  // Global interface symbol.
 uptr *__asan_test_only_reported_buggy_pointer;  // Used only for testing asan.
@@ -92,6 +91,7 @@ static void ReportGenericErrorWrapper(uptr addr, bool is_write, int size,
 
 // --------------- LowLevelAllocateCallbac ---------- {{{1
 static void OnLowLevelAllocate(uptr ptr, uptr size) {
+  CommitShadowMemory(ptr, size);
   PoisonShadow(ptr, size, kAsanInternalHeapMagic);
 }
 

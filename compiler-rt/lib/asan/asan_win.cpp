@@ -299,7 +299,6 @@ __declspec(noinline) static void EnlightenVSDebugger() {
 #endif
 }
 
-// Exception handler for dealing with shadow memory.
 static LONG CALLBACK
 ShadowExceptionHandler(PEXCEPTION_POINTERS exception_pointers) {
   uptr page_size = GetPageSizeCached();
@@ -317,7 +316,6 @@ ShadowExceptionHandler(PEXCEPTION_POINTERS exception_pointers) {
 
   // Check valid shadow range.
   if (!AddrIsInShadow(addr)) {
-
     if (::IsDebuggerPresent()) {
       __try {
         ULONG_PTR args[] = {
@@ -338,14 +336,10 @@ ShadowExceptionHandler(PEXCEPTION_POINTERS exception_pointers) {
   // This is an access violation while trying to read from the shadow. Commit
   // the relevant page and let execution continue.
 
-  // Determine the address of the page that is being accessed.
-  uptr page = RoundDownTo(addr, page_size);
-
   // Commit the page.
-  uptr result =
-      (uptr)::VirtualAlloc((LPVOID)page, page_size, MEM_COMMIT, PAGE_READWRITE);
-  if (result != page)
+  if(!::VirtualAlloc((LPVOID)addr, 1, MEM_COMMIT, PAGE_READWRITE)) {
     return EXCEPTION_CONTINUE_SEARCH;
+  }
 
   // The page mapping succeeded, so continue execution as usual.
   return EXCEPTION_CONTINUE_EXECUTION;
