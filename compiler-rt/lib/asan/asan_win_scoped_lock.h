@@ -1,3 +1,16 @@
+//===-- asan_win_scoped_lock.h --------------------------------------------===//
+//
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+//
+// This file is a part of AddressSanitizer, an address sanity checker.
+//
+// RAII lock used exclusively by Windows-specific parts of ASan
+//===----------------------------------------------------------------------===//
+#if SANITIZER_WINDOWS
 #pragma once
 
 #include "sanitizer_common/sanitizer_atomic.h"
@@ -7,6 +20,8 @@ extern "C" unsigned long _stdcall GetCurrentThreadId();
 
 class RecursiveScopedLock {
  public:
+  bool serialized = false;
+
   explicit RecursiveScopedLock(__sanitizer::SpinMutex &_lock,
                                __sanitizer::atomic_uint32_t &_thread_id)
       : lock(_lock), thread_id(_thread_id), serialized(false) {
@@ -29,5 +44,5 @@ class RecursiveScopedLock {
  private:
   __sanitizer::SpinMutex &lock;
   __sanitizer::atomic_uint32_t &thread_id;
-  bool serialized;
 };
+#endif  // SANITIZER_WINDOWS

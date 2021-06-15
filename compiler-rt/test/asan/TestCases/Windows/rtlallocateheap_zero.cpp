@@ -1,5 +1,6 @@
 // RUN: %clang_cl_asan %s -o %t
 // RUN: not %run %t 2>&1 | FileCheck %s
+
 #include <stdio.h>
 #include <windows.h>
 #include <cassert>

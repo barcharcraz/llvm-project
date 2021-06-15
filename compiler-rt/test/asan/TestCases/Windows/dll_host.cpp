@@ -16,6 +16,8 @@
 // EXPORT: __asan_wrap__except_handler3
 // EXPORT: __asan_wrap__except_handler4
 // EXPORT: __asan_wrap___C_specific_handler
+// strrchr is not exported but is caught in the grep below
+// EXPORT: __asan_wrap_strrchr
 //
 // Get the list of ASan wrappers imported by the DLL RTL:
 // [BEWARE: be really careful with the sed commands, as this test can be run
@@ -26,31 +28,30 @@
 //
 // Add functions interecepted in asan_malloc.win.cpp and asan_win.cpp.
 // RUN: grep '[I]MPORT:' %s | sed -e 's/.*[I]MPORT: //' > %t.imports2
+// IMPORT: __asan_wrap_CreateThread
 // IMPORT: __asan_wrap_GlobalAlloc
 // IMPORT: __asan_wrap_GlobalFree
-// IMPORT: __asan_wrap_GlobalReAlloc
-// IMPORT: __asan_wrap_GlobalSize
 // IMPORT: __asan_wrap_GlobalHandle
 // IMPORT: __asan_wrap_GlobalLock
+// IMPORT: __asan_wrap_GlobalReAlloc
+// IMPORT: __asan_wrap_GlobalSize
 // IMPORT: __asan_wrap_GlobalUnlock
 // IMPORT: __asan_wrap_LocalAlloc
 // IMPORT: __asan_wrap_LocalFree
-// IMPORT: __asan_wrap_LocalReAlloc
-// IMPORT: __asan_wrap_LocalSize
 // IMPORT: __asan_wrap_LocalHandle
 // IMPORT: __asan_wrap_LocalLock
+// IMPORT: __asan_wrap_LocalReAlloc
+// IMPORT: __asan_wrap_LocalSize
 // IMPORT: __asan_wrap_LocalUnlock
-// IMPORT: __asan_wrap_CreateThread
 // IMPORT: __asan_wrap_RaiseException
-// IMPORT: __asan_wrap_RtlRaiseException
-// IMPORT: __asan_wrap_SetUnhandledExceptionFilter
-// IMPORT: __asan_wrap_RtlSizeHeap
 // IMPORT: __asan_wrap_RtlAllocateHeap
-// IMPORT: __asan_wrap_RtlReAllocateHeap
-// IMPORT: __asan_wrap_RtlFreeHeap
-// IMPORT: __asan_wrap_RtlCreateHeap
 // IMPORT: __asan_wrap_RtlDestroyHeap
-// IMPORT: __asan_wrap__strdup
+// IMPORT: __asan_wrap_RtlDestroyHeap
+// IMPORT: __asan_wrap_RtlFreeHeap
+// IMPORT: __asan_wrap_RtlRaiseException
+// IMPORT: __asan_wrap_RtlReAllocateHeap
+// IMPORT: __asan_wrap_RtlSizeHeap
+// IMPORT: __asan_wrap_SetUnhandledExceptionFilter
 //
 // RUN: cat %t.imports1 %t.imports2 | sort | uniq > %t.imports-sorted
 // RUN: cat %t.exports1 %t.exports2 | sort | uniq > %t.exports-sorted

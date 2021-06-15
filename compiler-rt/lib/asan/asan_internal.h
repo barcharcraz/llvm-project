@@ -65,7 +65,7 @@ void AsanInitFromRtl();
 void InitializePlatformExceptionHandlers();
 // Returns whether an address is a valid allocated system heap block.
 // 'addr' must point to the beginning of the block.
-bool IsSystemHeapAddress(uptr addr);
+bool IsSystemHeapAddress(uptr addr, void *heap = nullptr);
 
 // asan_rtl.cpp
 void PrintAddressSpaceLayout();

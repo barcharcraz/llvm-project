@@ -6,13 +6,13 @@
 // RUN: not %run %t 2>&1 | FileCheck %s
 
 int main() {
-    void* newHeap = HeapCreate(0, 0, 0);
-    void* newAlloc = HeapAlloc(newHeap, 0, 100);
-    HeapDestroy(newHeap);
+  void *newHeap = HeapCreate(0, 0, 0);
+  void *newAlloc = HeapAlloc(newHeap, 0, 100);
+  HeapDestroy(newHeap);
 
-    HeapFree(newHeap, 0, newAlloc);
-    printf("failure\n");
-    return 1;
+  HeapFree(newHeap, 0, newAlloc);
+  printf("failure\n");
+  return 1;
 }
 
 // We need to add an address sanitizer error for using a heap after it has

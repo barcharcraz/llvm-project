@@ -12,6 +12,7 @@
 #include <assert.h>
 #include <stdint.h>
 #include <stdlib.h>
+
 // MSVC provides _alloca instead of alloca.
 #if defined(_MSC_VER) && !defined(alloca)
 #define alloca _alloca
@@ -40,7 +41,7 @@ ATTRIBUTE_NOINLINE void foo(int len) {
 #ifdef MSVC
     char *array = (char *)alloca(i);
 #else
-    char array[i];
+    char array[i]; // NOLINT
 #endif
     bot = alloca(i);
     assert(!(reinterpret_cast<uintptr_t>(bot) & 31L));

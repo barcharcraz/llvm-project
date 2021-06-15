@@ -1,4 +1,5 @@
 #pragma once
+#include <Windows.h>
 
 #if defined(TEST_GLOBAL)
 #define ALLOC GlobalAlloc
@@ -7,10 +8,10 @@
 #define LOCK GlobalLock
 #define UNLOCK GlobalUnlock
 #define SIZE GlobalSize
-#define ZEROINIT GMEM_ZEROINIT
-#define FIXED GMEM_FIXED
-#define MOVEABLE GMEM_MOVEABLE
-#define MODIFY GMEM_MODIFY
+static constexpr auto ZEROINIT = GMEM_ZEROINIT;
+static constexpr auto FixedType = GMEM_FIXED;
+static constexpr auto MOVEABLE = GMEM_MOVEABLE;
+static constexpr auto MODIFY = GMEM_MODIFY;
 #else
 #define ALLOC LocalAlloc
 #define REALLOC LocalReAlloc
@@ -18,9 +19,9 @@
 #define LOCK LocalLock
 #define UNLOCK LocalUnlock
 #define SIZE LocalSize
-#define ZEROINIT LMEM_ZEROINIT
-#define FIXED LMEM_FIXED
-#define MOVEABLE LMEM_MOVEABLE
-#define MODIFY LMEM_MODIFY
+static constexpr auto ZEROINIT = LMEM_ZEROINIT;
+static constexpr auto FixedType = LMEM_FIXED;
+static constexpr auto MOVEABLE = LMEM_MOVEABLE;
+static constexpr auto MODIFY = LMEM_MODIFY;
 #endif
 

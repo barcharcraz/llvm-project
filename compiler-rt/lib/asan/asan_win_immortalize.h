@@ -1,4 +1,4 @@
-//===-- asan_win_immortalize.cpp ------------------------------------------===//
+//===-- asan_win_immortalize.h --------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -11,6 +11,9 @@
 // Windows-specific thread-safe and pre-CRT global initialization safe
 // infrastructure to create an object whose destructor is never called.
 //===----------------------------------------------------------------------===//
+#if SANITIZER_WINDOWS
+#pragma once
+
 #include "sanitizer_common/sanitizer_win_defs.h"
 // These types are required to satisfy XFG which requires that the names of the
 // types for indirect calls to be correct as well as the name of the original
@@ -20,7 +23,7 @@ typedef void* PVOID;
 typedef int BOOL;
 
 extern "C" {
-_declspec(dllimport) int WINAPI
+__declspec(dllimport) int WINAPI
     InitOnceExecuteOnce(void**, BOOL(WINAPI*)(PINIT_ONCE, PVOID, PVOID*), void*,
                         void*);
 }
@@ -55,3 +58,4 @@ Ty& immortalize(Arg arg) {  // return a reference to an object that will live fo
   InitOnceExecuteOnce(&flag, immortalize_impl<Ty, Arg>, &storage, &arg);
   return reinterpret_cast<Ty&>(storage);
 }
+#endif  // SANITIZER_WINDOWS

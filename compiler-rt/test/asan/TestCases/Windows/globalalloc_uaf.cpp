@@ -9,7 +9,7 @@
 
 int main() {
   char *buffer;
-  buffer = (char*)ALLOC(FIXED, 32),
+  buffer = (char*)ALLOC(FixedType, 32),
   FREE(buffer);
   buffer[0] = 'a';
 // CHECK: AddressSanitizer: heap-use-after-free on address [[ADDR:0x[0-9a-f]+]]

@@ -14,7 +14,7 @@
 int main() {
   char *oldbuf;
   size_t sz = 8;
-  oldbuf = (char *)ALLOC(FIXED, sz);
+  oldbuf = (char *)ALLOC(FixedType, sz);
   char *newbuf = oldbuf;
   while (oldbuf == newbuf) {
     sz *= 2;

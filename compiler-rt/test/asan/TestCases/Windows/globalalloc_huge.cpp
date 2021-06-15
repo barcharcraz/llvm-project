@@ -13,7 +13,7 @@
 #include "globallocal_shared.h"
 
 int main() {
-  void *nope = ALLOC(FIXED, ((size_t)0) - 1);
+  void *nope = ALLOC(FixedType, ~size_t{});
   if (nope != nullptr) {
     puts("Fail");
     return 1;
@@ -22,4 +22,4 @@ int main() {
   return 0;
 }
 // CHECK: Pass
-// CHECK-NOT: Fail 
+// CHECK-NOT: Fail

@@ -6,14 +6,14 @@
 // RUN: %run %t 2>&1 | FileCheck %s
 
 int main() {
-    void* newHeap = HeapCreate(0, 1000, 5000);
-    void* newAlloc = HeapAlloc(newHeap, 0, 100);
-    if (__sanitizer_get_ownership(newAlloc)){
-        printf("success\n");
-        return 1;
-    }
-    printf("fail\n");
-    return 1;
+  void *newHeap = HeapCreate(0, 1000, 5000);
+  void *newAlloc = HeapAlloc(newHeap, 0, 100);
+  if (__sanitizer_get_ownership(newAlloc)) {
+    printf("success\n");
+    return 0;
+  }
+  printf("fail\n");
+  return 1;
 }
 
 // CHECK: success

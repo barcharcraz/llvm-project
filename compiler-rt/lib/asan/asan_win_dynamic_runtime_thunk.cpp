@@ -22,9 +22,10 @@
 
 #ifdef SANITIZER_DYNAMIC_RUNTIME_THUNK
 #define SANITIZER_IMPORT_INTERFACE 1
-#include "sanitizer_common/sanitizer_win_defs.h"
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+
+#include "sanitizer_common/sanitizer_win_defs.h"
 
 // Define weak alias for all weak functions imported from asan dll.
 #define INTERFACE_FUNCTION(Name)

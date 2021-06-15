@@ -369,22 +369,30 @@ struct AllocationDebugHeader {
 };
 
 // We need to check if this address belongs to any of the heaps in the process.
-bool IsSystemHeapAddress(uptr addr) {
-  HANDLE heaps[128]; 
+bool IsSystemHeapAddress(uptr addr, void *heap) {
+  HANDLE heaps[128];
   PROCESS_HEAP_ENTRY lpEntry;
 
-  DWORD num_heaps = ::GetProcessHeaps(sizeof(heaps)/sizeof(HANDLE), heaps);
-  CHECK(num_heaps <= sizeof(heaps)/sizeof(HANDLE) &&
-        "You have exceeded the maximum number of supported heaps.");
+  void **curr, **end;
+  if (heap == nullptr) {
+    curr = heaps;
+    DWORD num_heaps = ::GetProcessHeaps(sizeof(heaps)/sizeof(HANDLE), heaps);
+    CHECK(num_heaps <= sizeof(heaps)/sizeof(HANDLE) &&
+            "You have exceeded the maximum number of supported heaps.");
+    end = curr + num_heaps;
+  } else {
+    curr = &heap;
+    end = curr + 1;
+  }
 
-  for (DWORD i = 0; i < num_heaps; ++i) {
-    ::HeapLock(heaps[i]);
+  while (curr != end) {
+    ::HeapLock(*curr);
     lpEntry.lpData = NULL;
 
-    while (HeapWalk(heaps[i], &lpEntry)) {
+    while (::HeapWalk(*curr, &lpEntry)) {
       if (lpEntry.wFlags & PROCESS_HEAP_ENTRY_BUSY) {
-        if ( reinterpret_cast<uptr>(lpEntry.lpData) == addr) {
-          ::HeapUnlock(heaps[i]);
+        if (reinterpret_cast<uptr>(lpEntry.lpData) == addr) {
+          ::HeapUnlock(*curr);
           return true;
         }
 
@@ -394,14 +402,15 @@ bool IsSystemHeapAddress(uptr addr) {
         if (reinterpret_cast<uptr>(lpEntry.lpData) + sizeof(AllocationDebugHeader) == addr &&
             reinterpret_cast<AllocationDebugHeader*>(lpEntry.lpData)->block_use &&
             reinterpret_cast<AllocationDebugHeader*>(lpEntry.lpData)->data_size < lpEntry.cbData) {
-          ::HeapUnlock(heaps[i]);
+          ::HeapUnlock(*curr);
           return true;
         }
 #endif // _DEBUG
       }
     }
 
-    ::HeapUnlock(heaps[i]);
+    ::HeapUnlock(*curr);
+    ++curr;
   }
 
   return false;

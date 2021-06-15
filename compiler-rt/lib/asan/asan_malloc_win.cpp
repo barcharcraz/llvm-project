@@ -17,6 +17,8 @@
 #include "sanitizer_common/sanitizer_mutex.h"
 #include "sanitizer_common/sanitizer_platform.h"
 #if SANITIZER_WINDOWS
+#include <stddef.h>
+
 #include "asan_allocator.h"
 #include "asan_interceptors.h"
 #include "asan_internal.h"
@@ -58,8 +60,6 @@ constexpr unsigned long HEAP_REALLOC_UNSUPPORTED_FLAGS =
 
 extern "C" {
 HANDLE WINAPI GetProcessHeap();
-BOOL WINAPI HeapValidate(HANDLE, DWORD, void *);
-
 DWORD WINAPI GetCurrentThreadId();
 
 _declspec(dllimport) HGLOBAL WINAPI GlobalAlloc(UINT uFlags, SIZE_T dwBytes);
@@ -434,6 +434,18 @@ int *__p__crtDbgFlag() { return &_crtDbgFlag; }
 ALLOCATION_FUNCTION_ATTRIBUTE
 long *__p__crtBreakAlloc() { return &_crtBreakAlloc; }
 
+// TODO: These were added upstream but conflict with definitions in ucrtbased.
+// int _CrtDbgReport(int, const char *, int, const char *, const char *, ...) {
+//   ShowStatsAndAbort();
+// }
+// 
+// int _CrtDbgReportW(int reportType, const wchar_t *, int, const wchar_t *,
+//                    const wchar_t *, ...) {
+//   ShowStatsAndAbort();
+// }
+// 
+// int _CrtSetReportMode(int, int) { return 0; }
+
 #endif  //_DEBUG
 }  // extern "C"
 
@@ -512,7 +524,7 @@ struct AsanHeap {
   }
 
   // A reference to some members of the opaque HEAP data structure.
-  const HEAP &heap;
+  HEAP &heap;
 
   // A lock to keep the accesses to the map and the list atomic.
   __sanitizer::SpinMutex lock = {};
@@ -531,51 +543,22 @@ struct AsanHeap {
   bool is_supported;
 };
 
-struct AsanHeapMap : public __sanitizer::AddrHashMap<AsanHeap *, 37> {
-  using __sanitizer::AddrHashMap<AsanHeap *, 37>::Handle;
-
-  static void *operator new(size_t, void *p) { return p; }
-};
-
-AsanHeapMap *GetAsanHeapMap() { return &immortalize<AsanHeapMap>(); }
-AsanHeap *GetDefaultHeap() {
-  return &immortalize<AsanHeap, void *>(GetProcessHeap());
-}
-
-AsanHeap *GetAsanHeap(void *heap) {
-  AsanHeap *asan_heap;
-  if (heap == GetProcessHeap()) {
-    asan_heap = GetDefaultHeap();
-  } else {
-    AsanHeapMap::Handle h_find_or_create(
-        GetAsanHeapMap(), reinterpret_cast<uptr>(heap), false, true);
-
-    if (h_find_or_create.created()) {
-      asan_heap = new AsanHeap(heap);
-      *h_find_or_create = asan_heap;
-    } else {
-      asan_heap = *h_find_or_create;
-    }
-  }
-
-  return asan_heap;
-}
-
 struct AllocationOwnership {
   enum { NEITHER = 0, ASAN = 1, RTL = 2 };
   const int ownership;
 
-  AllocationOwnership(void *heap, void *memory)
-      : ownership(get_ownership(heap, memory)) {}
+  AllocationOwnership(void *memory, void *heap)
+      : ownership(get_ownership(memory, heap)) {}
 
  private:
-  int get_ownership(void *heap, void *memory) {
-    if (__sanitizer_get_ownership(memory)) {
+  int get_ownership(void *memory, void *heap) {
+    if (!memory) {
+      return NEITHER;
+    } else if (__sanitizer_get_ownership(memory)) {
       return ASAN;
-    } else if (HeapValidate(heap, 0, memory)) {
+    } else if (IsSystemHeapAddress(reinterpret_cast<uptr>(memory), heap)) {
       return RTL;
     }
-
     return NEITHER;
   }
 
@@ -602,6 +585,51 @@ struct AllocationOwnership {
     return !(l == r);
   }
 };
+
+struct AsanHeapMap : public __sanitizer::AddrHashMap<AsanHeap *, 37> {
+  using __sanitizer::AddrHashMap<AsanHeap *, 37>::Handle;
+
+  static void *operator new(size_t, void *p) { return p; }
+};
+
+struct AsanHeapHandle {
+  AsanHeap &heap;
+  RecursiveScopedLock raii_lock;
+  AllocationOwnership owner;
+
+  AsanHeapHandle(AsanHeap &heap, void *memory)
+      : heap(heap),
+        raii_lock(heap.lock, heap.thread_id),
+        owner(memory, reinterpret_cast<void *>(&heap.heap)) {}
+};
+
+AsanHeapMap *GetAsanHeapMap() { return &immortalize<AsanHeapMap>(); }
+AsanHeap *GetDefaultHeap() {
+  return &immortalize<AsanHeap, void *>(GetProcessHeap());
+}
+
+AsanHeap *GetAsanHeap(void *heap) {
+  AsanHeap *asan_heap;
+  if (heap == GetProcessHeap()) {
+    asan_heap = GetDefaultHeap();
+  } else {
+    AsanHeapMap::Handle h_find_or_create(
+        GetAsanHeapMap(), reinterpret_cast<uptr>(heap), false, true);
+
+    if (h_find_or_create.created()) {
+      asan_heap = new AsanHeap(heap);
+      *h_find_or_create = asan_heap;
+    } else {
+      asan_heap = *h_find_or_create;
+    }
+  }
+
+  return asan_heap;
+}
+
+AsanHeapHandle GetAsanHeapHandle(void *heap, void *memory) {
+  return AsanHeapHandle(*GetAsanHeap(heap), memory);
+}
 
 // The following functions are undocumented and subject to change.
 // However, hooking them is necessary to hook Windows heap
@@ -662,20 +690,15 @@ INTERCEPTOR_WINAPI(size_t, RtlSizeHeap, HANDLE HeapHandle, DWORD Flags,
     return REAL(RtlSizeHeap)(HeapHandle, Flags, BaseAddress);
   }
 
-  AllocationOwnership owner(HeapHandle, BaseAddress);
-  if (UNLIKELY(owner != AllocationOwnership::ASAN)) {
+  AsanHeapHandle heap_handle = GetAsanHeapHandle(HeapHandle, BaseAddress);
+  if (UNLIKELY(heap_handle.owner != AllocationOwnership::ASAN)) {
     return REAL(RtlSizeHeap)(HeapHandle, Flags, BaseAddress);
   }
-
-  AsanHeap *asan_heap = GetAsanHeap(HeapHandle);
-
-  // Take the lock in the AsanHeap
-  RecursiveScopedLock raii_lock(asan_heap->lock, asan_heap->thread_id);
 
   {
     // We know that ASAN owns the memory but let's make sure it is owned by
     // this heap.
-    AsanMemoryMap::Handle h(&(asan_heap->memory_map),
+    AsanMemoryMap::Handle h(&(heap_handle.heap.memory_map),
                             reinterpret_cast<uptr>(BaseAddress), false, false);
     // If the pointer is not in the heap's allocated memory map one of
     // two things could be happening:
@@ -702,20 +725,17 @@ INTERCEPTOR_WINAPI(void *, RtlAllocateHeap, HANDLE HeapHandle, DWORD Flags,
     return REAL(RtlAllocateHeap)(HeapHandle, Flags, Size);
   }
 
-  AsanHeap *asan_heap = GetAsanHeap(HeapHandle);
-  if (UNLIKELY(!asan_heap->is_supported)) {
+  AsanHeapHandle heap_handle = GetAsanHeapHandle(HeapHandle, nullptr);
+  if (UNLIKELY(!heap_handle.heap.is_supported)) {
     return REAL(RtlAllocateHeap)(HeapHandle, Flags, Size);
   }
 
-  const DWORD all_flags = Flags | asan_heap->GetFlags();
+  const DWORD all_flags = Flags | heap_handle.heap.GetFlags();
   const DWORD unsupported_flags = all_flags & HEAP_ALLOCATE_UNSUPPORTED_FLAGS;
 
   if (UNLIKELY(unsupported_flags)) {
     return REAL(RtlAllocateHeap)(HeapHandle, Flags, Size);
   }
-
-  // Take the lock in the AsanHeap
-  RecursiveScopedLock raii_lock(asan_heap->lock, asan_heap->thread_id);
 
   GET_STACK_TRACE_MALLOC;
   void *p = asan_malloc(Size, &stack);
@@ -730,12 +750,12 @@ INTERCEPTOR_WINAPI(void *, RtlAllocateHeap, HANDLE HeapHandle, DWORD Flags,
   }
 
   AsanHeapMemoryNode *mem_node = new AsanHeapMemoryNode(p);
-  AsanHeapMemoryNode *prev_tail = asan_heap->asan_memory.back();
-  asan_heap->asan_memory.push_back(mem_node);
+  AsanHeapMemoryNode *prev_tail = heap_handle.heap.asan_memory.back();
+  heap_handle.heap.asan_memory.push_back(mem_node);
 
   {
-    AsanMemoryMap::Handle h(&(asan_heap->memory_map), reinterpret_cast<uptr>(p),
-                            false, true);
+    AsanMemoryMap::Handle h(&(heap_handle.heap.memory_map),
+                            reinterpret_cast<uptr>(p), false, true);
     *h = prev_tail;
   }
 
@@ -748,12 +768,18 @@ INTERCEPTOR_WINAPI(LOGICAL, RtlFreeHeap, void *HeapHandle, DWORD Flags,
     return REAL(RtlFreeHeap)(HeapHandle, Flags, BaseAddress);
   }
 
-  AllocationOwnership owner(HeapHandle, BaseAddress);
-  if (UNLIKELY(owner == AllocationOwnership::RTL)) {
+  AsanHeapHandle heap_handle = GetAsanHeapHandle(HeapHandle, BaseAddress);
+  if (UNLIKELY(heap_handle.owner == AllocationOwnership::RTL)) {
     return REAL(RtlFreeHeap)(HeapHandle, Flags, BaseAddress);
   }
 
-  if (owner == AllocationOwnership::NEITHER) {
+  if (heap_handle.owner == AllocationOwnership::NEITHER) {
+    // If we're calling RtlFreeHeap inside of another call to an Rtl* function
+    // we assume that ntdll knows what it's doing.
+    if (!heap_handle.raii_lock.serialized) {
+        return REAL(RtlFreeHeap)(HeapHandle, Flags, BaseAddress);
+    }
+
     GET_STACK_TRACE_FREE;
     // This should either return double-free or wild pointer errors
     asan_free(BaseAddress, &stack, FROM_MALLOC);
@@ -761,15 +787,9 @@ INTERCEPTOR_WINAPI(LOGICAL, RtlFreeHeap, void *HeapHandle, DWORD Flags,
     return false;
   }
 
-  // ASAN owns the memory
-  AsanHeap *asan_heap = GetAsanHeap(HeapHandle);
-
-  // Take the lock in the AsanHeap
-  RecursiveScopedLock raii_lock(asan_heap->lock, asan_heap->thread_id);
-
   AsanHeapMemoryNode *found;
   {
-    AsanMemoryMap::Handle h_delete(&(asan_heap->memory_map),
+    AsanMemoryMap::Handle h_delete(&(heap_handle.heap.memory_map),
                                    reinterpret_cast<uptr>(BaseAddress), true,
                                    false);
 
@@ -797,12 +817,12 @@ INTERCEPTOR_WINAPI(LOGICAL, RtlFreeHeap, void *HeapHandle, DWORD Flags,
   AsanHeapMemoryNode *update;
   if (found) {
     remove = found->next;
-    asan_heap->asan_memory.extract(found, found->next);
+    heap_handle.heap.asan_memory.extract(found, found->next);
     update = found->next;
   } else {
-    remove = asan_heap->asan_memory.front();
-    asan_heap->asan_memory.pop_front();
-    update = asan_heap->asan_memory.front();
+    remove = heap_handle.heap.asan_memory.front();
+    heap_handle.heap.asan_memory.pop_front();
+    update = heap_handle.heap.asan_memory.front();
   }
 
   CHECK(remove->memory == BaseAddress &&
@@ -811,12 +831,12 @@ INTERCEPTOR_WINAPI(LOGICAL, RtlFreeHeap, void *HeapHandle, DWORD Flags,
 
   if (update) {
     {
-      AsanMemoryMap::Handle h_update(&(asan_heap->memory_map),
+      AsanMemoryMap::Handle h_update(&(heap_handle.heap.memory_map),
                                      reinterpret_cast<uptr>(update->memory),
                                      true, false);
     }
     {
-      AsanMemoryMap::Handle h_update(&(asan_heap->memory_map),
+      AsanMemoryMap::Handle h_update(&(heap_handle.heap.memory_map),
                                      reinterpret_cast<uptr>(update->memory),
                                      false, true);
       *h_update = found;
@@ -841,19 +861,14 @@ INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
     return WRAP(RtlAllocateHeap)(HeapHandle, Flags, Size);
   }
 
-  AllocationOwnership owner(HeapHandle, BaseAddress);
-
-  AsanHeap *asan_heap = GetAsanHeap(HeapHandle);
-  if (UNLIKELY(!asan_heap->is_supported)) {
+  AsanHeapHandle heap_handle = GetAsanHeapHandle(HeapHandle, BaseAddress);
+  if (UNLIKELY(!heap_handle.heap.is_supported)) {
     return REAL(RtlReAllocateHeap)(HeapHandle, Flags, BaseAddress, Size);
   }
 
-  const DWORD all_flags = Flags | asan_heap->GetFlags();
+  const DWORD all_flags = Flags | heap_handle.heap.GetFlags();
   const DWORD asan_unsupported_flags =
       (HEAP_REALLOC_UNSUPPORTED_FLAGS & all_flags);
-
-  // Take the lock in the AsanHeap
-  RecursiveScopedLock raii_lock(asan_heap->lock, asan_heap->thread_id);
 
   GET_STACK_TRACE_MALLOC;
   GET_CURRENT_PC_BP_SP;
@@ -861,7 +876,7 @@ INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
 
   void *replacement_alloc = nullptr;
   size_t old_size;
-  if (owner == AllocationOwnership::NEITHER) {
+  if (heap_handle.owner == AllocationOwnership::NEITHER) {
     // This should cause a use-after-free or wild pointer error. If it is a
     // wild pointer error the pointer was either nonsense or came from
     // another heap.
@@ -873,17 +888,18 @@ INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
 
     if (replacement_alloc) {
       AsanHeapMemoryNode *mem_node = new AsanHeapMemoryNode(replacement_alloc);
-      AsanHeapMemoryNode *prev_tail = asan_heap->asan_memory.back();
-      asan_heap->asan_memory.push_back(mem_node);
+      AsanHeapMemoryNode *prev_tail = heap_handle.heap.asan_memory.back();
+      heap_handle.heap.asan_memory.push_back(mem_node);
 
       {
-        AsanMemoryMap::Handle h(&(asan_heap->memory_map),
+        AsanMemoryMap::Handle h(&(heap_handle.heap.memory_map),
                                 reinterpret_cast<uptr>(replacement_alloc),
                                 false, true);
         *h = prev_tail;
       }
     }
-  } else if (!asan_unsupported_flags && owner == AllocationOwnership::ASAN) {
+  } else if (!asan_unsupported_flags &&
+             heap_handle.owner == AllocationOwnership::ASAN) {
     // HeapReAlloc and HeapAlloc both happily accept 0 sized allocations.
     // passing a 0 size into asan_realloc will free the allocation.
     // To avoid this and keep behavior consistent, fudge the size if 0.
@@ -899,7 +915,7 @@ INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
     AsanHeapMemoryNode *found;
     bool new_malloc_rtl_mismatch = false;
     {
-      AsanMemoryMap::Handle h_delete(&(asan_heap->memory_map),
+      AsanMemoryMap::Handle h_delete(&(heap_handle.heap.memory_map),
                                      reinterpret_cast<uptr>(BaseAddress), true,
                                      false);
 
@@ -941,7 +957,7 @@ INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
         if (found) {
           found->next->memory = replacement_alloc;
         } else {
-          asan_heap->asan_memory.front()->memory = replacement_alloc;
+          heap_handle.heap.asan_memory.front()->memory = replacement_alloc;
         }
       } else {
         // If the function which created this allocation was not an Rtl
@@ -950,21 +966,23 @@ INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
         // TODO: Emit an ASan error here
         AsanHeapMemoryNode *mem_node =
             new AsanHeapMemoryNode(replacement_alloc);
-        found = asan_heap->asan_memory.back();
-        asan_heap->asan_memory.push_back(mem_node);
+        found = heap_handle.heap.asan_memory.back();
+        heap_handle.heap.asan_memory.push_back(mem_node);
       }
 
-      AsanMemoryMap::Handle h_new(&(asan_heap->memory_map),
+      AsanMemoryMap::Handle h_new(&(heap_handle.heap.memory_map),
                                   reinterpret_cast<uptr>(replacement_alloc),
                                   false, true);
       *h_new = found;
     }
   } else if (UNLIKELY(!asan_unsupported_flags &&
-                      owner == AllocationOwnership::RTL)) {
-    old_size = REAL(RtlSizeHeap)(HeapHandle, Flags, BaseAddress);
+                      heap_handle.owner == AllocationOwnership::RTL)) {
+    old_size =
+        REAL(RtlSizeHeap)(HeapHandle, Flags, BaseAddress);
 
     if (old_size != ~size_t{0}) {
-      replacement_alloc = WRAP(RtlAllocateHeap)(HeapHandle, Flags, Size);
+      replacement_alloc =
+          WRAP(RtlAllocateHeap)(HeapHandle, Flags, Size);
       if (replacement_alloc == nullptr) {
         return nullptr;
       } else {
@@ -976,7 +994,7 @@ INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
       return nullptr;
     }
   } else if (UNLIKELY(asan_unsupported_flags &&
-                      owner == AllocationOwnership::ASAN)) {
+                      heap_handle.owner == AllocationOwnership::ASAN)) {
     // Conversion to unsupported flags allocation,
     // transfer this allocation to the original allocator.
     replacement_alloc = REAL(RtlAllocateHeap)(HeapHandle, Flags, Size);
@@ -987,11 +1005,11 @@ INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
       WRAP(RtlFreeHeap)(HeapHandle, Flags, BaseAddress);
     }
   } else if (UNLIKELY(asan_unsupported_flags &&
-                      owner == AllocationOwnership::RTL)) {
+                      heap_handle.owner == AllocationOwnership::RTL)) {
     // Currently owned by rtl using unsupported ASAN flags,
     // just pass back to original allocator.
-    replacement_alloc =
-        REAL(RtlReAllocateHeap)(HeapHandle, Flags, BaseAddress, Size);
+    replacement_alloc = REAL(RtlReAllocateHeap)(
+        HeapHandle, Flags, BaseAddress, Size);
   }
 
   return replacement_alloc;

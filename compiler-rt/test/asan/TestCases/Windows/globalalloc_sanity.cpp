@@ -9,7 +9,7 @@
 
 int main() {
   char *buffer;
-  buffer = (char*)ALLOC(FIXED, 32),
+  buffer = (char*)ALLOC(FixedType, 32),
   buffer[0] = 'a';
   FREE(buffer);
   puts("Okay");

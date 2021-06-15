@@ -6,17 +6,21 @@
 #define ATTRIBUTE_NOINLINE __declspec(noinline)
 #define ATTRIBUTE_ALIGNED(x) __declspec(align(x))
 #define ATTRIBUTE_NO_SANITIZE_ADDRESS __declspec(no_sanitize_address)
-#define ATTRIBUTE_USED                /* FIXME: Is there a __declspec used? */
+#define ATTRIBUTE_USED /* FIXME: Is there a __declspec used? */
 #define ATTRIBUTE_ALWAYS_INLINE __forceinline
 #define VOLATILE volatile
 #define EXTRACT_RETURN_ADDRESS _ReturnAddress()
-#define ASM_CAUSE_SIDE_EFFECT(dest) __asm{ mov eax, dest }
-#define MULTIPLE_ATTRIBUTE_DECL(a, b) __declspec( a b )
+#define ASM_CAUSE_SIDE_EFFECT(dest) __asm { mov eax, dest}
+#define MULTIPLE_ATTRIBUTE_DECL(a, b) __declspec(a b)
 #ifdef _DEBUG
-// _DEBUG tests are compiled with NDEBUG to turn off CRT debug assertions 
+// _DEBUG tests are compiled with NDEBUG to turn off CRT debug assertions
 // that will throw before we can get to the asan report.
 #undef assert
-#define assert(x) if (!(x)) return 1;
+#define assert(x) \
+  do {            \
+    if (!(x))     \
+      return 1;   \
+  } while(0)
 #endif // _DEBUG
 #else
 
@@ -28,7 +32,10 @@
 #define INLINE_ASM(x) __asm__(x)
 #define VOLATILE __volatile__
 #define EXTRACT_RETURN_ADDRESS __builtin_extract_return_addr(__builtin_return_address(0))
-#define ASM_CAUSE_SIDE_EFFECT(dest) __asm__ __volatile__("" : : "r" (dest) : "memory");
+#define ASM_CAUSE_SIDE_EFFECT(dest) __asm__ __volatile__(""          \
+                                                         :           \
+                                                         : "r"(dest) \
+                                                         : "memory");
 #define MULTIPLE_ATTRIBUTE_DECL(a, b) __attribute__((a, b))
 
 #endif // _MSC_VER

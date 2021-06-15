@@ -11,7 +11,7 @@
 #include "globallocal_shared.h"
 
 int main() {
-  void *ptr = ALLOC(FIXED, 4);
+  void *ptr = ALLOC(FixedType, 4);
   assert(ptr);
   void *ptr2 = REALLOC(ptr, 0, ZEROINIT);
   assert(ptr2);
