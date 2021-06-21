@@ -124,88 +124,35 @@ void *MmapOrDie(uptr size, const char *mem_type, bool raw_report) {
   return rv;
 }
 
-#ifndef NTSTATUS
-#define NTSTATUS long
-#endif
-
-typedef enum _MEMORY_INFORMATION_CLASS {
-  MemoryBasicInformation,
-  MemoryWorkingSetInformation,
-  MemoryMappedFilenameInformation,
-  MemoryRegionInformation,
-  MemoryWorkingSetExInformation,
-  MemorySharedCommitInformation,
-  MemoryImageInformation,
-  MemoryRegionInformationEx,
-  MemoryPrivilegedBasicInformation,
-  MemoryEnclaveImageInformation,
-  MemoryBasicInformationCapped,
-  MemoryPhysicalContiguityInformation,
-  MemoryBadInformation
-} MEMORY_INFORMATION_CLASS;
-
+// The WoW64 layer has a bug where it doesn't properly handle the
+// WIN32_MEMORY_INFORMATION_CLASS, so we define the extended version
+// that it can actually handle.
 typedef struct _MEMORY_REGION_INFORMATION {
   PVOID AllocationBase;
   ULONG AllocationProtect;
-  ULONG RegionType;
+  ULONG Flags;
   SIZE_T RegionSize;
   SIZE_T CommitSize;
+  SIZE_T PartitionId;
+  SIZE_T NodePreference;
 } MEMORY_REGION_INFORMATION;
 
-#if !SANITIZER_WINDOWS64
-typedef struct __declspec(align(8)) _MEMORY_REGION_INFORMATION_WOW64 {
-  PVOID AllocationBase;
-  PVOID __alignment1;
-  ULONG AllocationProtect;
-  ULONG RegionType;
-  DWORD RegionSize;
-  PVOID __alignment2;
-  DWORD CommitSize;
-  PVOID __alignment3;
-} MEMORY_REGION_INFORMATION_WOW64;
-#endif
-
-using NtQueryVirtualMemory_t = NTSTATUS(NTAPI *)(
-    HANDLE ProcessHandle, PVOID BaseAddress,
-    MEMORY_INFORMATION_CLASS MemoryInformationClass, PVOID MemoryInformation,
-    SIZE_T MemoryInformationLength, PSIZE_T ReturnLength);
-NtQueryVirtualMemory_t NtQueryVirtualMemory = nullptr;
+using QueryVirtualMemoryInformation_t = BOOL(NTAPI *)(
+    HANDLE Process, const VOID *VirtualAddress,
+    WIN32_MEMORY_INFORMATION_CLASS MemoryInformationClass,
+    PVOID MemoryInformation, SIZE_T MemoryInformationSize, PSIZE_T ReturnSize);
+QueryVirtualMemoryInformation_t QueryVirtualMemoryInformation = nullptr;
 
 MEMORY_REGION_INFORMATION QueryVirtualMemory(void *addr) {
-  DCHECK(NtQueryVirtualMemory);
+  DCHECK(QueryVirtualMemoryInformation);
 
   MEMORY_REGION_INFORMATION mem_info;
-  NTSTATUS result_status;
 
-#if !SANITIZER_WINDOWS64
-  BOOL isWoW64;
-  CHECK(IsWow64Process(GetCurrentProcess(), &isWoW64));
-
-  if (isWoW64) {
-    MEMORY_REGION_INFORMATION_WOW64 mem_info_wow64;
-    result_status =
-        NtQueryVirtualMemory(GetCurrentProcess(), addr, MemoryRegionInformation,
-                             &mem_info_wow64, sizeof(mem_info_wow64), NULL);
-
-    mem_info.AllocationBase = mem_info_wow64.AllocationBase;
-    mem_info.AllocationProtect = mem_info_wow64.AllocationProtect;
-    mem_info.RegionType = mem_info_wow64.RegionType;
-    mem_info.RegionSize = mem_info_wow64.RegionSize;
-    mem_info.CommitSize = mem_info_wow64.CommitSize;
-  } else {
-#endif
-    result_status =
-        NtQueryVirtualMemory(GetCurrentProcess(), addr, MemoryRegionInformation,
-                             &mem_info, sizeof(mem_info), NULL);
-#if !SANITIZER_WINDOWS64
-  }
-#endif
-
-  if (UNLIKELY(result_status >= 0x80000000)) {
-    Report(
-        "ERROR: %s failed to query virtual memory at %p, "
-        "with error %llx",
-        SanitizerToolName, addr, (long long)result_status);
+  if (UNLIKELY(!QueryVirtualMemoryInformation(GetCurrentProcess(), addr,
+                                              MemoryRegionInfo, &mem_info,
+                                              sizeof(mem_info), nullptr))) {
+    Report("ERROR: %s failed to query virtual memory at %p, with error %d",
+           SanitizerToolName, addr, GetLastError());
     CHECK("unable to query virtual memory" && 0);
   }
 
@@ -355,11 +302,9 @@ void *MmapAlignedOrDieOnFatalError(uptr size, uptr alignment,
 }
 
 bool MmapFixedNoReserve(uptr fixed_addr, uptr size, const char *name) {
-  // FIXME: is this really "NoReserve"? On Win32 this does not matter much,
-  // but on Win64 it does.
   (void)name;  // unsupported
 #if !SANITIZER_GO && SANITIZER_WINDOWS64
-  // On asan/Windows64, use MEM_COMMIT would result in error
+  // On asan/Windows64, using MEM_COMMIT would result in error
   // 1455:ERROR_COMMITMENT_LIMIT.
   // Asan uses exception handler to commit page on demand.
   void *p = VirtualAlloc((LPVOID)fixed_addr, size, MEM_RESERVE, PAGE_READWRITE);
@@ -1197,13 +1142,15 @@ void CheckVMASize() {
 }
 
 void InitializePlatformEarly() {
-  DCHECK(!NtQueryVirtualMemory);
+  DCHECK(!QueryVirtualMemoryInformation);
 
-  HMODULE handle = GetModuleHandleA("NTDLL.DLL");
-  NtQueryVirtualMemory = reinterpret_cast<NtQueryVirtualMemory_t>(
-      GetProcAddress(handle, "NtQueryVirtualMemory"));
+  HMODULE handle = GetModuleHandleA("KERNELBASE.DLL");
+  QueryVirtualMemoryInformation =
+      reinterpret_cast<QueryVirtualMemoryInformation_t>(
+          GetProcAddress(handle, "QueryVirtualMemoryInformation"));
 
-  CHECK(NtQueryVirtualMemory);
+  CHECK(QueryVirtualMemoryInformation &&
+        "ASan requires the Windows 10-only API, QueryVirtualMemoryInformation");
 }
 
 void MaybeReexec() {
