@@ -334,7 +334,7 @@ setattr(litConfig,"target_cflags","")
 litConfig.target_suffix = litConfig.target_arch
 litConfig.compiler_rt_libdir = os.environ['ASAN_RT_LIB_DIR']
 litConfig.compiler_rt_src_root = os.environ['ASAN_RT_SRC_ROOT']
-litConfig.python_executable = "c:\python27\python.exe"
+litConfig.python_executable = sys.executable
 litConfig.android = False
 litConfig.pipefail = True
 litConfig.bashPath = ""
@@ -351,20 +351,20 @@ testConfig.environment = os.environ
 arch_specific_features = []
 if opts.testTargetArch == "x86_64":
     litConfig.bits = "64"
-    arch_specific_features = ['asan-64-bits', 'x86_64-target-arch']
+    arch_specific_features = ['asan-64-bits', 'x86_64-target-arch', 'msvc-host-x86_64']
 elif opts.testTargetArch == "i386":
     litConfig.bits = "32"
-    arch_specific_features =  ['asan-32-bits', 'x86-target-arch']
+    arch_specific_features =  ['asan-32-bits', 'x86-target-arch', 'msvc-host-i386']
 else:
     assert 0 and "Error: unsupported ASan runtime architecture."
 
 if opts.force_dynamic:
     testConfig.available_features = [ 'clang-dynamic-runtime',
     'asan-dynamic-runtime','stable-runtime',
-    "shadow-scale-3", "msvc-host", "win32", 'windows-msvc','win32-dynamic-asan']
+    "shadow-scale-3", "msvc-host", "win32", "windows", 'windows-msvc', 'win32-dynamic-asan']
 else:
     testConfig.available_features = ['clang-static-runtime', 'asan-static-runtime','stable-runtime',
-    "shadow-scale-3", "msvc-host", "win32" , "windows-msvc" , 'win32-static-asan' ]
+    "shadow-scale-3", "msvc-host", "win32", "windows", "windows-msvc" , 'win32-static-asan' ]
 
 testConfig.available_features += arch_specific_features
 
@@ -376,7 +376,10 @@ if opts.debug_runtimes:
     dynamic_runtime_thunk = "clang_rt.asan_dbg_dynamic_runtime_thunk-" + test_target_arch + ".lib"
     dynamic_runtime_dll = "clang_rt.asan_dbg_dynamic-" + test_target_arch + ".dll"
     dll_thunk_lib = "clang_rt.asan_dbg_dll_thunk-" + test_target_arch + ".lib"
-    fuzzer_no_main_lib = "clang_rt.fuzzer_no_main-" + test_target_arch + ".lib"
+    fuzzer_dynamic_lib = "clang_rt.fuzzer_MDd-" + test_target_arch + ".lib"
+    fuzzer_no_main_dynamic_lib = "clang_rt.fuzzer_MDd_no_main-" + test_target_arch + ".lib"
+    fuzzer_static_lib = "clang_rt.fuzzer_MTd-" + test_target_arch + ".lib"
+    fuzzer_no_main_static_lib = "clang_rt.fuzzer_MTd_no_main-" + test_target_arch + ".lib"
     profile_lib = "clang_rt.profile-" + test_target_arch + ".lib"
 else:
     dynamic_import_lib = "clang_rt.asan_dynamic-" + test_target_arch + ".lib"
@@ -385,7 +388,10 @@ else:
     dynamic_runtime_thunk = "clang_rt.asan_dynamic_runtime_thunk-" + test_target_arch + ".lib"
     dynamic_runtime_dll = "clang_rt.asan_dynamic-" + test_target_arch + ".dll"
     dll_thunk_lib = "clang_rt.asan_dll_thunk-" + test_target_arch + ".lib"
-    fuzzer_no_main_lib = "clang_rt.fuzzer_no_main-" + test_target_arch + ".lib"
+    fuzzer_dynamic_lib = "clang_rt.fuzzer_MD-" + test_target_arch + ".lib"
+    fuzzer_no_main_dynamic_lib = "clang_rt.fuzzer_MD_no_main-" + test_target_arch + ".lib"
+    fuzzer_static_lib = "clang_rt.fuzzer_MT-" + test_target_arch + ".lib"
+    fuzzer_no_main_static_lib = "clang_rt.fuzzer_MT_no_main-" + test_target_arch + ".lib"
     profile_lib = "clang_rt.profile-" + test_target_arch + ".lib"
 
 if opts.force_dynamic:
@@ -400,9 +406,8 @@ else:
     selected_runtime = STATIC_RT_FLAG
     default_flags += STATIC_RT_FLAG
 
-
-subsitute_obj = lit.TestingConfig.SubstituteCaptures("/Fe:%t\g<1>")
-object_substitute_tuple = ("-o %t( |)",subsitute_obj)
+out_to_exe_tuple = ("(?<! (-|/)c )-o %t( |)", lit.TestingConfig.SubstituteCaptures("/Fe:%t\g<2>"))
+out_to_obj_tuple = ("(-|/)c -o %t( |)", lit.TestingConfig.SubstituteCaptures("/c /Fo:%t\g<2>"))
 
 #set of optimization substitutions
 optimization_subs = {
@@ -429,6 +434,7 @@ if opts.disable_opt:
 # these are a base that will be modified later for some sets of tests,
 # some for individual tests, too
 testConfig.substitutions = {
+                            ("FileCheck ", "FileCheck --dump-input=fail "),
                             ("-fsanitize-coverage=func ", lit.TestingConfig.SubstituteCaptures("/d2Sancov " )),
                             ("%sancov", "sancov.exe"),
                             ("%clangxx_asan", litConfig.clang +  default_flags + " /fsanitize=address /Oy- " ),
@@ -436,11 +442,14 @@ testConfig.substitutions = {
                             ("%clang_asan", litConfig.clang +  default_flags + " /fsanitize=address /Oy- "),
                             ("%clang_cl ", litConfig.clang + default_flags),
                             ("%clang ", litConfig.clang + default_flags),
+                            ("%cpp_compiler ", litConfig.clang + default_flags + " /fsanitize=address /fsanitize=fuzzer "),
+                            ("%no_fuzzer_cpp_compiler ", litConfig.clang + default_flags),
+                            ("%no_fuzzer_c_compiler ", litConfig.clang + default_flags),
+                            ("%libfuzzer_src", litConfig.compiler_rt_src_root + "\\lib\\fuzzer"),
                             ("%asan_dll_lib", litConfig.compiler_rt_libdir + "\\" + dynamic_import_lib + " "),
                             ("%asan_dll ", litConfig.compiler_rt_libdir + "\\" + dynamic_runtime_dll + " "),
                             ("%env_asan_opts=", "env ASAN_OPTIONS=" ),
                             ("-Fe","/Fe:"),
-                            ("-o %t.obj","/Fo:%t.obj"),
                             ("%run"," cmd /v /c "),
                             ("-fomit-frame-pointer","/Oy"),
                             ("-fno-omit-frame-pointer","/Oy-"),
@@ -455,6 +464,8 @@ testConfig.substitutions = {
                             ("mkdir ",os.environ["UNIX_BIN_DIR"]+"\\mkdir.exe "),
                             ("grep ", os.environ["UNIX_BIN_DIR"]+"\\grep.exe "),
                             ("awk ", os.environ["UNIX_BIN_DIR"]+"\\awk.exe "),
+                            ("rm ", os.environ["UNIX_BIN_DIR"]+"\\rm.exe "),
+                            ("python ", sys.executable + " "),
                             ("-LD","/LD"),
                             (" -D"," /D"),
                             ("-x c "," /Tc%s "),
@@ -469,8 +480,10 @@ testConfig.substitutions = {
                             ("set ASAN_OPTIONS=suppressions=\"(.*)\"", lit.TestingConfig.SubstituteCaptures("set ASAN_OPTIONS=suppressions='\g<1>'")),
                             ("2>&1"," 2>&1 "),
                             ("echo ", os.environ["UNIX_BIN_DIR"]+"\\echo.exe "),
+                            ("diff ", os.environ["UNIX_BIN_DIR"]+"\\diff.exe "),
                             ("-Wno-fortify-source", " "),
-                            ("-Wl,-debug"," ")
+                            ("-Wl,-debug"," "),
+                            ("-Wl,-OPT:REF", "/link /OPT:REF")
                             }
 
 if opts.force_dynamic:
@@ -492,8 +505,11 @@ suite = lit.Test.TestSuite("msvc",sys.argv[1], os.environ['TEST_OUTPUT_DIR'], te
 
 
 # grab the list of test source files in the directory we've selected
+# If the suite uses .test files, only use those (ex: fuzzer). Otherwise, treat all source files as tests (ex: asan).
 files = os.listdir(suite.source_root)
-cc_files = filter(lambda x: ".c" in x[-2:] or ".cpp" in x[-4:], files) 
+cc_files = filter(lambda x: ".test" in x[-5:], files)
+if not cc_files:
+    cc_files = filter(lambda x: ".c" in x[-2:] or ".cpp" in x[-4:], files)
 
 #set up some blank lists and dicts for use later.
 tests_to_run = []
@@ -516,12 +532,12 @@ for cc_file in cc_files:
     #test = lit.Test.Test(suite,[ cc_file],__litConfig)
 
     if opts.runTest == "" or opts.runTest in cc_file:
-        if ".cpp" not in cc_file:
+        if ".c" not in cc_file[-2:]:
             __testConfig.substitutions.add((" /EHs ", " "))
         #all
         saved_cl = __testConfig.environment["_CL_"]
         saved_link = __testConfig.environment["_LINK_"]
-              
+
         if "unsymbolized" in cc_file:
             __testConfig.environment["_CL_"] = "/Zi /fsanitize=address"
             __testConfig.environment["_LINK_"] = " "
@@ -538,7 +554,8 @@ for cc_file in cc_files:
         else:
             #elsewhere asan_lib and asan_cxx_lib should still resolve to the regular library names
             __testConfig.substitutions |= {
-                object_substitute_tuple,
+                out_to_obj_tuple,
+                out_to_exe_tuple,
                 ("%asan_lib", __litConfig.compiler_rt_libdir + "\\" + static_lib + ""),
                 ("%asan_cxx_lib", __litConfig.compiler_rt_libdir + "\\" + static_cxx_lib + ""),
             }
@@ -548,7 +565,7 @@ for cc_file in cc_files:
                 ("/EHs","/EHa"),
                 ("/GS ", " /GS- ")
             }
-       
+
         if "user-exception" in cc_file:
             __testConfig.substitutions |= {
                 ("env ASAN_OPTIONS=([\w=0-9]+) ",lit.TestingConfig.SubstituteCaptures("set ASAN_OPTIONS=\g<1> && "))
@@ -558,19 +575,18 @@ for cc_file in cc_files:
             __testConfig.substitutions.remove(("-O1", "/O1i-"))
             __testConfig.substitutions.add(("-O1", "/Od"))
             __testConfig.substitutions.add(("-O1i-", "/Od"))
-            
+
         __testConfig.environment['_CL_'] += " /Fd" + cc_file + ".pdb " + selected_runtime + " "
         __testConfig.environment['_LINK_'] += " /force:multiple "
         __suite = lit.Test.TestSuite("msvc",sys.argv[1], os.path.join(__testConfig.environment['TEST_OUTPUT_DIR'],cc_file.replace(".","")+opts.testTargetArch), __testConfig)
-        testConfig.substitutions = sorted(testConfig.substitutions)[::-1]
         __test = lit.Test.Test(__suite,[ cc_file],__testConfig)
         print "found test %s"%(cc_file)
         tests_to_run.append( (cc_file, __test, __litConfig) )
         #print test.suite.getSourcePath(test.path_in_suite)
         if opts.print_env:
-            for item in sorted(testConfig.environment.keys()):
-                print str(item) + "=" + testConfig.environment[item]
-            for item in sorted(testConfig.substitutions):
+            for item in sorted(__testConfig.environment.keys()):
+                print str(item) + "=" + __testConfig.environment[item]
+            for item in sorted(__testConfig.substitutions):
                 print item
         """
         #print result.output

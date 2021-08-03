@@ -1,3 +1,5 @@
+# MSVC does not support -fsanitize-coverage=0
+UNSUPPORTED: msvc-host
 RUN: %cpp_compiler %S/NotinstrumentedTest.cpp -fsanitize-coverage=0 -o %t-NotinstrumentedTest-NoCoverage
 RUN: not %run %t-NotinstrumentedTest-NoCoverage 2>&1 | FileCheck %s --check-prefix=NO_COVERAGE
 

@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <numeric>
 #include <set>
+#include "test_msvc_host.h"
 
 extern "C" size_t LLVMFuzzerCustomMutator(uint8_t *Data, size_t Size,
                                           size_t MaxSize, unsigned int Seed) {

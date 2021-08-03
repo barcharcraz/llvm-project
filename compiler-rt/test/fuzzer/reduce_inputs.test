@@ -1,4 +1,6 @@
 # Test -reduce_inputs=1
+# MSVC does not reduce 7 files to 4
+UNSUPPORTED: msvc-host
 
 RUN: rm -rf %t/C
 RUN: mkdir -p %t/C

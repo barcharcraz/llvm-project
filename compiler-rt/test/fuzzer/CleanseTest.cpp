@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include "test_msvc_host.h"
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
   if (Size >= 20 && Data[1] == '1' && Data[5] == '5' && Data[10] == 'A' &&

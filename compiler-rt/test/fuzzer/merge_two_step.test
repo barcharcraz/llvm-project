@@ -1,3 +1,5 @@
+# MSVC always adds 'F.....' to corpus when already present
+UNSUPPORTED: msvc-host
 RUN: %cpp_compiler %S/FullCoverageSetTest.cpp -o %t-FullCoverageSetTest
 
 RUN: rm -rf %t/T0 %t/T1 %t/T2
@@ -26,6 +28,6 @@ CHECK2: MERGE-OUTER: non-empty control file provided
 CHECK2: MERGE-OUTER: control file ok, 3 files total, first not processed file 3
 CHECK2: MERGE-OUTER: starting merge from scratch, but reusing coverage information from the given control file
 CHECK2: MERGE-OUTER: 7 files, 0 in the initial corpus, 3 processed earlier
-CHECK2: MERGE-INNER: using the control file 
+CHECK2: MERGE-INNER: using the control file
 CHECK2: MERGE-INNER: 4 total files; 0 processed earlier; will process 4 files now
 CHECK2: MERGE-OUTER: 6 new files with {{.*}} new features added; 14 new coverage edges

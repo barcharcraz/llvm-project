@@ -1,4 +1,5 @@
-UNSUPPORTED: darwin, aarch64
+# Disabled on MSVC due to incomplete /fsanitize-coverage=pc-table support (needed for -print_funcs)
+UNSUPPORTED: darwin, aarch64, msvc-host
 RUN: %cpp_compiler %S/PrintFuncTest.cpp -o %t
 RUN: %run %t -seed=1 -runs=100000 2>&1 | FileCheck %s
 RUN: %run %t -seed=1 -runs=100000 -print_funcs=0 2>&1 | FileCheck %s --check-prefix=NO

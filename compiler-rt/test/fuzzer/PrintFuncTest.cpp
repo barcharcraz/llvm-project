@@ -8,8 +8,14 @@
 #include <cstdlib>
 #include <iostream>
 
+#ifndef _MSC_VER
+#define NOINLINE __attribute__((noinline))
+#else
+#define NOINLINE __declspec(noinline)
+#endif
+
 extern "C" {
-__attribute__((noinline))
+NOINLINE
 void FunctionC(const uint8_t *Data, size_t Size) {
   if (Size > 3 && Data[3] == 'Z') {
     static bool PrintedOnce = false;
@@ -20,12 +26,12 @@ void FunctionC(const uint8_t *Data, size_t Size) {
   }
 }
 
-__attribute__((noinline))
+NOINLINE
 void FunctionB(const uint8_t *Data, size_t Size) {
   if (Size > 2 && Data[2] == 'Z')
     FunctionC(Data, Size);
 }
-__attribute__((noinline))
+NOINLINE
 void FunctionA(const uint8_t *Data, size_t Size) {
   if (Size > 1 && Data[1] == 'U')
     FunctionB(Data, Size);

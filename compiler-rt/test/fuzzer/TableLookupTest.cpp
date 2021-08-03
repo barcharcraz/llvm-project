@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <set>
+#include "test_msvc_host.h"
 
 const size_t N = 1 << 12;
 

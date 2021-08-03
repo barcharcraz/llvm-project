@@ -10,6 +10,7 @@
 #include <iostream>
 #include <ostream>
 #include <thread>
+#include "test_msvc_host.h"
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
   auto C = [&] {

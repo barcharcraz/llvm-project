@@ -8,6 +8,14 @@
 #include <cstdlib>
 #include <cstring>
 
+#ifndef _MSC_VER
+#define BSWAP64(X) __builtin_bswap64(X)
+#define BSWAP32(X) __builtin_bswap32(X)
+#else /* ^^^ LLVM ^^^ // vvv MSVC vvv */
+#define BSWAP64(X) _byteswap_uint64(X)
+#define BSWAP32(X) _byteswap_ulong(X)
+#endif
+
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
   if (Size < 14) return 0;
   uint64_t x = 0;
@@ -17,9 +25,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
   memcpy(&y, Data + Size / 2, sizeof(y));
   memcpy(&z, Data + Size - sizeof(z), sizeof(z));
 
-  x = __builtin_bswap64(x);
-  y = __builtin_bswap32(y);
-  z = __builtin_bswap32(z);
+  x = BSWAP64(x);
+  y = BSWAP32(y);
+  z = BSWAP32(z);
   const bool k32bit = sizeof(void*) == 4;
 
   if ((k32bit || x == 0x46555A5A5A5A5546ULL) &&

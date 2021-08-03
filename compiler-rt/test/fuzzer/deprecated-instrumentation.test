@@ -1,3 +1,5 @@
+# Disabled on MSVC because we don't report trace-pc as deprecated.
+UNSUPPORTED: msvc-host
 CHECK: -fsanitize-coverage=trace-pc is no longer supported by libFuzzer
 RUN: %cpp_compiler %S/SimpleTest.cpp -c -o %t-SimpleTest.o -fsanitize-coverage=trace-pc
 RUN: %cpp_compiler %t-SimpleTest.o -o %t-SimpleTest

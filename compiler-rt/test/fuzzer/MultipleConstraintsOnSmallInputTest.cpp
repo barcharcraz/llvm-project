@@ -8,6 +8,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include "test_msvc_host.h"
 
 // Force noinline, as this test might be interesting for experimenting with
 // data flow tracing approach started in https://reviews.llvm.org/D46666.

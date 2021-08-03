@@ -1,3 +1,5 @@
+# MSVC does not support -fsanitize=implicit-signed-integer-truncation
+UNSUPPORTED: msvc-host
 RUN: rm -f %t-ImplicitSignedIntegerTruncationOrSignChangeTest-Ubsan
 RUN: %cpp_compiler -fsanitize=implicit-signed-integer-truncation,implicit-integer-sign-change -fno-sanitize-recover=all %S/ImplicitSignedIntegerTruncationOrSignChangeTest.cpp -o %t-ImplicitSignedIntegerTruncationOrSignChangeTest-Ubsan
 RUN: not %run %t-ImplicitSignedIntegerTruncationOrSignChangeTest-Ubsan 2>&1 | FileCheck %s

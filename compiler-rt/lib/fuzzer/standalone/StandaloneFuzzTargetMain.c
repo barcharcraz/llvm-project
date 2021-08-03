@@ -18,14 +18,26 @@
 #include <stdlib.h>
 
 extern int LLVMFuzzerTestOneInput(const unsigned char *data, size_t size);
+
+#ifndef _MSC_VER
 __attribute__((weak)) extern int LLVMFuzzerInitialize(int *argc, char ***argv);
+#else /* ^^^ LLVM ^^^ // vvv MSVC vvv */
+extern int LLVMFuzzerInitialize(int *argc, char ***argv);
+extern int __zero = 0;
+#ifdef _M_IX86
+#pragma comment(linker, "/alternatename:_LLVMFuzzerInitialize=___zero")
+#else
+#pragma comment(linker, "/alternatename:LLVMFuzzerInitialize=__zero")
+#endif
+#endif
+
 int main(int argc, char **argv) {
   fprintf(stderr, "StandaloneFuzzTargetMain: running %d inputs\n", argc - 1);
   if (LLVMFuzzerInitialize)
     LLVMFuzzerInitialize(&argc, &argv);
   for (int i = 1; i < argc; i++) {
     fprintf(stderr, "Running: %s\n", argv[i]);
-    FILE *f = fopen(argv[i], "r");
+    FILE *f = fopen(argv[i], "rb");
     assert(f);
     fseek(f, 0, SEEK_END);
     size_t len = ftell(f);

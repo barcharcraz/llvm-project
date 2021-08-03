@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include "test_msvc_host.h"
 
 static volatile int Sink;
 

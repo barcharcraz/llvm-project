@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstdio>
+#include "test_msvc_host.h"
 
 extern "C" bool Func1(const uint8_t *Data, size_t Size);
 extern "C" bool Func2(const uint8_t *Data, size_t Size);

@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <string>
+#include "test_msvc_host.h"
 
 static volatile int Sink;
 

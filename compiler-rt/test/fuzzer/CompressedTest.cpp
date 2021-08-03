@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <zlib.h>
+#include "test_msvc_host.h"
 
 // The fuzz target.
 // Uncompress the data, crash on input starting with "FU".

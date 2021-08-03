@@ -1,4 +1,4 @@
-RUN: %cpp_compiler %S/CustomMutatorTest.cpp -o %t-CustomMutatorTest
+RUN: %cpp_compiler %S/CustomMutatorTest.cpp -I%libfuzzer_src -o %t-CustomMutatorTest
 RUN: not %run %t-CustomMutatorTest 2>&1 | FileCheck %s --check-prefix=LLVMFuzzerCustomMutator
 LLVMFuzzerCustomMutator: INFO: found LLVMFuzzerCustomMutator
 LLVMFuzzerCustomMutator: In LLVMFuzzerCustomMutator

@@ -1,3 +1,5 @@
+# /fsanitize=alignment not yet implemented on MSVC
+# UNSUPPORTED: msvc-host
 RUN: rm -f %t-AlignmentAssumptionTest-Ubsan
 RUN: %cpp_compiler -fsanitize=alignment -fno-sanitize-recover=all %S/AlignmentAssumptionTest.cpp -o %t-AlignmentAssumptionTest-Ubsan
 RUN: not %run %t-AlignmentAssumptionTest-Ubsan 2>&1 | FileCheck %s

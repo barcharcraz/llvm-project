@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <cstdio>
+#include "test_msvc_host.h"
 
 const size_t N = 2048;
 typedef const uint8_t *IN;

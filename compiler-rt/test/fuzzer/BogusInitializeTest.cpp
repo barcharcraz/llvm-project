@@ -7,7 +7,7 @@
 #include <stdint.h>
 
 extern "C" int LLVMFuzzerInitialize(int *argc, char ***argv) {
-  ***argv = 'X';
+  ***argv = '\0';
   return 0;
 }
 
