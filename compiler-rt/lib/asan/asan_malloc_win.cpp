@@ -438,12 +438,12 @@ long *__p__crtBreakAlloc() { return &_crtBreakAlloc; }
 // int _CrtDbgReport(int, const char *, int, const char *, const char *, ...) {
 //   ShowStatsAndAbort();
 // }
-// 
+//
 // int _CrtDbgReportW(int reportType, const wchar_t *, int, const wchar_t *,
 //                    const wchar_t *, ...) {
 //   ShowStatsAndAbort();
 // }
-// 
+//
 // int _CrtSetReportMode(int, int) { return 0; }
 
 #endif  //_DEBUG
@@ -1100,7 +1100,7 @@ INTERCEPTOR_WINAPI(HGLOBAL, GlobalHandle, HGLOBAL hMem) {
 
 INTERCEPTOR_WINAPI(HLOCAL, LocalHandle, HLOCAL hMem) {
   if (!asan_inited) {
-    return REAL(GlobalHandle)(hMem);
+    return REAL(LocalHandle)(hMem);
   }
   return MoveableMemoryManager::GetInstance()->ResolvePointerToHandle(hMem);
 }
@@ -1275,7 +1275,6 @@ static void TryToOverrideFunction(const char *fname, uptr new_func) {
 }
 
 void ReplaceSystemMalloc() {
-#if defined(ASAN_DYNAMIC)
   TryToOverrideFunction("_aligned_free", (uptr)_aligned_free);
   TryToOverrideFunction("_aligned_malloc", (uptr)_aligned_malloc);
   TryToOverrideFunction("_aligned_msize", (uptr)_aligned_msize);
@@ -1364,7 +1363,10 @@ void ReplaceSystemMalloc() {
     INTERCEPT_FUNCTION(LocalReAlloc);
     INTERCEPT_FUNCTION(LocalLock);
     INTERCEPT_FUNCTION(LocalUnlock);
-    INTERCEPT_FUNCTION(LocalHandle);
+
+    // LocalHandle symbol is not always available.
+    __interception::OverrideFunction("LocalHandle", (uptr)WRAP(LocalHandle),
+                                     (uptr *)&REAL(LocalHandle));
   }
 
   // Undocumented functions must be intercepted by name, not by symbol.
@@ -1380,7 +1382,6 @@ void ReplaceSystemMalloc() {
                                    (uptr *)&REAL(RtlAllocateHeap));
   __interception::OverrideFunction("RtlDestroyHeap", (uptr)WRAP(RtlDestroyHeap),
                                    (uptr *)&REAL(RtlDestroyHeap));
-#endif  // defined(ASAN_DYNAMIC)
 }
 }  // namespace __asan
 
