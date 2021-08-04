@@ -603,6 +603,9 @@ if (CMAKE_LINKER MATCHES "link.exe$")
   set(CMAKE_STATIC_LINKER_FLAGS "${CMAKE_STATIC_LINKER_FLAGS} /IGNORE:4221")
 endif()
 
+# Imbue all sanitizer binaries with ehcont
+append_list_if(MSVC /guard:ehcont SANITIZER_COMMON_CFLAGS)
+
 add_subdirectory(include)
 
 option(COMPILER_RT_USE_LIBCXX
