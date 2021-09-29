@@ -1,5 +1,8 @@
 // RUN: %libomp-compile && env OMP_DISPLAY_AFFINITY=true OMP_PLACES='{0},{0,1},{0},{0,1},{0},{0,1},{0},{0,1},{0},{0,1},{0}' %libomp-run | %python %S/check.py -c 'CHECK' %s
 // REQUIRES: affinity
+// Visual Studio C/C++ compiler currently supports only OpenMP version 2.5 and 
+// tasking-related features from OpenMP 3.1 (plus minimal support for SIMD)
+// UNSUPPORTED: msvc-19
 
 #include <stdio.h>
 #include <stdlib.h>

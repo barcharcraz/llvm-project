@@ -1,5 +1,8 @@
 // RUN: %libomp-compile && env OMP_NUM_THREADS='3' %libomp-run
 // RUN: %libomp-compile && env OMP_NUM_THREADS='1' %libomp-run
+// Visual Studio C/C++ compiler currently supports only OpenMP version 2.5 and 
+// tasking-related features from OpenMP 3.1 (plus minimal support for SIMD)
+// UNSUPPORTED: msvc-19
 
 // Checked gcc 10.1 still does not support detach clause on task construct.
 // UNSUPPORTED: gcc-4, gcc-5, gcc-6, gcc-7, gcc-8, gcc-9, gcc-10

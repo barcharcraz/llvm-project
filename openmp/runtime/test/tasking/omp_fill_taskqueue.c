@@ -1,5 +1,8 @@
 // RUN: %libomp-compile && env KMP_ENABLE_TASK_THROTTLING=0 %libomp-run
 // RUN: %libomp-compile && env KMP_ENABLE_TASK_THROTTLING=1 %libomp-run
+// Visual Studio C/C++ compiler currently supports only OpenMP version 2.5 and 
+// tasking-related features from OpenMP 3.1 (plus minimal support for SIMD)
+// UNSUPPORTED: msvc-19
 
 #include<omp.h>
 #include<stdlib.h>

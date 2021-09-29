@@ -1,6 +1,8 @@
 // RUN: %libomp-compile-and-run
 // The runtime currently does not get dependency information from GCC.
 // UNSUPPORTED: gcc
+// No <pthread.h> header for Visual Studio C/C++.
+// UNSUPPORTED: msvc-19
 
 // Very flaky on openmp-clang-x86_64-linux-debian.
 // https://bugs.llvm.org/show_bug.cgi?id=45397

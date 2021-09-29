@@ -1,5 +1,6 @@
-// RUN: %libomp-compile && env OMP_NUM_THREADS='3' %libomp-run
-// RUN: %libomp-compile && env OMP_NUM_THREADS='1' %libomp-run
+// Visual Studio C compiler prohibits empty structs, compile as C++
+// RUN: env _CL_=-TP %libomp-compile && env OMP_NUM_THREADS='3' %libomp-run
+// RUN: env _CL_=-TP %libomp-compile && env OMP_NUM_THREADS='1' %libomp-run
 
 #include <stdio.h>
 #include <omp.h>

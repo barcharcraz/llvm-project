@@ -1,5 +1,8 @@
 // RUN: %libomp-cxx-compile-and-run
 // RUN: %libomp-cxx-compile -DFLG=1 && %libomp-run
+// Visual Studio C/C++ compiler currently supports only OpenMP version 2.5 and 
+// tasking-related features from OpenMP 3.1 (plus minimal support for SIMD)
+// UNSUPPORTED: msvc-19
 // GCC-5 is needed for OpenMP 4.0 support (taskgroup)
 // XFAIL: gcc-4
 #include <cstdio>

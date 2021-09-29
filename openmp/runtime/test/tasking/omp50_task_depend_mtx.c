@@ -1,4 +1,7 @@
 // RUN: %libomp-compile-and-run
+// Visual Studio C/C++ compiler currently supports only OpenMP version 2.5 and 
+// tasking-related features from OpenMP 3.1 (plus minimal support for SIMD)
+// UNSUPPORTED: msvc-19
 
 // Tests OMP 5.0 task dependences "mutexinoutset", emulates compiler codegen
 // Mutually exclusive tasks get same input dependency info array

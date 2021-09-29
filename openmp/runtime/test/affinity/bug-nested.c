@@ -1,4 +1,7 @@
 // RUN: %libomp-compile && env KMP_AFFINITY=compact %libomp-run
+// Visual Studio C/C++ compiler currently supports only OpenMP version 2.5 and 
+// tasking-related features from OpenMP 3.1 (plus minimal support for SIMD)
+// UNSUPPORTED: msvc-19
 
 #include <stdio.h>
 #include <stdint.h>

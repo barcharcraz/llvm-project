@@ -1,6 +1,9 @@
 // RUN: %libomp-compile && env OMP_CANCELLATION=true %libomp-run
 // Clang had a bug until version 4.0.1 which resulted in a hang.
 // UNSUPPORTED: clang-3, clang-4.0.0
+// Visual Studio C/C++ compiler currently supports only OpenMP version 2.5 and 
+// tasking-related features from OpenMP 3.1 (plus minimal support for SIMD)
+// UNSUPPORTED: msvc-19
 
 // Regression test for a bug in cancellation to cover effect of `#pragma omp cancel`
 // in a loop construct, on sections construct.

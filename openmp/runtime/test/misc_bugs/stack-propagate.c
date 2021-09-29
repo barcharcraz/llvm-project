@@ -1,4 +1,7 @@
 // RUN: %libomp-compile-and-run
+// Visual Studio C/C++ compiler do not allow "double arr[n];" here.
+// Also, from the comment below, this is not done on Windows
+// UNSUPPORTED: msvc-19
 
 // https://bugs.llvm.org/show_bug.cgi?id=26540 requested
 // stack size to be propagated from master to workers.

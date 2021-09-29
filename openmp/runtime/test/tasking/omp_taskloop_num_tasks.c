@@ -5,6 +5,9 @@
 
 // These compilers don't support the taskloop construct
 // UNSUPPORTED: gcc-4, gcc-5, icc-16
+// Visual Studio C/C++ compiler currently supports only OpenMP version 2.5 and 
+// tasking-related features from OpenMP 3.1 (plus minimal support for SIMD)
+// UNSUPPORTED: msvc-19
 
 // This test is known to be fragile on NetBSD kernel at the moment,
 // https://bugs.llvm.org/show_bug.cgi?id=42020.
