@@ -12,21 +12,68 @@
 //===----------------------------------------------------------------------===//
 
 #include "sanitizer_common/sanitizer_platform.h"
+
 #if SANITIZER_WINDOWS
-
-#include <atomic>
-#include <cassert>
-#include <cstdio>
-#include <mutex>
-#include <unordered_map>
-#include <vector>
-
+#include "asan_allocator.h"
+#include "asan_errors.h"
+#include "asan_internal.h"
 #include "asan_malloc_win_moveable.h"
+#include "asan_report.h"
+#include "asan_stack.h"
 #include "asan_win_immortalize.h"
-#include "sanitizer_common/sanitizer_atomic.h"
-#include "sanitizer_common/sanitizer_mutex.h"
-#include "sanitizer_common/sanitizer_internal_defs.h"
 #include "asan_win_scoped_lock.h"
+#include "sanitizer_common/sanitizer_addrhashmap.h"
+#include "sanitizer_common/sanitizer_allocator_interface.h"
+#include "sanitizer_common/sanitizer_atomic.h"
+#include "sanitizer_common/sanitizer_internal_defs.h"
+#include "sanitizer_common/sanitizer_list.h"
+#include "sanitizer_common/sanitizer_mutex.h"
+#include "sanitizer_common/sanitizer_vector.h"
+
+#pragma warning(push)
+#pragma warning(disable : 4273)
+extern "C" __declspec(restrict) void *_recalloc(void *, size_t, size_t);
+#pragma warning(pop)
+
+extern "C" __declspec(dllimport) void WINAPI SetLastError(DWORD dwErrCode);
+
+namespace __asan_win_moveable {
+using namespace __asan;
+using namespace __sanitizer;
+
+struct FixedAllocationEntry {
+  FixedAllocationEntry *next;
+  void *addr;
+
+  explicit FixedAllocationEntry(void *_addr) noexcept
+      : next(nullptr), addr(_addr) {}
+
+  static void *operator new(size_t size) { return InternalAlloc(size); }
+  static void operator delete(void *p) { InternalFree(p); }
+};
+
+struct MoveableAllocationEntry {
+  void *handle;
+  void *addr;
+  size_t lock_count;  // lock count for this movable section.
+
+  explicit MoveableAllocationEntry(size_t handle_index,
+                                   void *_addr = nullptr) noexcept
+      : handle(reinterpret_cast<void *>(handle_index)),
+        addr(_addr),
+        lock_count(0) {}
+
+  static void *operator new(size_t size) { return InternalAlloc(size); }
+  static void operator delete(void *p) { InternalFree(p); }
+};
+
+struct AllocationEntry {
+  void *metadata;
+  void *addr;
+};
+
+using HandleMap = AddrHashMap<AllocationEntry *, 11>;
+using Handle = HandleMap::Handle;
 
 /* Background:
   These vintage allocators provided a primitive DIY interface for paging. We're
@@ -40,11 +87,7 @@
   O(1) performance on handle->pointer resolution:
 
   There is an arbitrary limit of 0xFFFF on the number of handles the
-  Global/Local heap can have (hardcoded, not even a #define, in the code). That
-  limit means we can just reserve 0xFFFF of memory to serve as our handle
-  values. Reserving that memory ensures no overlap between handle values and
-  pointers, plus it makes handle validation quick since we can now use the
-  higher order bytes of the handle region to tag our handles.
+  Global/Local heap can have (hardcoded, not even a #define, in the code).
 
   HANDLE is a void* but the handle value itself only needs to take up the lower
   order word, so the masks for the tags and handles would be ~0xFFFF and 0xFFFF.
@@ -56,130 +99,117 @@
   ~0xFFFF to get the tag value. */
 
 struct MemoryManagerResources {
-  /* MoveableManagerResources:
+  MemoryManagerResources() noexcept { fixed_entries.clear(); }
 
-    Making a class to wrap up these resources so that:
-
-    a) we don't need to include these in the header, since we don't want to
-    poison other files' imports.
-
-    b) We can be sure of the destructor ordering. We
-    want the manager to be last so that we can be aware of the other items being
-    destroyed before their resources disappear.
-
-    The only item that has a wrapped GetInstance function is the
-    MoveableMemoryManager because it is the only item used outside this file.
-  */
-  std::vector<MoveableAllocEntry *> MoveableEntries;
-  std::vector<MoveableAllocEntry *> HandleReuseList;
+  IntrusiveList<FixedAllocationEntry> fixed_entries;
+  Vector<MoveableAllocationEntry *> handle_reuse_list;
+  Vector<MoveableAllocationEntry *> moveable_entries;
 
   /* To resolve pointer->handle_entry quickly, create a map to track pointer to
    * handle_entry associations. */
-  std::unordered_map<void *, MoveableAllocEntry *> PointerToHandleMap;
+  HandleMap pointer_to_handle_map;
 
   // lock elements which will be passed into the shared RAII lock
-  __sanitizer::SpinMutex lock = {};
-  __sanitizer::atomic_uint32_t thread_id = {};
+  SpinMutex lock = {};
+  atomic_uint32_t thread_id = {};
 
-  MoveableMemoryManager MoveableManager;
-
-  static void *operator new(size_t, void *p) { return p; }
+  static void *operator new(size_t, void *p) noexcept { return p; }
 };
 
 // Create an immortal memory resources class singleton.
 MemoryManagerResources &GetResourcesInstance() {
   return immortalize<MemoryManagerResources>();
 }
-// fetch instance, will create the object on the first call.
-MoveableMemoryManager *MoveableMemoryManager::GetInstance() {
-  return &(GetResourcesInstance().MoveableManager);
+
+constexpr uptr global_local_heap_handle_limit = 0xFFFF;
+constexpr uptr moveable_handle_tag = ~global_local_heap_handle_limit;
+
+void *TagHandleIndex(uptr index) {
+  return reinterpret_cast<void *>(moveable_handle_tag | index);
 }
 
-/* This const will be both our handle limit and a mask to remove the handle
- * tag*/
-constexpr size_t GlobalLocalHeapHandleLimit = 0xFFFF;
-/* To track whether a fixed pointer is freed or not, we can use 0 and -1 as
- * markers for the fixed pointers.*/
-const MoveableAllocEntry *IsFixedPointer = nullptr;
-const MoveableAllocEntry *IsFreedFixedPointer =
-    reinterpret_cast<MoveableAllocEntry *>(~__sanitizer::uptr{0});
-bool HandleIsActiveHandle(MoveableAllocEntry *ident) {
-  return ident != IsFixedPointer && ident != IsFreedFixedPointer;
+uptr ResolveHandleToIndex(void *handle) {
+  return reinterpret_cast<uptr>(handle) & ~moveable_handle_tag;
 }
 
-/* Make this reservation static, but to ensure it's aligned apply the
- * aligned_malloc technique of reserving twice the amount of space and using the
- * first aligned address within that reservation as element 0. */
-static char AlignedHandleReservation[GlobalLocalHeapHandleLimit * 2];
+MoveableAllocationEntry *ResolveHandleToTableEntry(void *handle) {
+  uptr index = ResolveHandleToIndex(handle);
 
-/* The following item will end up being set to the first aligned address in
-   AlignedHandleReservation */
-static void *MoveableHandleTag;
+  auto &resource_instance = GetResourcesInstance();
+  auto &moveable_entries = resource_instance.moveable_entries;
 
-// ignore dll linkage warning: we are defining our own versions in
-// asan_malloc_win.
-#pragma warning(push)
-#pragma warning(disable : 4273)
+  RecursiveScopedLock scoped_lock(resource_instance.lock,
+                                  resource_instance.thread_id);
 
-/* Link against extern symbols to call the intercepted vesions without
- * needing to deal with the internal asan interface. */
-_declspec(restrict) void *malloc(size_t);
-_declspec(restrict) void *calloc(size_t, size_t);
-void free(void *);
-_declspec(restrict) void *realloc(void *, size_t);
-_declspec(restrict) void *_recalloc(void *, size_t, size_t);
-size_t _msize(void *);
-extern "C" _declspec(dllimport) void WINAPI SetLastError(DWORD dwErrCode);
-
-#pragma warning(pop)
-
-MoveableMemoryManager::MoveableMemoryManager() {
-  /* Get the first aligned item within this region which will be used as the
-   * handle tag (and first handle value) */
-
-  MoveableHandleTag =
-      (void *)((reinterpret_cast<size_t>(&AlignedHandleReservation[0]) +
-                GlobalLocalHeapHandleLimit) &
-               ~GlobalLocalHeapHandleLimit);
-
-  // static to make sure the LMEM/GMEM genericized flag values we are using
-  // haven't somehow changed.
-}
-
-void MoveableMemoryManager::Purge() {
-  RecursiveScopedLock scoped_lock(GetResourcesInstance().lock,
-                                  GetResourcesInstance().thread_id);
-  // pointer to handle map first, find fixed free items and clear them.
-  std::unordered_map<void *, MoveableAllocEntry *>::iterator iter =
-      GetResourcesInstance().PointerToHandleMap.begin();
-  std::vector<void *> removal_list = {};
-  for (auto &kv : GetResourcesInstance().PointerToHandleMap) {
-    if (kv.first == IsFreedFixedPointer) {
-      removal_list.push_back(kv.first);
-    }
-  }
-  for (auto &freed_pointer : removal_list) {
-    GetResourcesInstance().PointerToHandleMap.erase(freed_pointer);
+  if (index >= moveable_entries.Size() || moveable_entries[index] == nullptr) {
+    SetLastError(ERROR_INVALID_HANDLE);
+    return nullptr;
   }
 
-  // Moveable Entries already free their backing memory, we just cleaned up the
-  // leftovers in the fixed area, the handle reuse list will remain the same.
+  return moveable_entries[index];
 }
 
-void *MoveableMemoryManager::GetHandleReservation() {
-  return static_cast<void *>(AlignedHandleReservation);
+bool IsOwnedPointer(void *addr) {
+  auto &resource_instance = GetResourcesInstance();
+  auto &pointer_to_handle_map = resource_instance.pointer_to_handle_map;
+
+  // This lock might not be necessary as the hash map is atomic.
+  RecursiveScopedLock scoped_lock(resource_instance.lock,
+                                  resource_instance.thread_id);
+
+  Handle h(&pointer_to_handle_map, reinterpret_cast<uptr>(addr), false, false);
+  return h.exists();
 }
 
-size_t MoveableMemoryManager::GetHandleTag() {
-  return reinterpret_cast<size_t>(MoveableHandleTag);
+void *ResolveHandleToPointer(void *item) {
+  MoveableAllocationEntry *table_entry = ResolveHandleToTableEntry(item);
+  if (table_entry != nullptr) {
+    return table_entry->addr;
+  }
+
+  if (IsOwnedPointer(item)) {
+    SetLastError(NO_ERROR);
+    return item;
+  }
+
+  return nullptr;
+}
+
+bool IsOwned(void *item) { return ResolveHandleToPointer(item) != nullptr; }
+
+void *ResolvePointerToHandle(void *addr) {
+  auto &resource_instance = GetResourcesInstance();
+  auto &pointer_to_handle_map = resource_instance.pointer_to_handle_map;
+
+  RecursiveScopedLock scoped_lock(resource_instance.lock,
+                                  resource_instance.thread_id);
+
+  Handle h(&pointer_to_handle_map, reinterpret_cast<uptr>(addr), false, false);
+  if (!h.exists()) {
+    return nullptr;
+  }
+
+  return *h;
+}
+
+bool IsValidMoveableHandle(void *handle) {
+  return (reinterpret_cast<uptr>(handle) & ~global_local_heap_handle_limit) ==
+         moveable_handle_tag;
+}
+
+bool IsValidItem(void *item) {
+  return IsValidMoveableHandle(item) || IsOwnedPointer(item);
 }
 
 // helper function to optionally zero an allocation.
 void *AllocMaybeZero(size_t size, bool zero_init) {
-  if (zero_init)
-    return calloc(size, 1);
-  else
-    return malloc(size);
+  // TODO: This stack trace should be moved further up in the stack.
+  GET_STACK_TRACE_MALLOC;
+  if (zero_init) {
+    return asan_calloc(size, 1, &stack);
+  } else {
+    return asan_malloc(size, &stack);
+  }
 }
 
 #define HANDLE_OUT_OF_MEMORY(x)        \
@@ -190,317 +220,536 @@ void *AllocMaybeZero(size_t size, bool zero_init) {
     }                                  \
   while (0)
 
-void *MoveableMemoryManager::TagHandleIndex(size_t index) {
-  return (void *)(GetHandleTag() | index);
-}
-
-void *MoveableMemoryManager::AddMoveableAllocation(size_t size,
-                                                   bool zero_init) {
+MoveableAllocationEntry *AddMoveableAllocationInternal(size_t size,
+                                                       bool zero_init) {
   void *new_region = AllocMaybeZero(size, zero_init);
   HANDLE_OUT_OF_MEMORY(new_region);
-  size_t next_available_handle = GetResourcesInstance().MoveableEntries.size();
-  if (next_available_handle <= 0xFFFF) {
-    MoveableAllocEntry *new_handle = new (std::nothrow)
-        MoveableAllocEntry(next_available_handle, new_region);
-    if (new_handle == nullptr) {
-      free(new_region);
-      SetLastError(ERROR_OUTOFMEMORY);
-      return nullptr;
+
+  auto &resource_instance = GetResourcesInstance();
+  auto &handle_reuse_list = resource_instance.handle_reuse_list;
+  auto &moveable_entries = resource_instance.moveable_entries;
+  auto &pointer_to_handle_map = resource_instance.pointer_to_handle_map;
+
+  MoveableAllocationEntry *handle_entry = nullptr;
+  {
+    RecursiveScopedLock scoped_lock(resource_instance.lock,
+                                    resource_instance.thread_id);
+
+    uptr free_handles = handle_reuse_list.Size();
+    if (free_handles != 0) {
+      handle_entry = handle_reuse_list[free_handles - 1];
+      handle_reuse_list.PopBack();
+
+      handle_entry->addr = new_region;
+      handle_entry->lock_count = 0;
+      moveable_entries[reinterpret_cast<uptr>(handle_entry->handle)] =
+          handle_entry;
+    } else if (free_handles <= global_local_heap_handle_limit) {
+      handle_entry =
+          new MoveableAllocationEntry(moveable_entries.Size(), new_region);
     }
-    GetResourcesInstance().MoveableEntries.push_back(new_handle);
-    GetResourcesInstance().PointerToHandleMap[new_region] = new_handle;
-    return TagHandleIndex(next_available_handle);
+
+    if (handle_entry != nullptr) {
+      moveable_entries.PushBack(handle_entry);
+
+      {
+        Handle h(&pointer_to_handle_map, reinterpret_cast<uptr>(new_region),
+                 false, true);
+        DCHECK(h.created());
+        *h = reinterpret_cast<AllocationEntry *>(handle_entry);
+      }
+    }
   }
-  if (GetResourcesInstance().HandleReuseList.empty()) {
-    free(new_region);
+
+  if (handle_entry == nullptr) {
+    // TODO: This stack trace should be moved further up in the stack.
+    GET_STACK_TRACE_FREE;
+    asan_free(new_region, &stack, FROM_MALLOC);
     SetLastError(ERROR_OUTOFMEMORY);
     return nullptr;
   }
-  MoveableAllocEntry *reuseEntry =
-      GetResourcesInstance().HandleReuseList.front();
-  GetResourcesInstance().HandleReuseList.erase(
-      GetResourcesInstance().HandleReuseList.begin());
-  // reuseEntry->handle value remains the same
-  reuseEntry->freed = false;
-  reuseEntry->addr = new_region;
-  reuseEntry->lockCount = 0;
-  return TagHandleIndex((size_t)(reuseEntry->handle));
+
+  return handle_entry;
 }
 
-void *MoveableMemoryManager::AddFixedAllocation(size_t size, bool zero_init) {
+void *AddMoveableAllocation(size_t size, bool zero_init) {
+  MoveableAllocationEntry *entry =
+      AddMoveableAllocationInternal(size, zero_init);
+
+  if (entry == nullptr) {
+    return nullptr;
+  }
+
+  return TagHandleIndex(reinterpret_cast<uptr>(entry->handle));
+}
+
+void *AddFixedAllocation(size_t size, bool zero_init) {
   void *new_region = AllocMaybeZero(size, zero_init);
   HANDLE_OUT_OF_MEMORY(new_region);
-  GetResourcesInstance().PointerToHandleMap[new_region] =
-      const_cast<MoveableAllocEntry *>(IsFixedPointer);
+
+  auto &resource_instance = GetResourcesInstance();
+  auto &fixed_entries = resource_instance.fixed_entries;
+  auto &pointer_to_handle_map = resource_instance.pointer_to_handle_map;
+
+  FixedAllocationEntry *handle_entry = new FixedAllocationEntry(new_region);
+
+  if (handle_entry == nullptr) {
+    // TODO: This stack trace should be moved further up in the stack.
+    GET_STACK_TRACE_FREE;
+    asan_free(new_region, &stack, FROM_MALLOC);
+    SetLastError(ERROR_OUTOFMEMORY);
+    return nullptr;
+  }
+
+  RecursiveScopedLock scoped_lock(resource_instance.lock,
+                                  resource_instance.thread_id);
+  {
+    Handle h(&pointer_to_handle_map, reinterpret_cast<uptr>(new_region), false,
+             true);
+    DCHECK(h.created());
+    *h = reinterpret_cast<AllocationEntry *>(fixed_entries.back());
+  }
+  fixed_entries.push_back(handle_entry);
+
   return new_region;
 }
 
-size_t MoveableMemoryManager::ResolveHandleToIndex(void *handle) {
-  /* Flipping the bits instead of subtraction still allows a quick check to see
-   * if the handle is valid */
-  return (((size_t)handle) & ~((size_t)MoveableHandleTag));
-}
+void *ReallocFixedToHandleInternal(void *original, bool zero_init) {
+  DCHECK(IsOwnedPointer(original));
 
-void *MoveableMemoryManager::ResolveHandleToPointer(void *ident) {
-  MoveableAllocEntry *table_entry = ResolveHandleToTableEntry(ident);
-  if (table_entry == nullptr) {
-    SetLastError(ERROR_INVALID_HANDLE);
-    return nullptr;
-  }
-  return table_entry->addr;
-}
+  // TODO: This stack trace should be moved further up in the stack.
+  GET_CURRENT_PC_BP;
+  size_t original_size = asan_malloc_usable_size(original, pc, bp);
+  MoveableAllocationEntry *new_handle =
+      AddMoveableAllocationInternal(original_size, zero_init);
 
-MoveableAllocEntry *MoveableMemoryManager::ResolveHandleToTableEntry(
-    void *handle) {
-  size_t index = ResolveHandleToIndex(handle);
-  if (index >= GetResourcesInstance().MoveableEntries.size()) {
-    SetLastError(ERROR_INVALID_HANDLE);
-    return nullptr;
+  if (new_handle) {
+    void *new_ptr = new_handle->addr;
+    REAL(memcpy)(new_ptr, original, original_size);
+    return TagHandleIndex(reinterpret_cast<uptr>(new_handle->handle));
   }
-  return GetResourcesInstance().MoveableEntries.at(index);
-}
 
-// TODO: Resolve what needs to happen for these error cases.
-//       Windows just crashes inconsistently on some of these.
-//       A report would be nice...
-void *MoveableMemoryManager::ResolvePointerToHandle(void *ident) {
-  RecursiveScopedLock scoped_lock(GetResourcesInstance().lock,
-                                  GetResourcesInstance().thread_id);
-  if (IsOwnedPointer(ident)) {
-    MoveableAllocEntry *handle_entry =
-        GetResourcesInstance().PointerToHandleMap.at(ident);
-    if (HandleIsActiveHandle(handle_entry)) {
-      return handle_entry->handle;
-    }
-    return nullptr;
-  }
-  CHECK(0 &&
-        "Untracked pointer passed into "
-        "MoveableMemoryManager::ResolvePointerToHandle");
   return nullptr;
 }
 
-// These might need a refactor but I'll wait until they're finished.
-// TODO: overflows and underflows
-void *MoveableMemoryManager::IncrementLockCount(void *ident) {
-  RecursiveScopedLock scoped_lock(GetResourcesInstance().lock,
-                                  GetResourcesInstance().thread_id);
-  if (IsOwnedHandle(ident)) {
-    MoveableAllocEntry *entry = ResolveHandleToTableEntry(ident);
-    if (!entry) {
+MoveableAllocationEntry *FreeMoveableInternal(void *handle,
+                                              BufferedStackTrace &stack) {
+  auto &resource_instance = GetResourcesInstance();
+  auto &handle_reuse_list = resource_instance.handle_reuse_list;
+  auto &moveable_entries = resource_instance.moveable_entries;
+  auto &pointer_to_handle_map = resource_instance.pointer_to_handle_map;
+
+  void *backing_memory;
+  uptr entry_index;
+  uptr moveable_entries_size;
+  MoveableAllocationEntry *entry;
+  {
+    RecursiveScopedLock scoped_lock(resource_instance.lock,
+                                    resource_instance.thread_id);
+
+    entry = ResolveHandleToTableEntry(handle);
+
+    if (entry != nullptr) {
+      moveable_entries_size = moveable_entries.Size();
+      entry_index = reinterpret_cast<uptr>(entry->handle);
+      backing_memory = entry->addr;
+
+      {
+        Handle h(&pointer_to_handle_map, reinterpret_cast<uptr>(backing_memory),
+                 true, false);
+        DCHECK(h.exists());
+      }
+
+      moveable_entries[reinterpret_cast<uptr>(entry->handle)] = nullptr;
+      handle_reuse_list.PushBack(entry);
+    }
+  }
+
+  if (entry == nullptr) {
+    if (entry_index < moveable_entries_size) {
+      // TODO: Make a fully fleshed error type for double free of handle
+      ReportDoubleFree(reinterpret_cast<uptr>(handle), &stack);
+    } else {
+      // TODO: Make a fully fleshed error on free not created for handle
+      ReportFreeNotMalloced(reinterpret_cast<uptr>(handle), &stack);
+    }
+  } else {
+    asan_free(backing_memory, &stack, FROM_MALLOC);
+  }
+
+  return entry;
+}
+
+void *FreeFixedInternal(void *addr, BufferedStackTrace &stack) {
+  auto &resource_instance = GetResourcesInstance();
+  auto &fixed_entries = resource_instance.fixed_entries;
+  auto &pointer_to_handle_map = resource_instance.pointer_to_handle_map;
+
+  bool found;
+  {
+    RecursiveScopedLock scoped_lock(resource_instance.lock,
+                                    resource_instance.thread_id);
+    FixedAllocationEntry *prev_entry;
+    {
+      Handle h(&pointer_to_handle_map, reinterpret_cast<uptr>(addr), true,
+               false);
+      found = h.exists();
+
+      if (found) {
+        prev_entry = reinterpret_cast<FixedAllocationEntry *>(*h);
+      }
+    }
+
+    if (found) {
+    }
+
+    if (prev_entry == nullptr) {
+      InternalFree(fixed_entries.front());
+      fixed_entries.pop_front();
+    } else {
+      FixedAllocationEntry *curr = prev_entry->next;
+      DCHECK(curr->addr == addr);
+      fixed_entries.extract(prev_entry, curr);
+      InternalFree(curr);
+
+      if (prev_entry->next != nullptr) {
+        Handle h(&pointer_to_handle_map,
+                 reinterpret_cast<uptr>(prev_entry->next->addr), false, false);
+        DCHECK(h.exists());
+        *h = reinterpret_cast<AllocationEntry *>(prev_entry);
+      }
+    }
+  }
+
+  void *ret_addr;
+  if (!found) {
+    SetLastError(ERROR_INVALID_HANDLE);
+    ret_addr = nullptr;
+  } else {
+    ret_addr = addr;
+  }
+
+  asan_free(addr, &stack, FROM_MALLOC);
+  return ret_addr;
+}
+
+void *Free(void *item) {
+  GET_STACK_TRACE_FREE;
+  if (IsValidMoveableHandle(item)) {
+    return FreeMoveableInternal(item, stack);
+  }
+
+  return FreeFixedInternal(item, stack);
+}
+
+void *IncrementLockCount(void *item) {
+  {
+    RecursiveScopedLock scoped_lock(GetResourcesInstance().lock,
+                                    GetResourcesInstance().thread_id);
+    if (IsValidMoveableHandle(item)) {
+      MoveableAllocationEntry *entry = ResolveHandleToTableEntry(item);
+      if (entry != nullptr) {
+        if (entry->lock_count++ == GMEM_LOCKCOUNT) {
+          entry->lock_count--;
+        }
+
+        return entry->addr;
+      }
+    } else if (IsOwnedPointer(item)) {
+      return item;
+    }
+  }
+
+  // TODO: Make a fully fleshed error type
+  GET_CURRENT_PC_BP_SP;
+  ReportGenericError(pc, bp, sp, reinterpret_cast<uptr>(item), true,
+                     sizeof(void *), 0, false);
+  return nullptr;
+}
+
+size_t GetAllocationSize(void *item) {
+  void *ptr = nullptr;
+
+  {
+    RecursiveScopedLock scoped_lock(GetResourcesInstance().lock,
+                                    GetResourcesInstance().thread_id);
+
+    if (IsValidMoveableHandle(item)) {
+      ptr = ResolveHandleToPointer(item);
+    } else if (IsOwnedPointer(item)) {
+      ptr = item;
+    }
+  }
+
+  if (ptr == nullptr) {
+    GET_STACK_TRACE(2, true);
+    ReportMallocUsableSizeNotOwned(reinterpret_cast<uptr>(item), &stack);
+    return 0;
+  }
+
+  GET_CURRENT_PC_BP;
+  return asan_malloc_usable_size(ptr, pc, bp);
+}
+
+void *ReallocFixedToFixedInternal(void *original, size_t new_size,
+                                  bool zero_init) {
+  DCHECK(IsOwnedPointer(original) || original == nullptr);
+
+  auto &resource_instance = GetResourcesInstance();
+  auto &fixed_entries = resource_instance.fixed_entries;
+  auto &pointer_to_handle_map = resource_instance.pointer_to_handle_map;
+
+  void *addr;
+  if (zero_init) {
+    addr = _recalloc(original, new_size, 1);
+  } else {
+    // TODO: This stack trace should be moved further up in the stack.
+    GET_STACK_TRACE_MALLOC;
+    addr = asan_realloc(original, new_size, &stack);
+  }
+
+  if (addr == nullptr) {
+    return nullptr;
+  }
+
+  {
+    RecursiveScopedLock scoped_lock(resource_instance.lock,
+                                    resource_instance.thread_id);
+
+    FixedAllocationEntry *prev_entry;
+    {
+      Handle h(&pointer_to_handle_map, reinterpret_cast<uptr>(original), true,
+               false);
+      DCHECK(h.exists());
+      prev_entry = reinterpret_cast<FixedAllocationEntry *>(*h);
+    }
+    {
+      Handle h(&pointer_to_handle_map, reinterpret_cast<uptr>(addr), false,
+               true);
+      DCHECK(h.created());
+      *h = reinterpret_cast<AllocationEntry *>(prev_entry);
+    }
+
+    if (prev_entry == nullptr) {
+      fixed_entries.front()->addr = addr;
+    } else {
+      prev_entry->next->addr = addr;
+    }
+  }
+
+  return addr;
+}
+
+void *ReallocHandleToHandleInternal(void *original, size_t new_size,
+                                    bool zero_init) {
+  DCHECK(original != nullptr && IsValidMoveableHandle(original));
+
+  auto &resource_instance = GetResourcesInstance();
+  auto &pointer_to_handle_map = resource_instance.pointer_to_handle_map;
+
+  void *addr;
+  MoveableAllocationEntry *handle_entry;
+  {
+    RecursiveScopedLock scoped_lock(resource_instance.lock,
+                                    resource_instance.thread_id);
+
+    handle_entry = ResolveHandleToTableEntry(original);
+    if (!handle_entry) {
+      // TODO: Make a fully fleshed error type for realloc on invalid handle
+      GET_CURRENT_PC_BP_SP;
+      ReportGenericError(pc, bp, sp, reinterpret_cast<uptr>(original), false,
+                         sizeof(void *), 0, false);
       return nullptr;
     }
-    entry->lockCount++;  // <- could overflow
-    return ResolveHandleToPointer(ident);
-  } else if (IsOwnedPointer(ident)) {
-    return ident;  // for fixed memory the pointer is just returned (MSDN)
+
+    addr = handle_entry->addr;
+  }
+
+  // TODO: We release the scoped_lock to avoid a potential deadlock when
+  // calling _recalloc/realloc but in doing so we introduce a potential
+  // race condition where the handle might be deleted under us.
+  void *new_addr;
+  if (zero_init) {
+    new_addr = _recalloc(addr, new_size, 1);
   } else {
-    CHECK(0 && "Wild pointer passed into [Global|Local]Lock");
-    // TODO: Is there a better way to handle this?
+    // TODO: This stack trace should be moved further up in the stack.
+    GET_STACK_TRACE_MALLOC;
+    new_addr = asan_realloc(addr, new_size, &stack);
   }
-  return nullptr;
-}
-/* GMEM_MODIFY allows you to convert between moveable and fixed allocations.
-    The flag means that these functions ignore any size parameter passed into it.
-  LMEM_MODIFY doesn't have this same behavior and only changes the 
-    'discardable' attribute which is deprecated.
-*/
 
-void *MoveableMemoryManager::ReallocFixedToHandle(void *original,
-                                                  bool zero_init) {
-  CHECK(IsOwnedPointer(original));
-  size_t original_size = _msize(original);
-  void *new_allocation = AddMoveableAllocation(original_size, zero_init);
-  if (new_allocation) {
-    void *new_ptr = ResolveHandleToPointer(new_allocation);
-    memcpy(new_ptr, original, original_size);
-    return new_allocation;
-  }
-  return nullptr;
-}
-
-size_t MoveableMemoryManager::GetAllocationSize(void *memory_ident) {
-  RecursiveScopedLock scoped_lock(GetResourcesInstance().lock,
-                                  GetResourcesInstance().thread_id);
-  void *ptr;
-  if (IsOwnedHandle(memory_ident)) {
-    ptr = ResolveHandleToPointer(memory_ident);
-  } else if (IsOwnedPointer(memory_ident)) {
-    ptr = memory_ident;
-  } else {
-    CHECK(0 &&
-          "Memory ID passed to MoveableMemoryManager::GetAllocationSize "
-          "is not valid!\n");
-  }
-  return _msize(ptr);
-}
-void *MoveableMemoryManager::ReallocFixedToFixed(void *original,
-                                                 size_t new_size,
-                                                 bool zero_init) {
-  // If the pointer has been set to null we still want to give it to ASan to
-  // report the use.
-  CHECK(IsOwnedPointer(original) || original == nullptr);
-  if (zero_init)
-    return _recalloc(original, new_size, 1);
-  else
-    return realloc(original, new_size);
-}
-
-void *MoveableMemoryManager::ReallocHandleToHandle(void *original,
-                                                   size_t new_size,
-                                                   bool zero_init) {
-  // If the handle is nullptr something is wrong on our end.
-  CHECK(original != nullptr && IsOwnedHandle(original));
-  // if the resolved ptr is free, if this item is null, we just pass it to the
-  // interceptor no matter what to generate a report.
-  MoveableAllocEntry *handle_entry = ResolveHandleToTableEntry(original);
-  void *ptr = handle_entry->addr;
-  void *new_ptr = ReallocFixedToFixed(ptr, new_size, zero_init);
-  if (!new_ptr) {
+  if (new_addr == nullptr) {
     return nullptr;
   }
-  if (new_ptr != ptr) {
-    // New backing memory, the old pointer is invalid so we need to update our
-    // table to remember this
-    GetResourcesInstance().PointerToHandleMap[new_ptr] = handle_entry;
-    handle_entry->addr = new_ptr;
 
-    /* leave the pointer entry, since we want to know this is owned still, if
-     * it's passed into a function it will be treated like a fixed pointer, and
-     * will get passed to an asan_function to get reported on. It will have been
-     * freed & quarantined at this point. */
-    GetResourcesInstance().PointerToHandleMap[ptr] =
-        const_cast<MoveableAllocEntry *>(IsFreedFixedPointer);
+  if (new_addr != addr) {
+    RecursiveScopedLock scoped_lock(resource_instance.lock,
+                                    resource_instance.thread_id);
+    {
+      Handle h(&pointer_to_handle_map, reinterpret_cast<uptr>(addr), true,
+               false);
+      DCHECK(h.exists());
+    }
+    {
+      Handle h(&pointer_to_handle_map, reinterpret_cast<uptr>(new_addr), false,
+               true);
+      DCHECK(h.created());
+      *h = reinterpret_cast<AllocationEntry *>(handle_entry);
+    }
+    handle_entry->addr = new_addr;
   }
+
   return original;
 }
 
-void *MoveableMemoryManager::DecrementLockCount(void *ident) {
-  RecursiveScopedLock scoped_lock(GetResourcesInstance().lock,
-                                  GetResourcesInstance().thread_id);
-  if (IsOwnedHandle(ident)) {
-    MoveableAllocEntry *entry = ResolveHandleToTableEntry(ident);
-    if (!entry) {
-      return nullptr;
-    }
-    if (entry->lockCount > 1) {
-      entry->lockCount--;
-      return ResolveHandleToPointer(ident);
-    } else if (entry->lockCount == 1) {
-      entry->lockCount--;
-      SetLastError(NO_ERROR);
-      return nullptr;
-    } else if (entry->lockCount == 0) {
-      SetLastError(ERROR_NOT_LOCKED);
-      return nullptr;
-    }
-  } else if (IsOwnedPointer(ident)) {
-    return ident;  // for fixed memory the pointer is just returned (MSDN)
-  } else {
-    CHECK(0 && "Wild pointer passed into [Global|Local]Unlock");
+void *ReAllocate(void *item, size_t flags, size_t size, HeapCaller caller) {
+  if (!__asan::flags()->allocator_frees_and_returns_null_on_realloc_zero) {
+    Report(
+        "WARNING: allocator_frees_and_returns_null_on_realloc_zero is set to "
+        "FALSE."
+        " This is not consistent with libcmt/ucrt/msvcrt behavior.");
   }
-  return nullptr;
-}
 
-size_t MoveableMemoryManager::GetLockCount(void *ident) {
-  RecursiveScopedLock scoped_lock(GetResourcesInstance().lock,
-                                  GetResourcesInstance().thread_id);
-  if (IsOwnedHandle(ident)) {
-    MoveableAllocEntry *entry = ResolveHandleToTableEntry(ident);
-    return entry->lockCount;
-  } else if (IsOwnedPointer(ident)) {
-    return 0;  // lock count is always 0 for pointers according to MSDN.
-  } else {
-    CHECK(0 && "Wild pointer passed into [Global|Local]Flags");
-  }
-  return 0;
-}
-
-bool MoveableMemoryManager::IsOwnedHandle(void *item) {
-  auto HandleTag = reinterpret_cast<size_t>(MoveableHandleTag);
-  bool HandleTagIsCorrect = ((reinterpret_cast<size_t>(item) &
-                              ~(GlobalLocalHeapHandleLimit)) == HandleTag);
-  bool HandleIsInRange = ((reinterpret_cast<size_t>(item) - HandleTag) <=
-                          GlobalLocalHeapHandleLimit);
-  return HandleTagIsCorrect && HandleIsInRange;
-}
-
-bool MoveableMemoryManager::IsOwnedPointer(void *item) {
-  return GetResourcesInstance().PointerToHandleMap.find(item) !=
-         GetResourcesInstance().PointerToHandleMap.end();
-}
-
-bool MoveableMemoryManager::IsOwned(void *item) {
-  RecursiveScopedLock scoped_lock(GetResourcesInstance().lock,
-                                  GetResourcesInstance().thread_id);
-  return IsOwnedPointer(item) || IsOwnedHandle(item);
-}
-
-void *MoveableMemoryManager::ReAllocate(void *ident, size_t flags, size_t size,
-                                        HeapCaller caller) {
-  RecursiveScopedLock scoped_lock(GetResourcesInstance().lock,
-                                  GetResourcesInstance().thread_id);
   if (flags & MODIFY) {
-    if (IsOwnedPointer(ident)) {
-      // conversion is one way, fixed to moveable only.
-      // Only GlobalAlloc allows conversion from fixed to moveable.
-      if ((flags & MOVEABLE) && caller == HeapCaller::GLOBAL) {
-        return ReallocFixedToHandle(ident, flags & ZEROINIT);
-      }
+    if ((flags & MOVEABLE) && caller == HeapCaller::GLOBAL &&
+        IsOwnedPointer(item)) {
+      return ReallocFixedToHandleInternal(item, flags & ZEROINIT);
     }
-    // There is no conversion to perform, return the original
-    // handle/pointer.
-    return ident;
+
+    return item;
   } else {
-    // There is no attribute conversion to handle, so perform a regular
-    // realloc.
-    if (IsOwnedHandle(ident)) {
+    if (IsValidMoveableHandle(item)) {
       if (size == 0) {
-        return Free(ident);
+        // TODO: We might need to check the lock count here before freeing
+        GET_STACK_TRACE_FREE;
+        FreeMoveableInternal(item, stack);
+
+        // Returning nullptr of ReAlloc of size zero emulates the behavior of
+        // the release heap. The debug heap will only return nullptr on an
+        // invalid handle or other error.
+        return nullptr;
       } else {
-        return ReallocHandleToHandle(ident, size, flags & ZEROINIT);
+        return ReallocHandleToHandleInternal(item, size, flags & ZEROINIT);
       }
     } else {
-      return ReallocFixedToFixed(ident, size, flags & ZEROINIT);
+      return ReallocFixedToFixedInternal(item, size, flags & ZEROINIT);
     }
   }
 }
 
-// TODO: Add an ASan report type for double free on a stale handle
-void *MoveableMemoryManager::Free(void *ident) {
-  RecursiveScopedLock scoped_lock(GetResourcesInstance().lock,
-                                  GetResourcesInstance().thread_id);
-  if (IsOwnedHandle(ident)) {
-    void *backing_memory = ResolveHandleToPointer(ident);
-    free(backing_memory);
-    MoveableAllocEntry *entry = ResolveHandleToTableEntry(ident);
-    CHECK(entry != nullptr);
-    GetResourcesInstance().PointerToHandleMap[backing_memory] =
-        const_cast<MoveableAllocEntry *>(IsFreedFixedPointer);
-
-    /* NOTE: Lock count is not affected by free
-             you can even get the lock count of the handle after
-             the base memory is freed.
-    */
-    entry->freed = true;
-    GetResourcesInstance().HandleReuseList.push_back(entry);
-    return nullptr;
+bool DecrementLockCount(void *item) {
+  {
+    RecursiveScopedLock scoped_lock(GetResourcesInstance().lock,
+                                    GetResourcesInstance().thread_id);
+    if (IsValidMoveableHandle(item)) {
+      MoveableAllocationEntry *entry = ResolveHandleToTableEntry(item);
+      if (entry != nullptr) {
+        if (entry->lock_count > 1) {
+          entry->lock_count--;
+          return true;
+        } else if (entry->lock_count == 1) {
+          entry->lock_count--;
+          SetLastError(NO_ERROR);
+          return false;
+        } else if (entry->lock_count == 0) {
+          SetLastError(ERROR_NOT_LOCKED);
+          return false;
+        }
+      }
+    } else if (IsOwnedPointer(item)) {
+      return false;
+    }
   }
 
-  /* If this is a bad free it will be reported on. */
-  free(ident);
-  return nullptr;  // returns null on success
+  // TODO: Make a fully fleshed error type
+  GET_CURRENT_PC_BP_SP;
+  ReportGenericError(pc, bp, sp, reinterpret_cast<uptr>(item), true,
+                     sizeof(void *), 0, false);
+  return false;
 }
 
-void *MoveableMemoryManager::Alloc(unsigned long flags, size_t size) {
-  RecursiveScopedLock scoped_lock(GetResourcesInstance().lock,
-                                  GetResourcesInstance().thread_id);
+size_t GetLockCount(void *item) {
+  {
+    RecursiveScopedLock scoped_lock(GetResourcesInstance().lock,
+                                    GetResourcesInstance().thread_id);
+    if (IsValidMoveableHandle(item)) {
+      MoveableAllocationEntry *entry = ResolveHandleToTableEntry(item);
+      if (entry == nullptr) {
+        // TODO: Make a fully fleshed error type
+        GET_CURRENT_PC_BP_SP;
+        ReportGenericError(pc, bp, sp, reinterpret_cast<uptr>(item), true,
+                           sizeof(void *), 0, false);
+        return ~size_t{0};
+      }
+
+      return entry->lock_count;
+    } else if (IsOwnedPointer(item)) {
+      return 0;
+    }
+  }
+
+  // TODO: Make a fully fleshed error type
+  GET_CURRENT_PC_BP_SP;
+  ReportGenericError(pc, bp, sp, reinterpret_cast<uptr>(item), true,
+                     sizeof(void *), 0, false);
+  return ~size_t{0};
+}
+
+void *Alloc(unsigned long flags, size_t size) {
   bool zero_alloc = flags & ZEROINIT;
   if (flags & MOVEABLE) {
     return AddMoveableAllocation(size, zero_alloc);
-  } else {
-    return AddFixedAllocation(size, zero_alloc);
   }
+
+  return AddFixedAllocation(size, zero_alloc);
 }
 
-#endif
+void Purge() {
+  auto &resource_instance = GetResourcesInstance();
+  auto &fixed_entries = resource_instance.fixed_entries;
+  auto &handle_reuse_list = resource_instance.handle_reuse_list;
+  auto &moveable_entries = resource_instance.moveable_entries;
+  auto &pointer_to_handle_map = resource_instance.pointer_to_handle_map;
+
+  RecursiveScopedLock scoped_lock(resource_instance.lock,
+                                  resource_instance.thread_id);
+
+  FixedAllocationEntry *curr = fixed_entries.front();
+  FixedAllocationEntry *next;
+  while (curr != nullptr) {
+    next = curr->next;
+    {
+      Handle h(&pointer_to_handle_map, reinterpret_cast<uptr>(curr->addr), true,
+               false);
+      DCHECK(h.exists());
+    }
+    InternalFree(curr);
+    curr = next;
+  }
+  fixed_entries.clear();
+
+  for (uptr i = 0; i < handle_reuse_list.Size(); ++i) {
+    {
+      Handle h(&pointer_to_handle_map,
+               reinterpret_cast<uptr>(handle_reuse_list[i]->addr), true, false);
+      DCHECK(h.exists());
+    }
+    InternalFree(handle_reuse_list[i]);
+  }
+  handle_reuse_list.Reset();
+
+  for (uptr i = 0; i < moveable_entries.Size(); ++i) {
+    if (moveable_entries[i] != nullptr) {
+      {
+        Handle h(&pointer_to_handle_map,
+                 reinterpret_cast<uptr>(moveable_entries[i]->addr), true,
+                 false);
+        DCHECK(h.exists());
+      }
+      InternalFree(moveable_entries[i]);
+    }
+  }
+  moveable_entries.Reset();
+}
+}  // namespace __asan_win_moveable
+
+#endif  // SANITIZER_WINDOWS

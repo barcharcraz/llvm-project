@@ -14,8 +14,8 @@
 #include "sanitizer_common/sanitizer_platform.h"
 #if SANITIZER_WINDOWS
 #define WIN32_LEAN_AND_MEAN
-#include <windows.h>
 #include <stdlib.h>
+#include <windows.h>
 
 #include "asan_interceptors.h"
 #include "asan_internal.h"
@@ -48,8 +48,8 @@ uptr __asan_get_shadow_memory_dynamic_address() {
 static LPTOP_LEVEL_EXCEPTION_FILTER default_seh_handler;
 static LPTOP_LEVEL_EXCEPTION_FILTER user_seh_handler;
 
-extern "C" SANITIZER_INTERFACE_ATTRIBUTE
-long __asan_unhandled_exception_filter(EXCEPTION_POINTERS *info) {
+extern "C" SANITIZER_INTERFACE_ATTRIBUTE long __asan_unhandled_exception_filter(
+    EXCEPTION_POINTERS *info) {
   EXCEPTION_RECORD *exception_record = info->ExceptionRecord;
   CONTEXT *context = info->ContextRecord;
 
@@ -95,14 +95,16 @@ INTERCEPTOR_WINAPI(void, RtlRaiseException, EXCEPTION_RECORD *ExceptionRecord) {
   REAL(RtlRaiseException)(ExceptionRecord);
 }
 
-INTERCEPTOR_WINAPI(void, RaiseException, DWORD dwExceptionCode, DWORD dwExceptionFlags, 
-                   DWORD nNumberOfArguments, const ULONG_PTR *lpArguments) {
+INTERCEPTOR_WINAPI(void, RaiseException, DWORD dwExceptionCode,
+                   DWORD dwExceptionFlags, DWORD nNumberOfArguments,
+                   const ULONG_PTR *lpArguments) {
   CHECK(REAL(RaiseException));
   // This is a noreturn function, unless it's one of the exceptions raised to
   // communicate with the debugger, such as the one from OutputDebugStringA.
   if (dwExceptionCode != DBG_PRINTEXCEPTION_C)
     __asan_handle_no_return();
-  REAL(RaiseException)(dwExceptionCode, dwExceptionFlags, nNumberOfArguments, lpArguments);
+  REAL(RaiseException)
+  (dwExceptionCode, dwExceptionFlags, nNumberOfArguments, lpArguments);
 }
 
 #ifdef _WIN64
@@ -244,9 +246,7 @@ void PlatformTSDDtor(void *tsd) { AsanThread::TSDDtor(tsd); }
 // }}}
 
 // ---------------------- Various stuff ---------------- {{{
-void *AsanDoesNotSupportStaticLinkage() {
-  return 0;
-}
+void *AsanDoesNotSupportStaticLinkage() { return 0; }
 
 uptr FindDynamicShadowStart() {
   return MapDynamicShadow(MemToShadowSize(kHighMemEnd), ASAN_SHADOW_SCALE,
@@ -267,22 +267,27 @@ bool PlatformUnpoisonStacks() { return false; }
 
 #if SANITIZER_WINDOWS64
 
-// If you change these constants, make the same changes in vcasan.lib... and any other future 
-// Windows, AddressSanitizer functionalities, which are closely integrated with the Visual Studio IDE.
+// If you change these constants, make the same changes in vcasan.lib... and any
+// other future Windows, AddressSanitizer functionalities, which are closely
+// integrated with the Visual Studio IDE.
 
 // Two constants for vcasan.lib -> IDE
-static constexpr unsigned kVCAsanLibSanitzer = ('san' | 0xE0000000);            // 0xe073616e
-static constexpr unsigned kVCAsanLibAddressSanitzer = (kVCAsanLibSanitzer + 1); // 0xe073616f
+static constexpr unsigned kVCAsanLibSanitzer =
+    ('san' | 0xE0000000);  // 0xe073616e
+static constexpr unsigned kVCAsanLibAddressSanitzer =
+    (kVCAsanLibSanitzer + 1);  // 0xe073616f
 
 // Next threee constants for Asan RT -> IDE
 
 // 0xe0736170 debugger IDE specific
-static constexpr unsigned kVSEnlighten = (kVCAsanLibSanitzer + 2); 
+static constexpr unsigned kVSEnlighten = (kVCAsanLibSanitzer + 2);
 
-// 0xe0736171 – fake eh code used internally by the debugger to let users possibly stop on the first chance exception
+// 0xe0736171 – fake eh code used internally by the debugger to let users
+// possibly stop on the first chance exception
 static constexpr unsigned kVSRawThrown = (kVCAsanLibSanitzer + 3);
 
-// 0xe0736172 – AV was not handled by the address sanitizer runtime. The debugger maps to STATUS_ACCESS_VIOLATION.
+// 0xe0736172 – AV was not handled by the address sanitizer runtime. The
+// debugger maps to STATUS_ACCESS_VIOLATION.
 static constexpr unsigned kVSRealExeAVThrown = (kVCAsanLibSanitzer + 4);
 
 __declspec(noinline) static void EnlightenVSDebugger() {
@@ -301,7 +306,6 @@ __declspec(noinline) static void EnlightenVSDebugger() {
 
 static LONG CALLBACK
 ShadowExceptionHandler(PEXCEPTION_POINTERS exception_pointers) {
-  uptr page_size = GetPageSizeCached();
   // Only handle access violations.
   if (exception_pointers->ExceptionRecord->ExceptionCode !=
           EXCEPTION_ACCESS_VIOLATION ||
@@ -324,7 +328,7 @@ ShadowExceptionHandler(PEXCEPTION_POINTERS exception_pointers) {
 
         // Inform VS this is the AsanRuntime paging in shadow byte area.
         // Effects only if VS was previously informed this was an ASan binary.
-        RaiseException(kVSRealExeAVThrown, 0,_countof(args), args);
+        RaiseException(kVSRealExeAVThrown, 0, _countof(args), args);
       } __except (EXCEPTION_EXECUTE_HANDLER) {
       }
     }
@@ -337,7 +341,7 @@ ShadowExceptionHandler(PEXCEPTION_POINTERS exception_pointers) {
   // the relevant page and let execution continue.
 
   // Commit the page.
-  if(!::VirtualAlloc((LPVOID)addr, 1, MEM_COMMIT, PAGE_READWRITE)) {
+  if (!::VirtualAlloc((LPVOID)addr, 1, MEM_COMMIT, PAGE_READWRITE)) {
     return EXCEPTION_CONTINUE_SEARCH;
   }
 
@@ -376,9 +380,9 @@ bool IsSystemHeapAddress(uptr addr, void *heap) {
   void **curr, **end;
   if (heap == nullptr) {
     curr = heaps;
-    DWORD num_heaps = ::GetProcessHeaps(sizeof(heaps)/sizeof(HANDLE), heaps);
-    CHECK(num_heaps <= sizeof(heaps)/sizeof(HANDLE) &&
-            "You have exceeded the maximum number of supported heaps.");
+    DWORD num_heaps = ::GetProcessHeaps(sizeof(heaps) / sizeof(HANDLE), heaps);
+    CHECK(num_heaps <= sizeof(heaps) / sizeof(HANDLE) &&
+          "You have exceeded the maximum number of supported heaps.");
     end = curr + num_heaps;
   } else {
     curr = &heap;
@@ -399,13 +403,17 @@ bool IsSystemHeapAddress(uptr addr, void *heap) {
 // The CRT adds extra space in front of an allocation in debug mode so we do
 // our best detecting such allocations.
 #ifdef _DEBUG
-        if (reinterpret_cast<uptr>(lpEntry.lpData) + sizeof(AllocationDebugHeader) == addr &&
-            reinterpret_cast<AllocationDebugHeader*>(lpEntry.lpData)->block_use &&
-            reinterpret_cast<AllocationDebugHeader*>(lpEntry.lpData)->data_size < lpEntry.cbData) {
+        if (reinterpret_cast<uptr>(lpEntry.lpData) +
+                    sizeof(AllocationDebugHeader) ==
+                addr &&
+            reinterpret_cast<AllocationDebugHeader *>(lpEntry.lpData)
+                ->block_use &&
+            reinterpret_cast<AllocationDebugHeader *>(lpEntry.lpData)
+                    ->data_size < lpEntry.cbData) {
           ::HeapUnlock(*curr);
           return true;
         }
-#endif // _DEBUG
+#endif  // _DEBUG
       }
     }
 

@@ -1222,7 +1222,7 @@ uptr __sanitizer_get_allocated_size(const void *p) {
 void __sanitizer_purge_allocator() {
   GET_STACK_TRACE_MALLOC;
 #if SANITIZER_WINDOWS
-  MoveableMemoryManager::GetInstance()->Purge();  
+  __asan_win_moveable::Purge();
 #endif
   instance.Purge(&stack);
 }

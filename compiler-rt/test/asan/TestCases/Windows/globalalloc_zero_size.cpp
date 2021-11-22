@@ -3,12 +3,12 @@
 // RUN: %clang_cl_asan /Od -o %t %s -DTEST_LOCAL
 // RUN: %env_asan_opts=windows_hook_legacy_allocators=true %run %t 2>&1 | FileCheck %s
 
-#include <cassert>
-#include <stdio.h>
-#include <windows.h>
-#include <winbase.h>
 #include "../defines.h"
 #include "globallocal_shared.h"
+#include <cassert>
+#include <stdio.h>
+#include <winbase.h>
+#include <windows.h>
 
 int main() {
   void *ptr = ALLOC(FixedType, 4);
@@ -16,8 +16,8 @@ int main() {
   void *ptr2 = REALLOC(ptr, 0, ZEROINIT);
   assert(ptr2);
   GlobalFree(ptr2);
-  
-  ptr = ALLOC(MOVEABLE,4);
+
+  ptr = ALLOC(MOVEABLE, 4);
   assert(ptr);
   ptr2 = REALLOC(ptr, 0, ZEROINIT);
   assert(!ptr2);
