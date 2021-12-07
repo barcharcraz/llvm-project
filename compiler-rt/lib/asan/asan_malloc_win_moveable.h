@@ -34,16 +34,20 @@
 
 #define GMEM_LOCKCOUNT 0x00FF
 
+#include "sanitizer_common/sanitizer_stacktrace.h"
+
 namespace __asan_win_moveable {
 enum class HeapCaller { GLOBAL, LOCAL };
 
 bool IsOwned(void *item);
 void *ResolvePointerToHandle(void *item);
-size_t GetAllocationSize(void *item);
-void *IncrementLockCount(void *item);
-bool DecrementLockCount(void *item);
-void *Free(void *item);
-void *Alloc(unsigned long flags, size_t size);
-void *ReAllocate(void *item, size_t flags, size_t size, HeapCaller caller);
+size_t GetAllocationSize(void *item, __sanitizer::BufferedStackTrace &stack);
+void *IncrementLockCount(void *item, uptr pc, uptr bp, uptr sp);
+bool DecrementLockCount(void *item, uptr pc, uptr bp, uptr sp);
+void *Free(void *item, __sanitizer::BufferedStackTrace &stack);
+void *Alloc(unsigned long flags, size_t size,
+            __sanitizer::BufferedStackTrace &stack);
+void *ReAllocate(void *item, size_t flags, size_t size, HeapCaller caller,
+                 __sanitizer::BufferedStackTrace &stack, uptr sp);
 void Purge();
 }  // namespace __asan_win_moveable
