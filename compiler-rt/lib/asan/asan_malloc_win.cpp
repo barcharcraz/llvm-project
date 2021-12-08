@@ -68,7 +68,7 @@ _declspec(dllimport) HGLOBAL WINAPI GlobalSize(HGLOBAL hMem);
 _declspec(dllimport) HGLOBAL WINAPI
     GlobalReAlloc(HGLOBAL hMem, SIZE_T dwBytes, UINT uFlags);
 _declspec(dllimport) HGLOBAL WINAPI GlobalLock(HGLOBAL hMem);
-_declspec(dllimport) BOOL WINAPI GlobalUnlock(HGLOBAL hMem);
+_declspec(dllimport) HGLOBAL WINAPI GlobalUnlock(HGLOBAL hMem);
 _declspec(dllimport) HGLOBAL WINAPI GlobalHandle(HGLOBAL hMem);
 _declspec(dllimport) HLOCAL WINAPI LocalAlloc(UINT uFlags, SIZE_T dwBytes);
 _declspec(dllimport) HLOCAL WINAPI LocalFree(HLOCAL hMem);
@@ -76,7 +76,7 @@ _declspec(dllimport) HLOCAL WINAPI LocalSize(HLOCAL hMem);
 _declspec(dllimport) HLOCAL WINAPI
     LocalReAlloc(HLOCAL hMem, size_t dwBytes, UINT uFlags);
 _declspec(dllimport) HLOCAL WINAPI LocalLock(HLOCAL hMem);
-_declspec(dllimport) BOOL WINAPI LocalUnlock(HLOCAL hMem);
+_declspec(dllimport) HLOCAL WINAPI LocalUnlock(HLOCAL hMem);
 _declspec(dllimport) HLOCAL WINAPI LocalHandle(HLOCAL hMem);
 }
 
@@ -777,7 +777,7 @@ INTERCEPTOR_WINAPI(LOGICAL, RtlFreeHeap, void *HeapHandle, DWORD Flags,
     // If we're calling RtlFreeHeap inside of another call to an Rtl* function
     // we assume that ntdll knows what it's doing.
     if (!heap_handle.raii_lock.serialized) {
-      return REAL(RtlFreeHeap)(HeapHandle, Flags, BaseAddress);
+        return REAL(RtlFreeHeap)(HeapHandle, Flags, BaseAddress);
     }
 
     GET_STACK_TRACE_FREE;
@@ -977,10 +977,12 @@ INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
     }
   } else if (UNLIKELY(!asan_unsupported_flags &&
                       heap_handle.owner == AllocationOwnership::RTL)) {
-    old_size = REAL(RtlSizeHeap)(HeapHandle, Flags, BaseAddress);
+    old_size =
+        REAL(RtlSizeHeap)(HeapHandle, Flags, BaseAddress);
 
     if (old_size != ~size_t{0}) {
-      replacement_alloc = WRAP(RtlAllocateHeap)(HeapHandle, Flags, Size);
+      replacement_alloc =
+          WRAP(RtlAllocateHeap)(HeapHandle, Flags, Size);
       if (replacement_alloc == nullptr) {
         return nullptr;
       } else {
@@ -1006,8 +1008,8 @@ INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
                       heap_handle.owner == AllocationOwnership::RTL)) {
     // Currently owned by rtl using unsupported ASAN flags,
     // just pass back to original allocator.
-    replacement_alloc =
-        REAL(RtlReAllocateHeap)(HeapHandle, Flags, BaseAddress, Size);
+    replacement_alloc = REAL(RtlReAllocateHeap)(
+        HeapHandle, Flags, BaseAddress, Size);
   }
 
   return replacement_alloc;
@@ -1038,6 +1040,7 @@ constexpr unsigned long COMBINED_GLOBALLOCAL_UNSUPPORTED_FLAGS =
     ~(SHARED_ALLOC_SUPPORTED_FLAGS | LOCAL_ALLOC_SUPPORTED_FLAGS |
       GLOBAL_ALLOC_SUPPORTED_FLAGS);
 
+enum class LockAction { Decrement = 0, Increment = 1 };
 // forward declaring a few items for the shared versions of some of these
 // Global/Local interceptors.
 using GlobalLocalAlloc = HANDLE(WINAPI *)(UINT, SIZE_T);
@@ -1045,74 +1048,65 @@ using GlobalLocalRealloc = HANDLE(WINAPI *)(HANDLE, SIZE_T, UINT);
 using GlobalLocalSize = SIZE_T(WINAPI *)(HANDLE);
 using GlobalLocalFree = HANDLE(WINAPI *)(HANDLE);
 using GlobalLocalLock = LPVOID(WINAPI *)(HANDLE);
-using GlobalLocalUnlock = BOOL(WINAPI *)(HANDLE);
-HANDLE GlobalLocalGenericFree(GlobalLocalLock lockFunction,
-                              GlobalLocalUnlock unlockFunction,
+using GlobalLocalUnlock = LPVOID(WINAPI *)(HANDLE);
+HANDLE GlobalLocalGenericFree(GlobalLocalUnlock lockFunction,
                               GlobalLocalFree freeFunction, HANDLE hMem);
 }  // namespace __asan
 
-HANDLE SharedLock(HANDLE hMem, GlobalLocalLock lockFunc) {
-  DCHECK(lockFunc != nullptr);
-  if (asan_inited &&
-      !IsSystemHeapAddress(reinterpret_cast<uptr>(hMem), GetProcessHeap())) {
-    return __asan_win_moveable::IncrementLockCount(hMem);
+HANDLE SharedLockUnlock(HANDLE hMem, GlobalLocalLock lockFunc,
+                        LockAction action) {
+  CHECK(lockFunc != nullptr);
+  if (asan_inited && !IsSystemHeapAddress(reinterpret_cast<uptr>(hMem))) {
+    if (action == LockAction::Increment)
+      return MoveableMemoryManager::GetInstance()->IncrementLockCount(hMem);
+    else
+      return MoveableMemoryManager::GetInstance()->DecrementLockCount(hMem);
   }
   // The memory belongs to an RtlHeap or asan is not yet initialized:
   return lockFunc(hMem);
 }
 
-BOOL SharedUnlock(HANDLE hMem, GlobalLocalUnlock unlockFunc) {
-  DCHECK(unlockFunc != nullptr);
-  if (asan_inited &&
-      !IsSystemHeapAddress(reinterpret_cast<uptr>(hMem), GetProcessHeap())) {
-    return __asan_win_moveable::DecrementLockCount(hMem);
-  }
-  // The memory belongs to an RtlHeap or asan is not yet initialized:
-  return unlockFunc(hMem);
-}
-
-INTERCEPTOR_WINAPI(HGLOBAL, GlobalLock, HGLOBAL hMem) {
-  return SharedLock(hMem, REAL(GlobalLock));
-}
-
-INTERCEPTOR_WINAPI(BOOL, GlobalUnlock, HGLOBAL hMem) {
-  return SharedUnlock(hMem, REAL(GlobalUnlock));
-}
-INTERCEPTOR_WINAPI(HLOCAL, LocalLock, HLOCAL hMem) {
-  return SharedLock(hMem, REAL(LocalLock));
-}
-
-INTERCEPTOR_WINAPI(BOOL, LocalUnlock, HGLOBAL hMem) {
-  return SharedUnlock(hMem, REAL(LocalUnlock));
-}
-
 INTERCEPTOR_WINAPI(HGLOBAL, GlobalAlloc, UINT uFlags, SIZE_T dwBytes) {
-  // If we encounter an unsupported flag, then we fail
+  // If we encounter an unsupported flag, then we fall
   // back to the original allocator.
   if (uFlags & GLOBAL_ALLOC_UNSUPPORTED_FLAGS) {
     return REAL(GlobalAlloc)(uFlags, dwBytes);
   }
 
-  return __asan_win_moveable::Alloc(uFlags, dwBytes);
+  return MoveableMemoryManager::GetInstance()->Alloc(uFlags, dwBytes);
+}
+
+INTERCEPTOR_WINAPI(HGLOBAL, GlobalLock, HGLOBAL hMem) {
+  return SharedLockUnlock(hMem, REAL(GlobalLock), LockAction::Increment);
 }
 
 INTERCEPTOR_WINAPI(HGLOBAL, GlobalFree, HGLOBAL hMem) {
-  return GlobalLocalGenericFree(REAL(GlobalLock), REAL(GlobalUnlock),
-                                REAL(GlobalFree), hMem);
+  return GlobalLocalGenericFree(REAL(GlobalLock), REAL(GlobalFree), hMem);
+}
+
+INTERCEPTOR_WINAPI(HGLOBAL, GlobalUnlock, HGLOBAL hMem) {
+  return SharedLockUnlock(hMem, REAL(GlobalUnlock), LockAction::Decrement);
+}
+INTERCEPTOR_WINAPI(HLOCAL, LocalLock, HLOCAL hMem) {
+  return SharedLockUnlock(hMem, REAL(LocalLock), LockAction::Increment);
 }
 
 INTERCEPTOR_WINAPI(HGLOBAL, GlobalHandle, HGLOBAL hMem) {
   if (!asan_inited) {
     return REAL(GlobalHandle)(hMem);
   }
-  return __asan_win_moveable::ResolvePointerToHandle(hMem);
+  return MoveableMemoryManager::GetInstance()->ResolvePointerToHandle(hMem);
 }
 
 INTERCEPTOR_WINAPI(HLOCAL, LocalHandle, HLOCAL hMem) {
   if (!asan_inited) {
     return REAL(LocalHandle)(hMem);
   }
-  return __asan_win_moveable::ResolvePointerToHandle(hMem);
+  return MoveableMemoryManager::GetInstance()->ResolvePointerToHandle(hMem);
+}
+
+INTERCEPTOR_WINAPI(HGLOBAL, LocalUnlock, HGLOBAL hMem) {
+  return SharedLockUnlock(hMem, REAL(LocalUnlock), LockAction::Decrement);
 }
 
 INTERCEPTOR_WINAPI(SIZE_T, GlobalSize, HGLOBAL hMem) {
@@ -1120,12 +1114,11 @@ INTERCEPTOR_WINAPI(SIZE_T, GlobalSize, HGLOBAL hMem) {
   // we're about to use. Allocations might occur before interception
   // takes place, so if it is not owned by RTL heap, the we can
   // pass it to ASAN heap for inspection.
-  if (!asan_inited ||
-      IsSystemHeapAddress(reinterpret_cast<uptr>(hMem), GetProcessHeap())) {
+  if (!asan_inited || IsSystemHeapAddress(reinterpret_cast<uptr>(hMem))) {
     return REAL(GlobalSize)(hMem);
   }
 
-  return __asan_win_moveable::GetAllocationSize(hMem);
+  return MoveableMemoryManager::GetInstance()->GetAllocationSize(hMem);
 }
 
 namespace __asan {
@@ -1138,24 +1131,25 @@ enum class AllocationOwnership {
   OWNED_BY_GLOBAL_OR_LOCAL_HANDLE,
 };
 
-HANDLE GlobalLocalGenericFree(GlobalLocalLock lockFunction,
-                              GlobalLocalUnlock unlockFunction,
+HANDLE GlobalLocalGenericFree(GlobalLocalUnlock lockFunction,
                               GlobalLocalFree freeFunction, HANDLE hMem) {
   // If the memory we are trying to free is not owned
   // by ASan heap, then fall back to the original GlobalFree.
-  if (!__asan_win_moveable::IsOwned(hMem)) {
+  if (!MoveableMemoryManager::GetInstance()->IsOwned(hMem)) {
     HGLOBAL pointer = lockFunction(hMem);
-    if (pointer == hMem) {
-      return freeFunction(hMem);
-    }
-
     if (pointer != nullptr) {
-      unlockFunction(hMem);
-      return freeFunction(hMem);
+      // This was either a handle, or it was a pointer to begin with.
+      // Either way, we can check if this is a system heap pointer.
+      if (IsSystemHeapAddress(reinterpret_cast<uptr>(pointer))) {
+        return freeFunction(hMem);
+      }
     }
   }
+  // Now we're either
+  // a) an asan-owned pointer or handle
+  // b) an invalid pointer which asan needs to report on.
 
-  return __asan_win_moveable::Free(hMem);
+  return MoveableMemoryManager::GetInstance()->Free(hMem);
 }
 
 AllocationOwnership CheckGlobalLocalHeapOwnership(
@@ -1175,12 +1169,12 @@ AllocationOwnership CheckGlobalLocalHeapOwnership(
    */
 
   // Check whether this pointer belongs to the memory manager first.
-  if (__asan_win_moveable::IsOwned(hMem)) {
+  if (MoveableMemoryManager::GetInstance()->IsOwned(hMem)) {
     return AllocationOwnership::OWNED_BY_ASAN;
   }
 
   // It is not safe to pass wild pointers to GlobalLock/LocalLock.
-  if (IsSystemHeapAddress(reinterpret_cast<uptr>(hMem), GetProcessHeap())) {
+  if (IsSystemHeapAddress(reinterpret_cast<uptr>(hMem))) {
     void *ptr = lockFunc(hMem);
     // We don't care whether ptr is moved after this point as we're just trying
     // to determine where it came from.
@@ -1197,9 +1191,8 @@ AllocationOwnership CheckGlobalLocalHeapOwnership(
 void *ReAllocGlobalLocal(GlobalLocalRealloc reallocFunc,
                          GlobalLocalSize sizeFunc, GlobalLocalFree freeFunc,
                          GlobalLocalAlloc allocFunc, GlobalLocalLock lockFunc,
-                         GlobalLocalUnlock unlockFunc,
-                         __asan_win_moveable::HeapCaller caller, HANDLE hMem,
-                         DWORD dwBytes, UINT uFlags) {
+                         GlobalLocalUnlock unlockFunc, HeapCaller caller,
+                         HANDLE hMem, DWORD dwBytes, UINT uFlags) {
   CHECK(reallocFunc && sizeFunc && freeFunc && allocFunc);
   GET_STACK_TRACE_MALLOC;
   AllocationOwnership ownershipState =
@@ -1220,7 +1213,8 @@ void *ReAllocGlobalLocal(GlobalLocalRealloc reallocFunc,
 
   if (ownershipState == AllocationOwnership::OWNED_BY_ASAN) {
     CHECK((COMBINED_GLOBALLOCAL_UNSUPPORTED_FLAGS & uFlags) == 0);
-    return __asan_win_moveable::ReAllocate(hMem, uFlags, dwBytes, caller);
+    return MoveableMemoryManager::GetInstance()->ReAllocate(hMem, uFlags,
+                                                            dwBytes, caller);
   }
   return nullptr;
 }
@@ -1232,8 +1226,8 @@ INTERCEPTOR_WINAPI(HGLOBAL, GlobalReAlloc, HGLOBAL hMem, DWORD dwBytes,
       (GlobalLocalRealloc)REAL(GlobalReAlloc),
       (GlobalLocalSize)REAL(GlobalSize), (GlobalLocalFree)REAL(GlobalFree),
       (GlobalLocalAlloc)REAL(GlobalAlloc), (GlobalLocalLock)REAL(GlobalLock),
-      (GlobalLocalUnlock)GlobalUnlock, __asan_win_moveable::HeapCaller::GLOBAL,
-      (HANDLE)hMem, dwBytes, uFlags);
+      (GlobalLocalUnlock)GlobalUnlock, HeapCaller::GLOBAL, (HANDLE)hMem,
+      dwBytes, uFlags);
 }
 
 INTERCEPTOR_WINAPI(HLOCAL, LocalAlloc, UINT uFlags, SIZE_T uBytes) {
@@ -1243,14 +1237,13 @@ INTERCEPTOR_WINAPI(HLOCAL, LocalAlloc, UINT uFlags, SIZE_T uBytes) {
     return REAL(LocalAlloc)(uFlags, uBytes);
   }
 
-  return __asan_win_moveable::Alloc(uFlags, uBytes);
+  return MoveableMemoryManager::GetInstance()->Alloc(uFlags, uBytes);
 }
 
 INTERCEPTOR_WINAPI(HLOCAL, LocalFree, HGLOBAL hMem) {
   // If the memory we are trying to free is not owned
   // ASan heap, then fall back to the original LocalFree.
-  return GlobalLocalGenericFree(REAL(LocalLock), REAL(LocalUnlock),
-                                REAL(LocalFree), hMem);
+  return GlobalLocalGenericFree(REAL(LocalLock), REAL(LocalFree), hMem);
 }
 
 INTERCEPTOR_WINAPI(SIZE_T, LocalSize, HGLOBAL hMem) {
@@ -1260,7 +1253,7 @@ INTERCEPTOR_WINAPI(SIZE_T, LocalSize, HGLOBAL hMem) {
   if (!asan_inited || IsSystemHeapAddress(reinterpret_cast<uptr>(hMem))) {
     return REAL(LocalSize)(hMem);
   }
-  return __asan_win_moveable::GetAllocationSize(hMem);
+  return MoveableMemoryManager::GetInstance()->GetAllocationSize(hMem);
 }
 
 INTERCEPTOR_WINAPI(HLOCAL, LocalReAlloc, HGLOBAL hMem, DWORD dwBytes,
@@ -1269,7 +1262,7 @@ INTERCEPTOR_WINAPI(HLOCAL, LocalReAlloc, HGLOBAL hMem, DWORD dwBytes,
       (GlobalLocalRealloc)REAL(LocalReAlloc), (GlobalLocalSize)REAL(LocalSize),
       (GlobalLocalFree)REAL(LocalFree), (GlobalLocalAlloc)REAL(LocalAlloc),
       (GlobalLocalLock)REAL(LocalLock), (GlobalLocalUnlock)LocalUnlock,
-      __asan_win_moveable::HeapCaller::LOCAL, (HANDLE)hMem, dwBytes, uFlags);
+      HeapCaller::LOCAL, (HANDLE)hMem, dwBytes, uFlags);
 }
 
 namespace __asan {
