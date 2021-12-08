@@ -17,18 +17,15 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOGDI
 #include <Windows.h>
-#include <Winternl.h>
 #include <io.h>
 #include <psapi.h>
 #include <stdlib.h>
 
-#include "interception/interception.h"
 #include "sanitizer_common.h"
 #include "sanitizer_file.h"
 #include "sanitizer_libc.h"
 #include "sanitizer_mutex.h"
 #include "sanitizer_placement_new.h"
-#include "sanitizer_win.h"
 #include "sanitizer_win_defs.h"
 
 #if defined(PSAPI_VERSION) && PSAPI_VERSION == 1
@@ -160,72 +157,6 @@ MEMORY_REGION_INFORMATION QueryVirtualMemory(void *addr) {
   }
 
   return mem_info;
-}
-
-typedef long NTSTATUS;
-typedef uptr ULONG_PTR;
-typedef enum _VIRTUAL_MEMORY_INFORMATION_CLASS {
-  VmPrefetchInformation,
-  VmPagePriorityInformation,
-  VmCfgCallTargetInformation,
-  VmPageDirtyStateInformation,
-  VmImageHotPatchInformation
-} VIRTUAL_MEMORY_INFORMATION_CLASS;
-
-typedef struct _MEMORY_RANGE_ENTRY {
-  PVOID VirtualAddress;
-  SIZE_T NumberOfBytes;
-} MEMORY_RANGE_ENTRY, *PMEMORY_RANGE_ENTRY;
-
-typedef struct _CFG_CALL_TARGET_INFO {
-  ULONG_PTR Offset;
-  ULONG_PTR Flags;
-} CFG_CALL_TARGET_INFO, *PCFG_CALL_TARGET_INFO;
-
-typedef struct _CFG_CALL_TARGET_LIST_INFORMATION {
-  ULONG NumberOfEntries;
-  ULONG Reserved;
-  PULONG NumberOfEntriesProcessed;
-  PCFG_CALL_TARGET_INFO CallTargetInfo;
-  HANDLE Section;
-  ULONG64 FileOffset;
-
-} CFG_CALL_TARGET_LIST_INFORMATION, *PCFG_CALL_TARGET_LIST_INFORMATION;
-
-using ZwSetInformationVirtualMemory_t = NTSTATUS (__cdecl *)(
-    HANDLE ProcessHandle, VIRTUAL_MEMORY_INFORMATION_CLASS VmInformationClass,
-    ULONG_PTR NumberOfEntries, PMEMORY_RANGE_ENTRY VirtualAddresses,
-    PVOID VmInformation, ULONG VmInformationLength);
-ZwSetInformationVirtualMemory_t ZwSetInformationVirtualMemory = nullptr;
-
-bool DisableXfgOnTarget(uptr target) {
-  MEMORY_RANGE_ENTRY MemoryRange;
-  CFG_CALL_TARGET_LIST_INFORMATION CallTargetList;
-  CFG_CALL_TARGET_INFO CallTarget;
-  ULONG EntriesProcessed;
-
-  uptr page_size = GetPageSizeCached();
-
-  CallTarget.Flags = CFG_CALL_TARGET_CONVERT_XFG_TO_CFG;
-  CallTarget.Offset = target % page_size;
-
-  EntriesProcessed = 0;
-
-  MemoryRange.VirtualAddress =
-      reinterpret_cast<PVOID>(target & ~(page_size - 1));
-  MemoryRange.NumberOfBytes = page_size;
-
-  CallTargetList.NumberOfEntries = 1;
-  CallTargetList.Reserved = 0;
-  CallTargetList.NumberOfEntriesProcessed = &EntriesProcessed;
-  CallTargetList.CallTargetInfo = &CallTarget;
-  CallTargetList.Section = nullptr;
-  CallTargetList.FileOffset = 0;
-
-  return (ZwSetInformationVirtualMemory(
-              GetCurrentProcess(), VmCfgCallTargetInformation, 1, &MemoryRange,
-              &CallTargetList,
-              sizeof(CFG_CALL_TARGET_LIST_INFORMATION)) < 0x80000000);
 }
 
 void UnmapOrDie(void *addr, uptr size) {
@@ -1216,18 +1147,10 @@ void InitializePlatformEarly() {
   HMODULE handle = GetModuleHandleA("KERNELBASE.DLL");
   QueryVirtualMemoryInformation =
       reinterpret_cast<QueryVirtualMemoryInformation_t>(
-          __interception::InternalGetProcAddress(
-              handle, "QueryVirtualMemoryInformation"));
+          GetProcAddress(handle, "QueryVirtualMemoryInformation"));
+
   CHECK(QueryVirtualMemoryInformation &&
         "ASan requires the Windows 10-only API, QueryVirtualMemoryInformation");
-
-  handle = GetModuleHandleA("NTDLL.DLL");
-  ZwSetInformationVirtualMemory =
-      reinterpret_cast<ZwSetInformationVirtualMemory_t>(
-          __interception::InternalGetProcAddress(
-              handle, "ZwSetInformationVirtualMemory"));
-  CHECK(ZwSetInformationVirtualMemory &&
-        "ASan requires the Windows 10-only API, ZwSetInformationVirtualMemory");
 }
 
 void MaybeReexec() {

@@ -202,7 +202,9 @@ bool IsValidItem(void *item) {
 }
 
 // helper function to optionally zero an allocation.
-void *AllocMaybeZero(size_t size, bool zero_init, BufferedStackTrace &stack) {
+void *AllocMaybeZero(size_t size, bool zero_init) {
+  // TODO: This stack trace should be moved further up in the stack.
+  GET_STACK_TRACE_MALLOC;
   if (zero_init) {
     return asan_calloc(size, 1, &stack);
   } else {
@@ -218,9 +220,9 @@ void *AllocMaybeZero(size_t size, bool zero_init, BufferedStackTrace &stack) {
     }                                  \
   while (0)
 
-MoveableAllocationEntry *AddMoveableAllocationInternal(
-    size_t size, bool zero_init, BufferedStackTrace &stack) {
-  void *new_region = AllocMaybeZero(size, zero_init, stack);
+MoveableAllocationEntry *AddMoveableAllocationInternal(size_t size,
+                                                       bool zero_init) {
+  void *new_region = AllocMaybeZero(size, zero_init);
   HANDLE_OUT_OF_MEMORY(new_region);
 
   auto &resource_instance = GetResourcesInstance();
@@ -260,6 +262,8 @@ MoveableAllocationEntry *AddMoveableAllocationInternal(
   }
 
   if (handle_entry == nullptr) {
+    // TODO: This stack trace should be moved further up in the stack.
+    GET_STACK_TRACE_FREE;
     asan_free(new_region, &stack, FROM_MALLOC);
     SetLastError(ERROR_OUTOFMEMORY);
     return nullptr;
@@ -268,10 +272,9 @@ MoveableAllocationEntry *AddMoveableAllocationInternal(
   return handle_entry;
 }
 
-void *AddMoveableAllocation(size_t size, bool zero_init,
-                            BufferedStackTrace &stack) {
+void *AddMoveableAllocation(size_t size, bool zero_init) {
   MoveableAllocationEntry *entry =
-      AddMoveableAllocationInternal(size, zero_init, stack);
+      AddMoveableAllocationInternal(size, zero_init);
 
   if (entry == nullptr) {
     return nullptr;
@@ -280,9 +283,8 @@ void *AddMoveableAllocation(size_t size, bool zero_init,
   return TagHandleIndex(reinterpret_cast<uptr>(entry->handle));
 }
 
-void *AddFixedAllocation(size_t size, bool zero_init,
-                         BufferedStackTrace &stack) {
-  void *new_region = AllocMaybeZero(size, zero_init, stack);
+void *AddFixedAllocation(size_t size, bool zero_init) {
+  void *new_region = AllocMaybeZero(size, zero_init);
   HANDLE_OUT_OF_MEMORY(new_region);
 
   auto &resource_instance = GetResourcesInstance();
@@ -292,6 +294,8 @@ void *AddFixedAllocation(size_t size, bool zero_init,
   FixedAllocationEntry *handle_entry = new FixedAllocationEntry(new_region);
 
   if (handle_entry == nullptr) {
+    // TODO: This stack trace should be moved further up in the stack.
+    GET_STACK_TRACE_FREE;
     asan_free(new_region, &stack, FROM_MALLOC);
     SetLastError(ERROR_OUTOFMEMORY);
     return nullptr;
@@ -310,14 +314,14 @@ void *AddFixedAllocation(size_t size, bool zero_init,
   return new_region;
 }
 
-void *ReallocFixedToHandleInternal(void *original, bool zero_init,
-                                   BufferedStackTrace &stack) {
+void *ReallocFixedToHandleInternal(void *original, bool zero_init) {
   DCHECK(IsOwnedPointer(original));
 
-  size_t original_size = asan_malloc_usable_size(
-      original, stack.trace_buffer[0], stack.top_frame_bp);
+  // TODO: This stack trace should be moved further up in the stack.
+  GET_CURRENT_PC_BP;
+  size_t original_size = asan_malloc_usable_size(original, pc, bp);
   MoveableAllocationEntry *new_handle =
-      AddMoveableAllocationInternal(original_size, zero_init, stack);
+      AddMoveableAllocationInternal(original_size, zero_init);
 
   if (new_handle) {
     void *new_ptr = new_handle->addr;
@@ -328,7 +332,8 @@ void *ReallocFixedToHandleInternal(void *original, bool zero_init,
   return nullptr;
 }
 
-void *FreeMoveableInternal(void *handle, BufferedStackTrace &stack) {
+MoveableAllocationEntry *FreeMoveableInternal(void *handle,
+                                              BufferedStackTrace &stack) {
   auto &resource_instance = GetResourcesInstance();
   auto &handle_reuse_list = resource_instance.handle_reuse_list;
   auto &moveable_entries = resource_instance.moveable_entries;
@@ -368,12 +373,11 @@ void *FreeMoveableInternal(void *handle, BufferedStackTrace &stack) {
       // TODO: Make a fully fleshed error on free not created for handle
       ReportFreeNotMalloced(reinterpret_cast<uptr>(handle), &stack);
     }
-
-    return handle;
+  } else {
+    asan_free(backing_memory, &stack, FROM_MALLOC);
   }
 
-  asan_free(backing_memory, &stack, FROM_MALLOC);
-  return nullptr;
+  return entry;
 }
 
 void *FreeFixedInternal(void *addr, BufferedStackTrace &stack) {
@@ -417,9 +421,11 @@ void *FreeFixedInternal(void *addr, BufferedStackTrace &stack) {
     }
   }
 
-  void *ret_addr = nullptr;
+  void *ret_addr;
   if (!found) {
     SetLastError(ERROR_INVALID_HANDLE);
+    ret_addr = nullptr;
+  } else {
     ret_addr = addr;
   }
 
@@ -427,7 +433,8 @@ void *FreeFixedInternal(void *addr, BufferedStackTrace &stack) {
   return ret_addr;
 }
 
-void *Free(void *item, BufferedStackTrace &stack) {
+void *Free(void *item) {
+  GET_STACK_TRACE_FREE;
   if (IsValidMoveableHandle(item)) {
     return FreeMoveableInternal(item, stack);
   }
@@ -435,7 +442,7 @@ void *Free(void *item, BufferedStackTrace &stack) {
   return FreeFixedInternal(item, stack);
 }
 
-void *IncrementLockCount(void *item, uptr pc, uptr bp, uptr sp) {
+void *IncrementLockCount(void *item) {
   {
     RecursiveScopedLock scoped_lock(GetResourcesInstance().lock,
                                     GetResourcesInstance().thread_id);
@@ -454,12 +461,13 @@ void *IncrementLockCount(void *item, uptr pc, uptr bp, uptr sp) {
   }
 
   // TODO: Make a fully fleshed error type
+  GET_CURRENT_PC_BP_SP;
   ReportGenericError(pc, bp, sp, reinterpret_cast<uptr>(item), true,
                      sizeof(void *), 0, false);
   return nullptr;
 }
 
-size_t GetAllocationSize(void *item, BufferedStackTrace &stack) {
+size_t GetAllocationSize(void *item) {
   void *ptr = nullptr;
 
   {
@@ -474,16 +482,17 @@ size_t GetAllocationSize(void *item, BufferedStackTrace &stack) {
   }
 
   if (ptr == nullptr) {
+    GET_STACK_TRACE(2, true);
     ReportMallocUsableSizeNotOwned(reinterpret_cast<uptr>(item), &stack);
     return 0;
   }
 
-  return asan_malloc_usable_size(ptr, stack.trace_buffer[0],
-                                 stack.top_frame_bp);
+  GET_CURRENT_PC_BP;
+  return asan_malloc_usable_size(ptr, pc, bp);
 }
 
 void *ReallocFixedToFixedInternal(void *original, size_t new_size,
-                                  bool zero_init, BufferedStackTrace &stack) {
+                                  bool zero_init) {
   DCHECK(IsOwnedPointer(original) || original == nullptr);
 
   auto &resource_instance = GetResourcesInstance();
@@ -494,6 +503,8 @@ void *ReallocFixedToFixedInternal(void *original, size_t new_size,
   if (zero_init) {
     addr = _recalloc(original, new_size, 1);
   } else {
+    // TODO: This stack trace should be moved further up in the stack.
+    GET_STACK_TRACE_MALLOC;
     addr = asan_realloc(original, new_size, &stack);
   }
 
@@ -530,8 +541,7 @@ void *ReallocFixedToFixedInternal(void *original, size_t new_size,
 }
 
 void *ReallocHandleToHandleInternal(void *original, size_t new_size,
-                                    bool zero_init, BufferedStackTrace &stack,
-                                    uptr sp) {
+                                    bool zero_init) {
   DCHECK(original != nullptr && IsValidMoveableHandle(original));
 
   auto &resource_instance = GetResourcesInstance();
@@ -546,8 +556,8 @@ void *ReallocHandleToHandleInternal(void *original, size_t new_size,
     handle_entry = ResolveHandleToTableEntry(original);
     if (!handle_entry) {
       // TODO: Make a fully fleshed error type for realloc on invalid handle
-      ReportGenericError(stack.trace_buffer[0], stack.top_frame_bp, sp,
-                         reinterpret_cast<uptr>(original), false,
+      GET_CURRENT_PC_BP_SP;
+      ReportGenericError(pc, bp, sp, reinterpret_cast<uptr>(original), false,
                          sizeof(void *), 0, false);
       return nullptr;
     }
@@ -559,25 +569,16 @@ void *ReallocHandleToHandleInternal(void *original, size_t new_size,
   // calling _recalloc/realloc but in doing so we introduce a potential
   // race condition where the handle might be deleted under us.
   void *new_addr;
-  size_t original_size;
   if (zero_init) {
-    original_size = asan_malloc_usable_size(addr, stack.trace_buffer[0],
-                                            stack.top_frame_bp);
+    new_addr = _recalloc(addr, new_size, 1);
+  } else {
+    // TODO: This stack trace should be moved further up in the stack.
+    GET_STACK_TRACE_MALLOC;
+    new_addr = asan_realloc(addr, new_size, &stack);
   }
 
-  new_addr = asan_realloc(addr, new_size, &stack);
   if (new_addr == nullptr) {
     return nullptr;
-  }
-
-  if (zero_init) {
-    size_t new_size = asan_malloc_usable_size(new_addr, stack.trace_buffer[0],
-                                              stack.top_frame_bp);
-    if (original_size < new_size) {
-      REAL(memset)
-      (static_cast<char *>(new_addr) + original_size, 0,
-       new_size - original_size);
-    }
   }
 
   if (new_addr != addr) {
@@ -600,8 +601,7 @@ void *ReallocHandleToHandleInternal(void *original, size_t new_size,
   return original;
 }
 
-void *ReAllocate(void *item, size_t flags, size_t size, HeapCaller caller,
-                 BufferedStackTrace &stack, uptr sp) {
+void *ReAllocate(void *item, size_t flags, size_t size, HeapCaller caller) {
   if (!__asan::flags()->allocator_frees_and_returns_null_on_realloc_zero) {
     Report(
         "WARNING: allocator_frees_and_returns_null_on_realloc_zero is set to "
@@ -612,7 +612,7 @@ void *ReAllocate(void *item, size_t flags, size_t size, HeapCaller caller,
   if (flags & MODIFY) {
     if ((flags & MOVEABLE) && caller == HeapCaller::GLOBAL &&
         IsOwnedPointer(item)) {
-      return ReallocFixedToHandleInternal(item, flags & ZEROINIT, stack);
+      return ReallocFixedToHandleInternal(item, flags & ZEROINIT);
     }
 
     return item;
@@ -620,6 +620,7 @@ void *ReAllocate(void *item, size_t flags, size_t size, HeapCaller caller,
     if (IsValidMoveableHandle(item)) {
       if (size == 0) {
         // TODO: We might need to check the lock count here before freeing
+        GET_STACK_TRACE_FREE;
         FreeMoveableInternal(item, stack);
 
         // Returning nullptr of ReAlloc of size zero emulates the behavior of
@@ -627,16 +628,15 @@ void *ReAllocate(void *item, size_t flags, size_t size, HeapCaller caller,
         // invalid handle or other error.
         return nullptr;
       } else {
-        return ReallocHandleToHandleInternal(item, size, flags & ZEROINIT,
-                                             stack, sp);
+        return ReallocHandleToHandleInternal(item, size, flags & ZEROINIT);
       }
     } else {
-      return ReallocFixedToFixedInternal(item, size, flags & ZEROINIT, stack);
+      return ReallocFixedToFixedInternal(item, size, flags & ZEROINIT);
     }
   }
 }
 
-bool DecrementLockCount(void *item, uptr pc, uptr bp, uptr sp) {
+bool DecrementLockCount(void *item) {
   {
     RecursiveScopedLock scoped_lock(GetResourcesInstance().lock,
                                     GetResourcesInstance().thread_id);
@@ -661,12 +661,13 @@ bool DecrementLockCount(void *item, uptr pc, uptr bp, uptr sp) {
   }
 
   // TODO: Make a fully fleshed error type
+  GET_CURRENT_PC_BP_SP;
   ReportGenericError(pc, bp, sp, reinterpret_cast<uptr>(item), true,
                      sizeof(void *), 0, false);
   return false;
 }
 
-size_t GetLockCount(void *item, uptr pc, uptr bp, uptr sp) {
+size_t GetLockCount(void *item) {
   {
     RecursiveScopedLock scoped_lock(GetResourcesInstance().lock,
                                     GetResourcesInstance().thread_id);
@@ -674,6 +675,7 @@ size_t GetLockCount(void *item, uptr pc, uptr bp, uptr sp) {
       MoveableAllocationEntry *entry = ResolveHandleToTableEntry(item);
       if (entry == nullptr) {
         // TODO: Make a fully fleshed error type
+        GET_CURRENT_PC_BP_SP;
         ReportGenericError(pc, bp, sp, reinterpret_cast<uptr>(item), true,
                            sizeof(void *), 0, false);
         return ~size_t{0};
@@ -686,18 +688,19 @@ size_t GetLockCount(void *item, uptr pc, uptr bp, uptr sp) {
   }
 
   // TODO: Make a fully fleshed error type
+  GET_CURRENT_PC_BP_SP;
   ReportGenericError(pc, bp, sp, reinterpret_cast<uptr>(item), true,
                      sizeof(void *), 0, false);
   return ~size_t{0};
 }
 
-void *Alloc(unsigned long flags, size_t size, BufferedStackTrace &stack) {
+void *Alloc(unsigned long flags, size_t size) {
   bool zero_alloc = flags & ZEROINIT;
   if (flags & MOVEABLE) {
-    return AddMoveableAllocation(size, zero_alloc, stack);
+    return AddMoveableAllocation(size, zero_alloc);
   }
 
-  return AddFixedAllocation(size, zero_alloc, stack);
+  return AddFixedAllocation(size, zero_alloc);
 }
 
 void Purge() {

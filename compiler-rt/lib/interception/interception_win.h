@@ -25,8 +25,7 @@ namespace __interception {
 // false on failure (including "couldn't find the function").
 
 // Overrides a function by its address.
-bool OverrideFunction(uptr old_func, uptr new_func, uptr *orig_old_func = 0,
-		      bool guaranteed_hotpatchable = false);
+bool OverrideFunction(uptr old_func, uptr new_func, uptr *orig_old_func = 0);
 
 // Overrides a function in a system DLL or DLL CRT by its exported name.
 bool OverrideFunction(const char *name, uptr new_func, uptr *orig_old_func = 0);

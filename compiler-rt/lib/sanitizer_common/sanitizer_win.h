@@ -14,12 +14,11 @@
 
 #include "sanitizer_platform.h"
 #if SANITIZER_WINDOWS
+#include "sanitizer_internal_defs.h"
 
 namespace __sanitizer {
 // Check based on flags if we should handle the exception.
 bool IsHandledDeadlyException(DWORD exceptionCode);
-
-bool DisableXfgOnTarget(uptr target);
 }  // namespace __sanitizer
 
 #endif  // SANITIZER_WINDOWS

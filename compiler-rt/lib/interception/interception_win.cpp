@@ -129,10 +129,9 @@
 #if SANITIZER_WINDOWS
 #include "sanitizer_common/sanitizer_platform.h"
 #define WIN32_LEAN_AND_MEAN
-#include <Windows.h>
+#include <windows.h>
 #include <stdio.h>
 
-#include "sanitizer_common/sanitizer_win.h"
 
 namespace __interception {
 static const int kAddressLength = FIRST_32_SECOND_64(4, 8);
@@ -161,8 +160,8 @@ static void InterceptionFailed() {
         "Please file a bug report which includes your Windows build number.\n"
         "This is listed as 'OS Version' in the command output from \n"
         "systeminfo.\n"
-        "===================================================================="
-        "\n");
+        "====================================================================\n"
+        );
   }
   if (break_on_interception_failure || debugger_is_present) {
     DebugBreak();
@@ -196,12 +195,12 @@ UNUSED static uptr RoundUpTo(uptr size, uptr boundary) {
 // ASan sources into interception/.
 
 static size_t _strlen(const char *str) {
-  const char *p = str;
+  const char* p = str;
   while (*p != '\0') ++p;
   return p - str;
 }
 
-static char *_strchr(char *str, char c) {
+static char* _strchr(char* str, char c) {
   while (*str) {
     if (*str == c)
       return str;
@@ -211,41 +210,47 @@ static char *_strchr(char *str, char c) {
 }
 
 static void _memset(void *p, int value, size_t sz) {
-  for (size_t i = 0; i < sz; ++i) ((char *)p)[i] = (char)value;
+  for (size_t i = 0; i < sz; ++i)
+    ((char*)p)[i] = (char)value;
 }
 
 static void _memcpy(void *dst, void *src, size_t sz) {
-  char *dst_c = (char *)dst, *src_c = (char *)src;
-  for (size_t i = 0; i < sz; ++i) dst_c[i] = src_c[i];
+  char *dst_c = (char*)dst,
+       *src_c = (char*)src;
+  for (size_t i = 0; i < sz; ++i)
+    dst_c[i] = src_c[i];
 }
 
-static bool ChangeMemoryProtection(uptr address, uptr size,
-                                   DWORD *old_protection) {
-  return ::VirtualProtect((void *)address, size, PAGE_EXECUTE_READWRITE,
+static bool ChangeMemoryProtection(
+    uptr address, uptr size, DWORD *old_protection) {
+  return ::VirtualProtect((void*)address, size,
+                          PAGE_EXECUTE_READWRITE,
                           old_protection) != FALSE;
 }
 
-static bool RestoreMemoryProtection(uptr address, uptr size,
-                                    DWORD old_protection) {
+static bool RestoreMemoryProtection(
+    uptr address, uptr size, DWORD old_protection) {
   DWORD unused;
-  return ::VirtualProtect((void *)address, size, old_protection, &unused) !=
-         FALSE;
+  return ::VirtualProtect((void*)address, size,
+                          old_protection,
+                          &unused) != FALSE;
 }
 
 static bool IsMemoryPadding(uptr address, uptr size) {
-  u8 *function = (u8 *)address;
+  u8* function = (u8*)address;
   for (size_t i = 0; i < size; ++i)
     if (function[i] != 0x90 && function[i] != 0xCC)
       return false;
   return true;
 }
 
-static const u8 kHintNop8Bytes[] = {0x0F, 0x1F, 0x84, 0x00,
-                                    0x00, 0x00, 0x00, 0x00};
+static const u8 kHintNop8Bytes[] = {
+  0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00
+};
 
-template <class T>
+template<class T>
 static bool FunctionHasPrefix(uptr address, const T &pattern) {
-  u8 *function = (u8 *)address - sizeof(pattern);
+  u8* function = (u8*)address - sizeof(pattern);
   for (size_t i = 0; i < sizeof(pattern); ++i)
     if (function[i] != pattern[i])
       return false;
@@ -262,23 +267,23 @@ static bool FunctionHasPadding(uptr address, uptr size) {
 }
 
 static void WritePadding(uptr from, uptr size) {
-  _memset((void *)from, 0xCC, (size_t)size);
+  _memset((void*)from, 0xCC, (size_t)size);
 }
 
 static void WriteJumpInstruction(uptr from, uptr target) {
   if (!DistanceIsWithin2Gig(from + kJumpInstructionLength, target))
     InterceptionFailed();
   ptrdiff_t offset = target - from - kJumpInstructionLength;
-  *(u8 *)from = 0xE9;
-  *(u32 *)(from + 1) = offset;
+  *(u8*)from = 0xE9;
+  *(u32*)(from + 1) = offset;
 }
 
 static void WriteShortJumpInstruction(uptr from, uptr target) {
   sptr offset = target - from - kShortJumpInstructionLength;
   if (offset < -128 || offset > 127)
     InterceptionFailed();
-  *(u8 *)from = 0xEB;
-  *(u8 *)(from + 1) = (u8)offset;
+  *(u8*)from = 0xEB;
+  *(u8*)(from + 1) = (u8)offset;
 }
 
 #if SANITIZER_WINDOWS64
@@ -293,15 +298,16 @@ static void WriteIndirectJumpInstruction(uptr from, uptr indirect_target) {
                             indirect_target)) {
     InterceptionFailed();
   }
-  *(u16 *)from = 0x25FF;
-  *(u32 *)(from + 2) = offset;
+  *(u16*)from = 0x25FF;
+  *(u32*)(from + 2) = offset;
 }
 #endif
 
-static void WriteBranch(uptr from, uptr indirect_target, uptr target) {
+static void WriteBranch(
+    uptr from, uptr indirect_target, uptr target) {
 #if SANITIZER_WINDOWS64
   WriteIndirectJumpInstruction(from, indirect_target);
-  *(u64 *)indirect_target = target;
+  *(u64*)indirect_target = target;
 #else
   (void)indirect_target;
   WriteJumpInstruction(from, target);
@@ -335,14 +341,15 @@ static void *AllocateTrampolineRegion(uptr image_address, size_t granularity) {
   uptr scanned = 0;
   while (scanned < kTrampolineScanLimitRange) {
     MEMORY_BASIC_INFORMATION info;
-    if (!::VirtualQuery((void *)address, &info, sizeof(info)))
+    if (!::VirtualQuery((void*)address, &info, sizeof(info)))
       return nullptr;
 
     // Check whether a region can be allocated at |address|.
     if (info.State == MEM_FREE && info.RegionSize >= granularity) {
-      void *page =
-          ::VirtualAlloc((void *)RoundUpTo(address, granularity), granularity,
-                         MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+      void *page = ::VirtualAlloc((void*)RoundUpTo(address, granularity),
+                                  granularity,
+                                  MEM_RESERVE | MEM_COMMIT,
+                                  PAGE_EXECUTE_READWRITE);
       return page;
     }
 
@@ -352,7 +359,9 @@ static void *AllocateTrampolineRegion(uptr image_address, size_t granularity) {
   }
   return nullptr;
 #else
-  return ::VirtualAlloc(nullptr, granularity, MEM_RESERVE | MEM_COMMIT,
+  return ::VirtualAlloc(nullptr,
+                        granularity,
+                        MEM_RESERVE | MEM_COMMIT,
                         PAGE_EXECUTE_READWRITE);
 #endif
 }
@@ -363,7 +372,7 @@ void TestOnlyReleaseTrampolineRegions() {
     TrampolineMemoryRegion *current = &TrampolineRegions[bucket];
     if (current->content == 0)
       return;
-    ::VirtualFree((void *)current->content, 0, MEM_RELEASE);
+    ::VirtualFree((void*)current->content, 0, MEM_RELEASE);
     current->content = 0;
   }
 }
@@ -372,7 +381,7 @@ static uptr AllocateMemoryForTrampoline(uptr image_address, size_t size) {
   // Find a region within 2G with enough space to allocate |size| bytes.
   TrampolineMemoryRegion *region = nullptr;
   for (size_t bucket = 0; bucket < kMaxTrampolineRegion; ++bucket) {
-    TrampolineMemoryRegion *current = &TrampolineRegions[bucket];
+    TrampolineMemoryRegion* current = &TrampolineRegions[bucket];
     if (current->content == 0) {
       // No valid region found, allocate a new region.
       size_t bucket_size = GetMmapGranularity();
@@ -387,11 +396,11 @@ static uptr AllocateMemoryForTrampoline(uptr image_address, size_t size) {
       break;
     } else if (current->max_size - current->allocated_size > size) {
 #if SANITIZER_WINDOWS64
-      // In 64-bits, the memory space must be allocated within 2G boundary.
-      uptr next_address = current->content + current->allocated_size;
-      if (next_address < image_address ||
-          next_address - image_address >= 0x7FFF0000)
-        continue;
+        // In 64-bits, the memory space must be allocated within 2G boundary.
+        uptr next_address = current->content + current->allocated_size;
+        if (next_address < image_address ||
+            next_address - image_address >= 0x7FFF0000)
+          continue;
 #endif
       // The space can be allocated in the current region.
       region = current;
@@ -554,17 +563,6 @@ static size_t GetInstructionSize(uptr address, size_t* rel_offset = nullptr) {
                           //  [rsp+0x8],xmm4
           return 6;
       }
-      break;
-
-    case 0x83:
-      const u8 next_byte = *(u8*)(address + 1);
-      const u8 mod = next_byte >> 6;
-      const u8 rm = next_byte & 7;
-      if (mod == 1 && rm == 4) {
-        return 5;  // 83 ModR/M SIB Disp8 Imm8
-                   //   add|or|adc|sbb|and|sub|xor|cmp [r+disp8], imm8
-      }
-      break;
   }
 
   switch (*(u16*)address) {
@@ -581,8 +579,6 @@ static size_t GetInstructionSize(uptr address, size_t* rel_offset = nullptr) {
     case 0x5641:  // push r14
     case 0x5741:  // push r15
     case 0x9066:  // Two-byte NOP
-    case 0xc084:  // test al, al
-    case 0x018a:  // mov al, byte ptr [rcx]
       return 2;
 
     case 0x7e80:  // 80 7e YY XX  cmp BYTE PTR [rsi+YY], XX
@@ -608,68 +604,68 @@ static size_t GetInstructionSize(uptr address, size_t* rel_offset = nullptr) {
   }
 
   switch (0x00FFFFFF & *(u32*)address) {
-    case 0x07c1f6:  // f6 c1 07 : test cl, 0x7
-    case 0x10b70f:  // 0f b7 10 : movzx edx, word ptr [rax]
-    case 0xc00b4d:  // 3d 0b c0 : or r8, r8
-    case 0xc03345:  // 45 33 c0 : xor r8d, r8d
-    case 0xc08548:  // 48 85 c0 : test rax, rax
-    case 0xc0854d:  // 4d 85 c0 : test r8, r8
-    case 0xc08b41:  // 41 8b c0 : mov eax, r8d
-    case 0xc0ff48:  // 48 ff c0 : inc rax
-    case 0xc0ff49:  // 49 ff c0 : inc r8
-    case 0xc18b41:  // 41 8b c1 : mov eax, r9d
-    case 0xc18b48:  // 48 8b c1 : mov rax, rcx
-    case 0xc18b4c:  // 4c 8b c1 : mov r8, rcx
-    case 0xc1ff48:  // 48 ff c1 : inc rcx
-    case 0xc1ff49:  // 49 ff c1 : inc r9
-    case 0xc28b41:  // 41 8b c2 : mov eax, r10d
-    case 0xc2b60f:  // 0f b6 c2 : movzx eax, dl
-    case 0xc2ff48:  // 48 ff c2 : inc rdx
-    case 0xc2ff49:  // 49 ff c2 : inc r10
-    case 0xc38b41:  // 41 8b c3 : mov eax, r11d
-    case 0xc3ff48:  // 48 ff c3 : inc rbx
-    case 0xc3ff49:  // 49 ff c3 : inc r11
-    case 0xc48b41:  // 41 8b c4 : mov eax, r12d
-    case 0xc48b48:  // 48 8b c4 : mov rax, rsp
-    case 0xc4ff49:  // 49 ff c4 : inc r12
-    case 0xc5ff49:  // 49 ff c5 : inc r13
-    case 0xc6ff48:  // 48 ff c6 : inc rsi
-    case 0xc6ff49:  // 49 ff c6 : inc r14
-    case 0xc7ff48:  // 48 ff c7 : inc rdi
-    case 0xc7ff49:  // 49 ff c7 : inc r15
-    case 0xc93345:  // 45 33 c9 : xor r9d, r9d
-    case 0xc98548:  // 48 85 c9 : test rcx, rcx
-    case 0xc9854d:  // 4d 85 c9 : test r9, r9
-    case 0xc98b4c:  // 4c 8b c9 : mov r9, rcx
-    case 0xca2b48:  // 48 2b ca : sub rcx, rdx
-    case 0xd12b48:  // 48 2b d1 : sub rdx, rcx
-    case 0xd18b48:  // 48 8b d1 : mov rdx, rcx
-    case 0xd18b4c:  // 4c 8b d1 : mov r10, rcx
-    case 0xd28548:  // 48 85 d2 : test rdx, rdx
-    case 0xd2854d:  // 4d 85 d2 : test r10, r10
-    case 0xd28b4c:  // 4c 8b d2 : mov r10, rdx
-    case 0xd2b60f:  // 0f b6 d2 : movzx edx, dl
-    case 0xd98b4c:  // 4c 8b d9 : mov r11, rcx
-    case 0xd9f748:  // 48 f7 d9 : neg rcx
-    case 0xdb3345:  // 45 33 db : xor r11d, r11d
-    case 0xdb8548:  // 48 85 db : test rbx, rbx
-    case 0xdb854d:  // 4d 85 db : test r11, r11
-    case 0xdc8b4c:  // 4c 8b dc : mov r11, rsp
-    case 0xe0e483:  // 83 e4 e0 : and esp, 0xffffffe0
-    case 0xe48548:  // 48 85 e4 : test rsp, rsp
-    case 0xe4854d:  // 4d 85 e4 : test r12, r12
-    case 0xe58948:  // 48 8b c4 : mov rbp, rsp
-    case 0xed8548:  // 48 85 ed : test rbp, rbp
-    case 0xed854d:  // 4d 85 ed : test r13, r13
-    case 0xf6854d:  // 4d 85 f6 : test r14, r14
-    case 0xff854d:  // 4d 85 ff : test r15, r15
+    case 0x07c1f6:    // f6 c1 07 : test cl, 0x7
+    case 0x10b70f:    // 0f b7 10 : movzx edx, WORD PTR [rax]
+    case 0xc00b4d:    // 3d 0b c0 : or r8, r8
+    case 0xc03345:    // 45 33 c0 : xor r8d, r8d
+    case 0xc08548:    // 48 85 c0 : test rax,rax
+    case 0xc0854d:    // 4d 85 c0 : test r8, r8
+    case 0xc08b41:    // 41 8b c0 :   mov    eax,r8d
+    case 0xc0ff48:    // 48 ff c0 :   inc    rax
+    case 0xc0ff49:    // 49 ff c0 :   inc    r8
+    case 0xc18b41:    // 41 8b c1 :   mov    eax,r9d
+    case 0xc18b48:    // 48 8b c1 : mov rax, rcx
+    case 0xc18b4c:    // 4C 8B C1 : mov r8, rcx
+    case 0xc1ff48:    // 48 ff c1 :   inc    rcx
+    case 0xc1ff49:    // 49 ff c1 :   inc    r9
+    case 0xc28b41:    // 41 8b c2 :   mov    eax,r10d
+    case 0xc2b60f:    // 0f b6 c2 : movzx eax, dl
+    case 0xc2ff48:    // 48 ff c2 :   inc    rdx
+    case 0xc2ff49:    // 49 ff c2 :   inc    r10
+    case 0xc38b41:    // 41 8b c3 :   mov    eax,r11d
+    case 0xc3ff48:    // 48 ff c3 :   inc    rbx
+    case 0xc3ff49:    // 49 ff c3 :   inc    r11
+    case 0xc48b41:    // 41 8b c4 :   mov    eax,r12d
+    case 0xc48b48:    // 48 8b c4 : mov rax, rsp
+    case 0xc4ff49:    // 49 ff c4 :   inc    r12
+    case 0xc5ff49:    // 49 ff c5 :   inc    r13
+    case 0xc6ff48:    // 48 ff c6 :   inc    rsi
+    case 0xc6ff49:    // 49 ff c6 :   inc    r14
+    case 0xc7ff48:    // 48 ff c7 :   inc    rdi
+    case 0xc7ff49:    // 49 ff c7 :   inc    r15
+    case 0xc93345:    // 45 33 c9 : xor r9d, r9d
+    case 0xc98548:    // 48 85 C9 : test rcx, rcx
+    case 0xc9854d:    // 4d 85 c9 : test r9,r9
+    case 0xc98b4c:    // 4C 8B C9 : mov r9, rcx
+    case 0xca2b48:    // 48 2b ca : sub rcx, rdx
+    case 0xd12b48:    // 48 2b d1 : sub rdx, rcx
+    case 0xd18b48:    // 48 8b d1 : mov rdx, rcx
+    case 0xd18b4c:    // 4c 8b d1 : mov r10, rcx
+    case 0xd28548:    // 48 85 d2 : test rdx,rdx
+    case 0xd2854d:    // 4d 85 d2 : test r10,r10
+    case 0xd28b4c:    // 4c 8b d2 : mov r10, rdx
+    case 0xd2b60f:    // 0f b6 d2 : movzx edx, dl
+    case 0xd98b4c:    // 4c 8b d9 : mov r11, rcx
+    case 0xd9f748:    // 48 f7 d9 : neg rcx
+    case 0xdb3345:    // 45 33 DB : xor r11d, r11d
+    case 0xdb8548:    // 48 85 db : test rbx,rbx
+    case 0xdb854d:    // 4d 85 db : test r11,r11
+    case 0xdc8b4c:    // 4c 8b dc : mov r11, rsp
+    case 0xe0e483:    // 83 E4 E0 : and esp, 0xFFFFFFE0
+    case 0xe48548:    // 48 85 e4 : test rsp,rsp
+    case 0xe4854d:    // 4d 85 e4 : test r12,r12
+    case 0xe58948:    // 48 8b c4 : mov rbp, rsp
+    case 0xed8548:    // 48 85 ed : test rbp,rbp
+    case 0xed854d:    // 4d 85 ed : test r13,r13
+    case 0xf6854d:    // 4d 85 f6 : test r14,r14
+    case 0xff854d:    // 4d 85 ff : test r15,r15
       return 3;
 
-    case 0x245489:  // 89 54 24 XX : mov DWORD PTR[rsp + XX], edx
-    case 0x428d44:  // 44 8d 42 XX : lea r8d , [rdx + XX]
-    case 0x588948:  // 48 89 58 XX : mov QWORD PTR[rax + XX], rbx
-    case 0xec8348:  // 48 83 ec XX : sub rsp, XX
-    case 0xf88349:  // 49 83 f8 XX : cmp r8, XX
+    case 0x245489:    // 89 54 24 XX : mov DWORD PTR[rsp + XX], edx
+    case 0x428d44:    // 44 8d 42 XX : lea r8d , [rdx + XX]
+    case 0x588948:    // 48 89 58 XX : mov QWORD PTR[rax + XX], rbx
+    case 0xec8348:    // 48 83 ec XX : sub rsp, XX
+    case 0xf88349:    // 49 83 f8 XX : cmp r8, XX
       return 4;
 
     case 0x246483:  // 83 64 24 00 00 :   and    DWORD PTR [rsp+xx],0x0
@@ -683,7 +679,7 @@ static size_t GetInstructionSize(uptr address, size_t* rel_offset = nullptr) {
     case 0x7f8166:  // 66 81 7f YY XX XX  cmp WORD PTR [rdi+0xYY], XX XX
       return 6;
 
-    case 0xec8148:  // 48 81 EC XX XX XX XX : sub rsp, XXXXXXXX
+    case 0xec8148:    // 48 81 EC XX XX XX XX : sub rsp, XXXXXXXX
       return 7;
 
     case 0x247c81:  // 81 7c 24 YY XX XX XX XX cmp DWORD P [rsp+YY], XX XX XX XX
@@ -697,18 +693,18 @@ static size_t GetInstructionSize(uptr address, size_t* rel_offset = nullptr) {
     case 0x7f8141:  // 41 81 78 YY XX XX XX XX cmp DWORD P [r15+YY], XX XX XX XX
       return 8;
 
-    case 0x058b48:  // 48 8b 05 XX XX XX XX :
-                    //   mov rax, QWORD PTR [rip + XXXXXXXX]
-    case 0x25ff48:  // 48 ff 25 XX XX XX XX :
-                    //   rex.W jmp QWORD PTR [rip + XXXXXXXX]
+    case 0x058b48:    // 48 8b 05 XX XX XX XX :
+                      //   mov rax, QWORD PTR [rip + XXXXXXXX]
+    case 0x25ff48:    // 48 ff 25 XX XX XX XX :
+                      //   rex.W jmp QWORD PTR [rip + XXXXXXXX]
 
       // Instructions having offset relative to 'rip' need offset adjustment.
       if (rel_offset)
         *rel_offset = 3;
       return 7;
 
-    case 0x2444c7:  // C7 44 24 XX YY YY YY YY
-                    //   mov dword ptr [rsp + XX], YYYYYYYY
+    case 0x2444c7:    // C7 44 24 XX YY YY YY YY
+                      //   mov dword ptr [rsp + XX], YYYYYYYY
       return 8;
   }
 
@@ -768,14 +764,14 @@ static size_t GetInstructionSize(uptr address, size_t* rel_offset = nullptr) {
       return 5;
   }
 #endif
-  // clang-format on
+// clang-format on
 
   // Unknown instruction!
   // FIXME: Unknown instruction failures might happen when we add a new
   // interceptor or a new compiler version. In either case, they should result
   // in visible and readable error messages. However, merely calling abort()
   // leads to an infinite recursion in CheckFailed.
-
+ 
   InterceptionFailed();
   return 0;
 }
@@ -797,25 +793,26 @@ static bool CopyInstructions(uptr to, uptr from, size_t size) {
   while (cursor != size) {
     size_t rel_offset = 0;
     size_t instruction_size = GetInstructionSize(from + cursor, &rel_offset);
-    _memcpy((void *)(to + cursor), (void *)(from + cursor),
+    _memcpy((void*)(to + cursor), (void*)(from + cursor),
             (size_t)instruction_size);
     if (rel_offset) {
       uptr delta = to - from;
-      uptr relocated_offset = *(u32 *)(to + cursor + rel_offset) - delta;
+      uptr relocated_offset = *(u32*)(to + cursor + rel_offset) - delta;
 #if SANITIZER_WINDOWS64
       if (relocated_offset + 0x80000000U >= 0xFFFFFFFFU)
         return false;
 #endif
-      *(u32 *)(to + cursor + rel_offset) = relocated_offset;
+      *(u32*)(to + cursor + rel_offset) = relocated_offset;
     }
     cursor += instruction_size;
   }
   return true;
 }
 
+
 #if !SANITIZER_WINDOWS64
-bool OverrideFunctionWithDetour(uptr old_func, uptr new_func,
-                                uptr *orig_old_func) {
+bool OverrideFunctionWithDetour(
+    uptr old_func, uptr new_func, uptr *orig_old_func) {
   const int kDetourHeaderLen = 5;
   const u16 kDetourInstruction = 0xFF8B;
 
@@ -823,7 +820,7 @@ bool OverrideFunctionWithDetour(uptr old_func, uptr new_func,
   uptr patch_length = kDetourHeaderLen + kShortJumpInstructionLength;
 
   // Validate that the function is hookable.
-  if (*(u16 *)old_func != kDetourInstruction ||
+  if (*(u16*)old_func != kDetourInstruction ||
       !IsMemoryPadding(header, kDetourHeaderLen))
     return false;
 
@@ -849,14 +846,14 @@ bool OverrideFunctionWithDetour(uptr old_func, uptr new_func,
 }
 #endif
 
-bool OverrideFunctionWithRedirectJump(uptr old_func, uptr new_func,
-                                      uptr *orig_old_func) {
+bool OverrideFunctionWithRedirectJump(
+    uptr old_func, uptr new_func, uptr *orig_old_func) {
   // Check whether the first instruction is a relative jump.
-  if (*(u8 *)old_func != 0xE9)
+  if (*(u8*)old_func != 0xE9)
     return false;
 
   if (orig_old_func) {
-    uptr relative_offset = *(u32 *)(old_func + 1);
+    uptr relative_offset = *(u32*)(old_func + 1);
     uptr absolute_target = old_func + relative_offset + kJumpInstructionLength;
     *orig_old_func = absolute_target;
   }
@@ -884,9 +881,8 @@ bool OverrideFunctionWithRedirectJump(uptr old_func, uptr new_func,
   return true;
 }
 
-bool OverrideFunctionWithHotPatch(uptr old_func, uptr new_func,
-                                  uptr *orig_old_func,
-                                  bool guaranteed_hotpatchable) {
+bool OverrideFunctionWithHotPatch(
+    uptr old_func, uptr new_func, uptr *orig_old_func) {
   const int kHotPatchHeaderLen = kBranchLength;
 
   uptr header = (uptr)old_func - kHotPatchHeaderLen;
@@ -895,12 +891,8 @@ bool OverrideFunctionWithHotPatch(uptr old_func, uptr new_func,
   // Validate that the function is hot patchable.
   size_t instruction_size = GetInstructionSize(old_func);
   if (instruction_size < kShortJumpInstructionLength ||
-      (!guaranteed_hotpatchable &&
-       !FunctionHasPadding(old_func, kHotPatchHeaderLen))) {
+      !FunctionHasPadding(old_func, kHotPatchHeaderLen))
     return false;
-  }
-
-  DisableXfgOnTarget(old_func);
 
   if (orig_old_func) {
     // Put the needed instructions into the trampoline bytes.
@@ -939,8 +931,9 @@ bool OverrideFunctionWithHotPatch(uptr old_func, uptr new_func,
   return true;
 }
 
-bool OverrideFunctionWithTrampoline(uptr old_func, uptr new_func,
-                                    uptr *orig_old_func) {
+bool OverrideFunctionWithTrampoline(
+    uptr old_func, uptr new_func, uptr *orig_old_func) {
+
   size_t instructions_length = kBranchLength;
   size_t padding_length = 0;
   uptr indirect_address = 0;
@@ -994,63 +987,48 @@ bool OverrideFunctionWithTrampoline(uptr old_func, uptr new_func,
   return true;
 }
 
-bool OverrideFunction(uptr old_func, uptr new_func, uptr *orig_old_func,
-                      bool guaranteed_hotpatchable) {
+bool OverrideFunction(
+    uptr old_func, uptr new_func, uptr *orig_old_func) {
 #if !SANITIZER_WINDOWS64
   if (OverrideFunctionWithDetour(old_func, new_func, orig_old_func))
     return true;
 #endif
   if (OverrideFunctionWithRedirectJump(old_func, new_func, orig_old_func))
     return true;
-  if (OverrideFunctionWithHotPatch(old_func, new_func, orig_old_func,
-                                   guaranteed_hotpatchable))
+  if (OverrideFunctionWithHotPatch(old_func, new_func, orig_old_func))
     return true;
   if (OverrideFunctionWithTrampoline(old_func, new_func, orig_old_func))
     return true;
   return false;
 }
 
-struct dll_info {
-  void *data;
-  bool guaranteed_hotpatchable;
-};
-
-static dll_info *InterestingDLLsAvailable() {
-  // OS DLLs are always guaranteed to have enough room to hotpatch but it can
-  // be hard to detect because they might have XFG hashes in their padding
-  // region.
-  struct dll_pair {
-    const char *dll_name;
-    bool guaranteed_hotpatchable;
-  };
-
-  static const dll_pair InterestingDLLs[] = {
-    {"kernel32.dll", true},
+static void **InterestingDLLsAvailable() {
+  static const char *InterestingDLLs[] = {
+    "kernel32.dll",
 #if defined(_DEBUG)
-    {"msvcr100d.dll", false},      // VS2010
-    {"msvcr110d.dll", false},      // VS2012
-    {"msvcr120d.dll", false},      // VS2013
-    {"vcruntime140d.dll", false},  // VS2015
-    {"ucrtbased.dll", true},       // Universal CRT
+    "msvcr100d.dll",      // VS2010
+    "msvcr110d.dll",      // VS2012
+    "msvcr120d.dll",      // VS2013
+    "vcruntime140d.dll",  // VS2015
+    "ucrtbased.dll",      // Universal CRT
 #else
-    {"msvcr100.dll", false},      // VS2010
-    {"msvcr110.dll", false},      // VS2012
-    {"msvcr120.dll", false},      // VS2013
-    {"vcruntime140.dll", false},  // VS2015
-    {"ucrtbase.dll", true},       // Universal CRT
+    "msvcr100.dll",      // VS2010
+    "msvcr110.dll",      // VS2012
+    "msvcr120.dll",      // VS2013
+    "vcruntime140.dll",  // VS2015
+    "ucrtbase.dll",      // Universal CRT
 #endif
-    // KernelBase for GlobalAlloc and LocalAlloc (dynamic)
-    {"KERNELBASE.dll", true},
+    "KERNELBASE.dll",  // KernelBase for GlobalAlloc and LocalAlloc (dynamic)
     // NTDLL should go last as it exports some functions that we should
     // override in the CRT [presumably only used internally].
-    {"ntdll.dll", true},
-    {nullptr, false}
+    "ntdll.dll",
+    NULL
   };
-  static dll_info result[ARRAY_SIZE(InterestingDLLs)] = {0};
-  if (!result[0].data) {
-    for (size_t i = 0, j = 0; InterestingDLLs[i].dll_name; ++i) {
-      if (HMODULE h = GetModuleHandleA(InterestingDLLs[i].dll_name))
-        result[j++] = {(void *)h, InterestingDLLs[i].guaranteed_hotpatchable};
+  static void *result[ARRAY_SIZE(InterestingDLLs)] = { 0 };
+  if (!result[0]) {
+    for (size_t i = 0, j = 0; InterestingDLLs[i]; ++i) {
+      if (HMODULE h = GetModuleHandleA(InterestingDLLs[i]))
+        result[j++] = (void *)h;
     }
   }
   return &result[0];
@@ -1058,8 +1036,7 @@ static dll_info *InterestingDLLsAvailable() {
 
 namespace {
 // Utility for reading loaded PE images.
-template <typename T>
-class RVAPtr {
+template <typename T> class RVAPtr {
  public:
   RVAPtr(void *module, uptr rva)
       : ptr_(reinterpret_cast<T *>(reinterpret_cast<char *>(module) + rva)) {}
@@ -1070,7 +1047,7 @@ class RVAPtr {
  private:
   T *ptr_;
 };
-}  // namespace
+} // namespace
 
 // Internal implementation of GetProcAddress. At least since Windows 8,
 // GetProcAddress appears to initialize DLLs before returning function pointers
@@ -1118,12 +1095,12 @@ uptr InternalGetProcAddress(void *module, const char *func_name) {
 
         _memcpy(function_name, func, funtion_name_length);
         function_name[funtion_name_length] = '\0';
-        char *separator = _strchr(function_name, '.');
+        char* separator = _strchr(function_name, '.');
         if (!separator)
           InterceptionFailed();
         *separator = '\0';
 
-        void *redirected_module = GetModuleHandleA(function_name);
+        void* redirected_module = GetModuleHandleA(function_name);
         if (!redirected_module)
           InterceptionFailed();
         return InternalGetProcAddress(redirected_module, separator + 1);
@@ -1136,14 +1113,14 @@ uptr InternalGetProcAddress(void *module, const char *func_name) {
   return 0;
 }
 
-bool OverrideFunction(const char *func_name, uptr new_func,
-                      uptr *orig_old_func) {
+bool OverrideFunction(
+    const char *func_name, uptr new_func, uptr *orig_old_func) {
   bool hooked = false;
-  dll_info *DLLs = InterestingDLLsAvailable();
-  for (size_t i = 0; DLLs[i].data; ++i) {
-    uptr func_addr = InternalGetProcAddress(DLLs[i].data, func_name);
-    if (func_addr && OverrideFunction(func_addr, new_func, orig_old_func,
-                                      DLLs[i].guaranteed_hotpatchable)) {
+  void **DLLs = InterestingDLLsAvailable();
+  for (size_t i = 0; DLLs[i]; ++i) {
+    uptr func_addr = InternalGetProcAddress(DLLs[i], func_name);
+    if (func_addr &&
+        OverrideFunction(func_addr, new_func, orig_old_func)) {
       hooked = true;
     }
   }

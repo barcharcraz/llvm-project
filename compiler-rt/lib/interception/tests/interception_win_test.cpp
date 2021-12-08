@@ -265,23 +265,6 @@ const u8 kPatchableCode11[] = {
     0x83, 0x64, 0x24, 0x28, 0x00,   // and     dword ptr [rsp+28h],0
 };
 
-const u8 kPatchableCode9[] = {
-    0x8a, 0x01,                     // al,byte ptr [rcx]
-    0x45, 0x33, 0xc0,               // xor     r8d,r8d
-    0x84, 0xc0,                     // test    al,al
-};
-
-const u8 kPatchableCode10[] = {
-    0x45, 0x33, 0xc0,               // xor     r8d,r8d
-    0x41, 0x8b, 0xc0,               // mov     eax,r8d
-    0x48, 0x85, 0xd2,               // test    rdx,rdx
-};
-
-const u8 kPatchableCode11[] = {
-    0x48, 0x83, 0xec, 0x38,         // sub     rsp,38h
-    0x83, 0x64, 0x24, 0x28, 0x00,   // and     dword ptr [rsp+28h],0
-};
-
 // A buffer holding the dynamically generated code under test.
 u8* ActiveCode;
 const size_t ActiveCodeLength = 4096;

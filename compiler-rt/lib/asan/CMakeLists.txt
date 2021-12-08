@@ -330,8 +330,7 @@ else()
   add_compiler_rt_runtime(clang_rt.asan
     STATIC
     ARCHS ${ASAN_SUPPORTED_ARCH}
-    OBJECT_LIBS RTAsan_cxx_MT
-                RTAsan_preinit_MT
+    OBJECT_LIBS RTAsan_preinit_MT
                 RTAsan_MT
                 ${ASAN_COMMON_RUNTIME_OBJECT_LIBS_MT}
     CFLAGS ${ASAN_CFLAGS_MT}
@@ -342,8 +341,7 @@ else()
     add_compiler_rt_runtime(clang_rt.asan_dbg
       STATIC
       ARCHS ${ASAN_SUPPORTED_ARCH}
-      OBJECT_LIBS RTAsan_cxx_MTd
-                  RTAsan_preinit_MTd
+      OBJECT_LIBS RTAsan_preinit_MTd
                   RTAsan_MTd
                   ${ASAN_COMMON_RUNTIME_OBJECT_LIBS_MTd}
       CFLAGS ${ASAN_CFLAGS_MTd}
@@ -354,7 +352,8 @@ else()
   add_compiler_rt_runtime(clang_rt.asan_cxx
     STATIC
     ARCHS ${ASAN_SUPPORTED_ARCH}
-    OBJECT_LIBS RTAsan_cxx_thunk_MT
+    OBJECT_LIBS RTAsan_cxx_MT
+                RTAsan_cxx_thunk_MT
                 RTUbsan_cxx_MT
     CFLAGS ${ASAN_CFLAGS_MT}
     DEFS ${ASAN_COMMON_DEFINITIONS}
@@ -364,7 +363,8 @@ else()
     add_compiler_rt_runtime(clang_rt.asan_cxx_dbg
     STATIC
     ARCHS ${ASAN_SUPPORTED_ARCH}
-    OBJECT_LIBS RTAsan_cxx_thunk_MTd
+    OBJECT_LIBS RTAsan_cxx_MTd
+                RTAsan_cxx_thunk_MTd
                 RTUbsan_cxx_MTd
     CFLAGS ${ASAN_CFLAGS_MTd}
     DEFS ${ASAN_COMMON_DEFINITIONS}
