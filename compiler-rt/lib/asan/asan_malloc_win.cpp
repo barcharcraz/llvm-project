@@ -24,9 +24,9 @@
 #include "asan_internal.h"
 #include "asan_malloc_win_moveable.h"
 #include "asan_stack.h"
-#include "asan_win_immortalize.h"
 #include "asan_win_scoped_lock.h"
 #include "interception/interception.h"
+#include "sanitizer_common/sanitizer_win_immortalize.h"
 
 // Intentionally not including windows.h here, to avoid the risk of
 // pulling in conflicting declarations of these functions. (With mingw-w64,
@@ -777,7 +777,7 @@ INTERCEPTOR_WINAPI(LOGICAL, RtlFreeHeap, void *HeapHandle, DWORD Flags,
     // If we're calling RtlFreeHeap inside of another call to an Rtl* function
     // we assume that ntdll knows what it's doing.
     if (!heap_handle.raii_lock.serialized) {
-        return REAL(RtlFreeHeap)(HeapHandle, Flags, BaseAddress);
+      return REAL(RtlFreeHeap)(HeapHandle, Flags, BaseAddress);
     }
 
     GET_STACK_TRACE_FREE;
@@ -977,12 +977,10 @@ INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
     }
   } else if (UNLIKELY(!asan_unsupported_flags &&
                       heap_handle.owner == AllocationOwnership::RTL)) {
-    old_size =
-        REAL(RtlSizeHeap)(HeapHandle, Flags, BaseAddress);
+    old_size = REAL(RtlSizeHeap)(HeapHandle, Flags, BaseAddress);
 
     if (old_size != ~size_t{0}) {
-      replacement_alloc =
-          WRAP(RtlAllocateHeap)(HeapHandle, Flags, Size);
+      replacement_alloc = WRAP(RtlAllocateHeap)(HeapHandle, Flags, Size);
       if (replacement_alloc == nullptr) {
         return nullptr;
       } else {
@@ -1008,8 +1006,8 @@ INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
                       heap_handle.owner == AllocationOwnership::RTL)) {
     // Currently owned by rtl using unsupported ASAN flags,
     // just pass back to original allocator.
-    replacement_alloc = REAL(RtlReAllocateHeap)(
-        HeapHandle, Flags, BaseAddress, Size);
+    replacement_alloc =
+        REAL(RtlReAllocateHeap)(HeapHandle, Flags, BaseAddress, Size);
   }
 
   return replacement_alloc;

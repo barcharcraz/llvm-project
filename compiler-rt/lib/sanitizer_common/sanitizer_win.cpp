@@ -17,15 +17,18 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOGDI
 #include <Windows.h>
+#include <Winternl.h>
 #include <io.h>
 #include <psapi.h>
 #include <stdlib.h>
 
+#include "interception/interception.h"
 #include "sanitizer_common.h"
 #include "sanitizer_file.h"
 #include "sanitizer_libc.h"
 #include "sanitizer_mutex.h"
 #include "sanitizer_placement_new.h"
+#include "sanitizer_win.h"
 #include "sanitizer_win_defs.h"
 
 #if defined(PSAPI_VERSION) && PSAPI_VERSION == 1
@@ -1147,8 +1150,8 @@ void InitializePlatformEarly() {
   HMODULE handle = GetModuleHandleA("KERNELBASE.DLL");
   QueryVirtualMemoryInformation =
       reinterpret_cast<QueryVirtualMemoryInformation_t>(
-          GetProcAddress(handle, "QueryVirtualMemoryInformation"));
-
+          __interception::InternalGetProcAddress(
+              handle, "QueryVirtualMemoryInformation"));
   CHECK(QueryVirtualMemoryInformation &&
         "ASan requires the Windows 10-only API, QueryVirtualMemoryInformation");
 }

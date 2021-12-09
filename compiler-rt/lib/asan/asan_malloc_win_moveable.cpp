@@ -22,11 +22,11 @@
 #include <vector>
 
 #include "asan_malloc_win_moveable.h"
-#include "asan_win_immortalize.h"
-#include "sanitizer_common/sanitizer_atomic.h"
-#include "sanitizer_common/sanitizer_mutex.h"
-#include "sanitizer_common/sanitizer_internal_defs.h"
 #include "asan_win_scoped_lock.h"
+#include "sanitizer_common/sanitizer_atomic.h"
+#include "sanitizer_common/sanitizer_internal_defs.h"
+#include "sanitizer_common/sanitizer_mutex.h"
+#include "sanitizer_common/sanitizer_win_immortalize.h"
 
 /* Background:
   These vintage allocators provided a primitive DIY interface for paging. We're
@@ -88,7 +88,7 @@ struct MemoryManagerResources {
 
 // Create an immortal memory resources class singleton.
 MemoryManagerResources &GetResourcesInstance() {
-  return immortalize<MemoryManagerResources>();
+  return __sanitizer::immortalize<MemoryManagerResources>();
 }
 // fetch instance, will create the object on the first call.
 MoveableMemoryManager *MoveableMemoryManager::GetInstance() {
@@ -301,8 +301,8 @@ void *MoveableMemoryManager::IncrementLockCount(void *ident) {
   return nullptr;
 }
 /* GMEM_MODIFY allows you to convert between moveable and fixed allocations.
-    The flag means that these functions ignore any size parameter passed into it.
-  LMEM_MODIFY doesn't have this same behavior and only changes the 
+    The flag means that these functions ignore any size parameter passed into
+  it. LMEM_MODIFY doesn't have this same behavior and only changes the
     'discardable' attribute which is deprecated.
 */
 
