@@ -649,7 +649,7 @@ while waiting_on_count > 0:
 
         thread.join(.1)
         if thread.is_alive():
-            print "\rwaiting on %03d threads."%(waiting_on_count),
+            print "\rwaiting on %03d threads (%s)."% (waiting_on_count, thread.getName())
         else:
             current_active -= 1
             waiting_on_count -= 1

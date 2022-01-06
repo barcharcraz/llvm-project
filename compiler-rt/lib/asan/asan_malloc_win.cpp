@@ -26,6 +26,8 @@
 #include "asan_stack.h"
 #include "asan_win_scoped_lock.h"
 #include "interception/interception.h"
+#include "sanitizer_common/sanitizer_allocator_internal.h"
+#include "sanitizer_common/sanitizer_placement_new.h"
 #include "sanitizer_common/sanitizer_win_immortalize.h"
 
 // Intentionally not including windows.h here, to avoid the risk of
@@ -42,11 +44,17 @@ typedef _RTL_HEAP_PARAMETERS *PRTL_HEAP_PARAMETERS;
 
 using __sanitizer::uptr;
 
+constexpr unsigned long LOW_FRAG_HEAP_SIGNATURE = 0xFFEEFFEE;
+
 constexpr unsigned long HEAP_NO_SERIALIZE = 0x00000001;
 constexpr unsigned long HEAP_GENERATE_EXCEPTIONS = 0x00000004;
 constexpr unsigned long HEAP_ZERO_MEMORY = 0x00000008;
 constexpr unsigned long HEAP_REALLOC_IN_PLACE_ONLY = 0x00000010;
 constexpr unsigned long HEAP_CREATE_ENABLE_EXECUTE = 0x00040000;
+constexpr unsigned long HEAP_NO_CACHE_BLOCK = 0x00800000;
+
+constexpr unsigned long HEAP_MAXIMUM_TAG = 0x0FFF;
+constexpr unsigned long HEAP_TAG_MASK = HEAP_MAXIMUM_TAG << 18;
 
 constexpr unsigned long HEAP_ALLOCATE_SUPPORTED_FLAGS =
     (HEAP_NO_SERIALIZE | HEAP_ZERO_MEMORY);
@@ -61,6 +69,8 @@ constexpr unsigned long HEAP_REALLOC_UNSUPPORTED_FLAGS =
 extern "C" {
 HANDLE WINAPI GetProcessHeap();
 DWORD WINAPI GetCurrentThreadId();
+BOOL WINAPI HeapLock(HANDLE);
+BOOL WINAPI HeapUnlock(HANDLE);
 
 _declspec(dllimport) HGLOBAL WINAPI GlobalAlloc(UINT uFlags, SIZE_T dwBytes);
 _declspec(dllimport) HGLOBAL WINAPI GlobalFree(HGLOBAL hMem);
@@ -450,8 +460,14 @@ long *__p__crtBreakAlloc() { return &_crtBreakAlloc; }
 }  // extern "C"
 
 struct AsanHeapMemoryNode {
-  static void *operator new(size_t size) { return InternalAlloc(size); }
-  static void operator delete(void *p) { InternalFree(p); }
+  static void *operator new(size_t size,
+                            InternalAllocatorCache *allocation_cache) {
+    return InternalAlloc(size, allocation_cache);
+  }
+  static void operator delete(void *p,
+                              InternalAllocatorCache *allocation_cache) {
+    InternalFree(p, allocation_cache);
+  }
 
   AsanHeapMemoryNode(void *_memory) : memory(_memory) {}
 
@@ -459,25 +475,287 @@ struct AsanHeapMemoryNode {
   AsanHeapMemoryNode *next;
 };
 
-typedef __sanitizer::IntrusiveList<AsanHeapMemoryNode> AsanMemoryList;
-typedef __sanitizer::AddrHashMap<AsanHeapMemoryNode *, 4099> AsanMemoryMap;
+// TODO: Primes chosen for hash table size is a guess - can be tweaked.
+const uptr AsanMemoryMapSize = 4099;
+using AsanMemoryList = __sanitizer::IntrusiveList<AsanHeapMemoryNode>;
+using AsanMemoryMap =
+    __sanitizer::AddrHashMap<AsanHeapMemoryNode *, AsanMemoryMapSize>;
+
+// -- Lock Usage / Multithreaded Behavior Summary --
+// During our intercepted versions of the RTL Heap functions, we need to ensure:
+// 1. Atomic access when updating the AsanMemoryList and AsanMemoryMap, which
+//    are stored in the AsanHeap.
+//     - TODO: This can probably be made lock-free in the future.
+// 2. Prevent internal allocations of the Low Fragmentation Heap from causing
+//    false-positive wild-pointer errors.
+// 3. Provide a guarantee that the AsanHeap data structure is not destroyed via
+//    RtlDestroyHeap while it is otherwise being used.
+//     3.5 And also ensure we don't return data that is invalid if the heap is
+//     being destroyed.
+//
+// To handle 1 & 2, there are two locks:
+// 1. MemoryMapLock (see AsanHeap::MemoryMapLockGuard for implementation
+//    details)
+// 2. RtlReentrancyLock (see AsanHeap::RtlReentrancyLockGuard for implementation
+//    details).
+//
+// To handle 3, we reference count the AsanHeap memory. When using AsanHeap
+// data, always use GetAsanHeap/DeleteAsanHeap/AsanHeapHandle to ensure proper
+// handling of the reference count. We must actively release the handle prior to
+// returning to check whether we should return the allocated data or whether it
+// would immediately become invalidated due to the AsanHeapHandle leaving scope.
+
+// There is also a third lock to keep in mind:
+// 3. The Win32 Heap Lock (provided via HeapLock/HeapUnlock).
+
+// This is a recursive lock (backed by CRITICAL_SECTION) provided as part of the
+// Win32 Heap APIs via the HeapLock and HeapUnlock functions. This lock may be
+// taken by the real implementation of any of the Rtl*Heap functions, but it is
+// also publicly accessible and may be taken by the user prior to calling any
+// Rtl*Heap functions. In addition, it is needed in order to complete a walk of
+// the heap via HeapWalk, which we may need to do during AllocationOwnership.
+
+// The unique nature of the Win32 Heap Lock gives us two rules to follow:
+// 1. If we ever take the Win32 Heap Lock, it *must* be the first lock we take.
+// 2. If we ever call code that may allocate while holding a lock, we *must*
+//    also take the Win32 Heap Lock.
+
+// The MemoryMapLock is a fine-grained lock that should only be taken for as
+// little time as possible when accessing the memory_map and asan_memory data.
+// Locking and unlocking is managed by the MemoryMapLockGuard object.
+// We don't need the Win32 Heap Lock to update these data structures, so instead
+// we ensure we adhere to the above rules by making sure we never call into
+// another function while holding the MemoryMapLock. This is enforced by
+// DCHECKs added prior to every call to another Asan function (via
+// Debug_AssertLockInvariant_CallAsan), or a real Rtl function (via
+// Debug_AssertLockInvariant_CallRtl).
+
+// The RtlReentrancyLock is used in lieu of a better method to track when
+// reentrancy occurs in the real RTL Heap function implementation. When using
+// the Low Fragmentation Heap (LFH), internal allocations are needed that also
+// go through RtlAllocateHeap/RtlFreeHeap. This only happens when using LFH and
+// these allocations are marked with a flag HEAP_NO_CACHE_BLOCK upon allocation,
+// but upon deallocation cannot be detected via flag, and are filtered out of
+// the entries returned by HeapWalk. This lock serves as a way to detect when we
+// have called back into the real RTL implementation to handle an allocation or
+// deallocation, but must also allocate or deallocate an internal LFH structure.
+// Without this tracking, these frees will look like wild pointer errors, since
+// we will be unable to find their allocation owner. Because we take this lock
+// then call back into the real RTL functions, we must assume that the Win32
+// Heap Lock may be taken at some point in the future. Therefore, the Win32 Heap
+// Lock must be taken prior (the Win32 Heap Lock is recursive) to acquiring this
+// lock to avoid deadlocks. We use a DCHECK added prior to every call into a
+// real Rtl function (via Debug_AssertLockInvariant_CallRtl) to ensure we have
+// taken both the Win32 Heap Lock and the RtlReentrancyLock. It is permissible
+// to call another Asan function while holding these, but it is unnecessary. We
+// use a DCHECK prior to every call into an Asan function (via
+// Debug_AssertLockInvariant_CallAsan) to ensure this.
+
+// This gives us a strong ordering between locks:
+// Win32 Heap Lock > RtlReentrancyLock > MemoryMapLock
+
+// The following are the permitted lock states, never breaking the above
+// invariant.
+
+// clang-format off
+//                +-----------+
+//                | User Code |
+//                +--------+--+
+//                         |             +------------------+
+//                         |             |                  |
+//                         v             v                  |
+//                      +--+-------------+--+        +------+---------------------------------+
+//                      | Win32HeapLock (?) |        |  Call ASAN Functions that may allocate |
+//                      | MemoryMapLock ( ) +------->+  ex: asan_malloc                       |
+//                      | RtlReentrLock ( ) |        |      WRAP(RtlAllocateHeap)             |
+//                      +------+--+--+------+        +----------------------------------------+
+//                             ^  ^  ^
+//              +--------------+  |  +-------------+
+//              |                 |                |
+//        IsSystemHeapAddress  +--+         MemoryMapLockGuard
+//              |              |                   |
+//              |          RtlReentrancyLockGuard  |
+//              |              |                   |
+//              v              v                   v
+// +------------+------+ +-----+-------------+ +---+---------------+
+// | Win32HeapLock (L) | | Win32HeapLock (L) | | Win32HeapLock (?) |
+// | MemoryMapLock ( ) | | MemoryMapLock ( ) | | MemoryMapLock (L) |
+// | RtlReentrLock ( ) | | RtlReentrLock (L) | | RtlReentrLock ( ) |
+// +-------------------+ +-----+-------------+ +-------------------+
+//                             |
+//                             v
+//                 +-----------+------------------+
+//                 | Call Reentrant RTL Functions |
+//                 | ex: REAL(RtlAllocateHeap)    |
+//                 +-------------+----------------+
+//                               |
+//                               |       +------------------+
+//                               |       |                  |
+//                               v       v                  |
+//                      +--------+-------+--+        +------+---------------------------------+
+//                      | Win32HeapLock (L) |        |  Call ASAN Functions that may allocate |
+//                      | MemoryMapLock ( ) +------->+  ex: asan_malloc                       |
+//                      | RtlReentrLock (L) |        |      WRAP(RtlAllocateHeap)             |
+//                      +------+--+--+------+        +----------------------------------------+
+//                             ^  ^  ^
+//              +--------------+  |  +-------------+
+//              |                 |                |
+//        IsSystemHeapAddress  +--+         MemoryMapLockGuard
+//              |              |                   |
+//              |          RtlReentrancyLockGuard  |
+//              |              |                   |
+//              v              v                   v
+// +------------+------+ +-----+-------------+ +---+---------------+
+// | Win32HeapLock (L) | | Win32HeapLock (L) | | Win32HeapLock (L) |
+// | MemoryMapLock ( ) | | MemoryMapLock ( ) | | MemoryMapLock (L) |
+// | RtlReentrLock (L) | | RtlReentrLock (L) | | RtlReentrLock (L) |
+// +-------------------+ +-------------------+ +-------------------+
+// clang-format on
+
+// Note that for the DebugChecks below, we only reason about what locks have
+// been taken during the current call and the above graph shows global lock
+// status.
+
+struct AsanHeap;
+
+struct DebugChecksData {
+  // Holds all the extra debug information needed for the following scenarios:
+  //    1. AsanHeapHandle::IsLfhInternal determines whether we're being called
+  //       for an internal allocation for the Low Fragmentation Heap by checking
+  //       to see if we're a reentrant call to the Rtl function. We need to
+  //       check that the RtlReentrancyLock is taken, but also be defensive
+  //       about making sure that it isn't taken because we've locked it during
+  //       the current call.
+  //    2. AllocationOwnership may take the Win32 Heap Lock during the
+  //       IsSystemHeapAddress call. Make sure no other AsanHeap locks are held
+  //       when this happens.
+  //    3. Ensure that the RtlReentrancyLock and Win32 Heap Lock isn't taken
+  //       locally when, calling asan functions, or when taking the
+  //       MemoryMapLock, but is taken when calling rtl functions.
+  //    4. Ensure that the MemoryMapLock is not taken when calling
+  //       asan or rtl functions, or when taking the RtlReentrancyLock.
+  DebugChecksData() = default;
+  DebugChecksData(const DebugChecksData &) = delete;
+  DebugChecksData &operator=(const DebugChecksData &) = delete;
+  DebugChecksData(DebugChecksData &&) = delete;
+  DebugChecksData &operator=(DebugChecksData &&) = delete;
+
+#ifdef SANITIZER_DEBUG
+  bool win32_heap_lock_held_locally = false;
+  bool rtl_guard_instantiated = false;
+  const AsanHeap *asan_heap = nullptr;
+#endif
+};
+
+struct DebugChecks {
+  // AsanHeapHandle and AllocationOwnership derive from this
+  // to avoid space overhead in release.
+  DebugChecks(DebugChecksData &data)
+#ifdef SANITIZER_DEBUG
+      : dbg(data)
+#endif
+  {
+  }
+
+#ifdef SANITIZER_DEBUG
+  bool Debug_RegisterAsanHeap(AsanHeap *ptr) {
+    dbg.asan_heap = ptr;
+    return true;
+  }
+
+  bool Debug_RegisterReentrancyLockHeld(bool enabled) {
+    dbg.rtl_guard_instantiated = enabled;
+    return true;
+  }
+
+  bool Debug_IsReentrancyLockHeldLocally() const {
+    // Note that this returns true even if the RtlReentrancyLock is not required
+    // because the Low Fragmentation Heap is not in use.
+    return dbg.rtl_guard_instantiated;
+  }
+
+  bool Debug_RegisterWin32HeapLockHeld(bool enabled) {
+    dbg.win32_heap_lock_held_locally = enabled;
+    return true;
+  }
+
+  bool Debug_IsWin32HeapLockHeldLocally() const {
+    // Note that this returns true even in cases where it is not required
+    // because the Low Fragmentation Heap is not in use.
+    return dbg.win32_heap_lock_held_locally;
+  }
+
+  bool Debug_IsMemoryMapLockHeld();
+
+  bool Debug_AreAnyLocksHeldLocally() {
+    return Debug_IsMemoryMapLockHeld() || Debug_IsReentrancyLockHeldLocally() ||
+           Debug_IsWin32HeapLockHeldLocally();
+  }
+
+  int Debug_GetLockState() {
+    int state = 0;
+    state += Debug_IsMemoryMapLockHeld() * 0x1;
+    state += Debug_IsReentrancyLockHeldLocally() * 0x10;
+    state += Debug_IsWin32HeapLockHeldLocally() * 0x100;
+    return state;
+  }
+
+  static int Debug_CallAsan_TargetLockState() {
+    // If calling into other potentially-allocating asan functions,
+    // no locks may be taken.
+    // See Lock Usage section above for details.
+    return 0x000;  // No locks held.
+  }
+
+  static int Debug_CallRtl_TargetLockState() {
+    // If calling into other potentially-allocating asan functions,
+    // the MemoryMapLock must not be taken and RtlReentrancyLock+Win32HeapLock
+    // must be taken (if applicable). See Lock Usage section above for details.
+    return 0x110;  // Only MemoryMapLock is unlocked.
+  }
+
+#define DCHECK_ASSERT_LOCK_INVARIANT_CALL_ASAN(DBG)           \
+  do {                                                        \
+    DCHECK_EQ((DBG).Debug_GetLockState(),                     \
+              DebugChecks::Debug_CallAsan_TargetLockState()); \
+  } while (0)
+
+#define DCHECK_ASSERT_LOCK_INVARIANT_CALL_RTL(DBG)           \
+  do {                                                       \
+    DCHECK_EQ((DBG).Debug_GetLockState(),                    \
+              DebugChecks::Debug_CallRtl_TargetLockState()); \
+  } while (0)
+
+  // Note that we do not need DCHECKs around returns since we are
+  // structurally guaranteed to release all locks we've acquired.
+
+  DebugChecksData &dbg;
+#else
+#define DCHECK_ASSERT_LOCK_INVARIANT_CALL_ASAN(DBG)
+#define DCHECK_ASSERT_LOCK_INVARIANT_CALL_RTL(DBG)
+#endif
+};
 
 struct AsanHeap {
-  // This data structure is undocumented and is subject to change.
   struct HEAP {
-#if SANITIZER_WORDSIZE == 64
-    unsigned long padding[28];
-#elif SANITIZER_WORDSIZE == 32
-    unsigned long padding[16];
-#else
-#error "Platform not supported"
-#endif
+    // This data structure is undocumented and is subject to change.
+    // This is a partial definition and does not represent a full object, only a
+    // view on Heap HANDLEs used by Win32 Heap functions.
+    void *padding1[2];
+    unsigned long signature;
+
+    unsigned long padding2[3];
+    void *padding3[10];
+
     unsigned long flags;
     unsigned long forceFlags;
+
+    HEAP() = delete;
+    ~HEAP() = delete;
   };
 
-  static void *operator new(size_t size) { return InternalAlloc(size); }
   static void *operator new(size_t, void *p) { return p; }
+  static void *operator new(size_t size) { return InternalAlloc(size); }
   static void operator delete(void *p) { InternalFree(p); }
 
   explicit AsanHeap(HANDLE _heap) : heap(*((HEAP *)_heap)) {
@@ -516,21 +794,52 @@ struct AsanHeap {
     is_supported = true;
   }
 
-  [[nodiscard]] unsigned long GetFlags() const {
-    constexpr unsigned long HEAP_EXAMINED_FLAGS =
-        (HEAP_NO_SERIALIZE | HEAP_ZERO_MEMORY | HEAP_REALLOC_IN_PLACE_ONLY);
+  ~AsanHeap() {
+    // MemoryMapLockGuard not needed, as this will only occur if there are no
+    // more users of the AsanHeap.
+    DCHECK(&heap != GetProcessHeap());
 
-    return (heap.flags | heap.forceFlags) & HEAP_EXAMINED_FLAGS;
+    GET_STACK_TRACE_FREE;
+    while (!asan_memory.empty()) {
+      AsanHeapMemoryNode *node = asan_memory.front();
+      asan_free(node->memory, &stack, FROM_MALLOC);
+      node->~AsanHeapMemoryNode();
+      AsanHeapMemoryNode::operator delete(node, &allocation_cache);
+      asan_memory.pop_front();
+    }
+  }
+
+  void Acquire() { _InterlockedIncrement(&refcount); }
+
+  bool Release() {
+    // Returns whether this was destroyed.
+    const auto new_refcount = _InterlockedDecrement(&refcount);
+    DCHECK(new_refcount >= 0);
+    if (new_refcount == 0) {
+      delete this;
+      return true;
+    }
+    return false;
   }
 
   // A reference to some members of the opaque HEAP data structure.
-  HEAP &heap;
+  const HEAP &heap;
 
-  // A lock to keep the accesses to the map and the list atomic.
-  __sanitizer::SpinMutex lock = {};
+  // Lock and thread id to keep the accesses to the map and the list atomic.
+  __sanitizer::SpinMutex memory_map_lock = {};
+  __sanitizer::atomic_uint32_t memory_map_thread_id = {};
 
-  // We need to keep track of which thread holds the lock if any.
-  __sanitizer::atomic_uint32_t thread_id = {};
+  // Lock and thread id to detect reentrancy for when we need to
+  // call the real Rtl functions.
+  __sanitizer::SpinMutex rtl_reentrancy_lock = {};
+  __sanitizer::atomic_uint32_t rtl_reentrancy_thread_id = {};
+
+  // Instead of guaranteeing exclusive access during delete, maintain a
+  // reference count to keep data valid until there are no more users. Use
+  // Interlocked ops on refcount.
+  long refcount = {1};  // signed, to detect errors
+
+  bool is_supported;
 
   // A list of memory managed by asan associated with this heap to enable
   // freeing all memory when a heap is destroyed.
@@ -540,15 +849,308 @@ struct AsanHeap {
   // allow for efficient removal when freed.
   AsanMemoryMap memory_map;
 
-  bool is_supported;
+  // To avoid excessive locking of InternalAllocator keep a per-heap
+  // allocation_cache.
+  InternalAllocatorCache allocation_cache;
 };
 
-struct AllocationOwnership {
+bool DebugChecks::Debug_IsMemoryMapLockHeld() {
+  if (!dbg.asan_heap) {
+    return false;
+  }
+
+  return atomic_load(&dbg.asan_heap->memory_map_thread_id,
+                     __sanitizer::memory_order_seq_cst) == GetCurrentThreadId();
+}
+
+struct AsanHeapMap : public __sanitizer::AddrHashMap<AsanHeap *, 37> {
+  using __sanitizer::AddrHashMap<AsanHeap *, 37>::Handle;
+};
+
+AsanHeapMap *GetAsanHeapMap() { return &immortalize<AsanHeapMap>(); }
+AsanHeap *GetDefaultHeap() {
+  return &immortalize<AsanHeap, void *>(GetProcessHeap());
+}
+
+// The handle takes shared ownership of the AsanHeap.
+// AsanHeap is reference counted to ensure it never leaves scope while another
+// function is using it. Once it is removed from the AsanHeapMap, deletion
+// will wait until all handles are released. Functions that return valid
+// memory addresses inside that heap check for destruction prior to
+// returning them.
+class AsanHeapHandle : public DebugChecks {
+ public:
+  AsanHeapHandle(const AsanHeapMap::Handle &h, DebugChecks dbg)
+      : DebugChecks(dbg), asan_heap_ptr(nullptr) {
+    CHECK(h.exists());
+    Acquire(*h);
+  }
+
+  ~AsanHeapHandle() {
+    if (Valid()) {
+      Release();
+    }
+  }
+
+  AsanHeapHandle(const AsanHeapHandle &rhs) : DebugChecks(rhs.dbg) {
+    Acquire(rhs.asan_heap_ptr);
+  }
+
+  AsanHeapHandle(AsanHeapHandle &&rhs) : DebugChecks(rhs.dbg) {
+    Move(&rhs.asan_heap_ptr);
+  }
+
+  AsanHeapHandle &operator=(const AsanHeapHandle &rhs) = delete;
+  AsanHeapHandle &operator=(AsanHeapHandle &&rhs) = delete;
+
+  bool Valid() const { return asan_heap_ptr; }
+
+  bool IsSupported() const {
+    CHECK(Valid());
+    return asan_heap_ptr->is_supported;
+  }
+
+  [[nodiscard]] unsigned long GetFlags() const {
+    CHECK(Valid());
+    constexpr unsigned long HEAP_EXAMINED_FLAGS =
+        (HEAP_NO_SERIALIZE | HEAP_ZERO_MEMORY | HEAP_REALLOC_IN_PLACE_ONLY);
+
+    return (asan_heap_ptr->heap.flags | asan_heap_ptr->heap.forceFlags) &
+           HEAP_EXAMINED_FLAGS;
+  }
+
+  [[nodiscard]] auto MemoryMapLockGuard() & {
+    // MemoryMapLock cannot be taken during an asan_malloc/asan_free call,
+    // since arbitrary hooks can be applied to malloc/free which may lock
+    // themselves. If those hooks do lock, then there will be a lock order
+    // inversion, since some asan_malloc calls will occur with the heap handle
+    // lock taken, and some will not.
+    // The real RTL functions also may take the Win32 Heap Lock, so the
+    // MemoryMapLock should not be taken when calling into those either. This
+    // function/structure will ensure that the lock is taken while accessing the
+    // memory map or memory list, but be sure to have it leave scope as soon as
+    // access is no longer needed to avoid any lock order inversion issues.
+    CHECK(Valid());
+    DCHECK(!Debug_AreAnyLocksHeldLocally());
+
+    class MemoryMapLockGuard_impl {
+     public:
+      explicit MemoryMapLockGuard_impl(AsanHeap &h)
+          : raii_lock(h.memory_map_lock, h.memory_map_thread_id),
+            asan_memory(h.asan_memory),
+            memory_map(h.memory_map),
+            allocation_cache(h.allocation_cache) {}
+
+      AsanMemoryList &AsanMemory() & { return asan_memory; }
+
+      AsanMemoryMap &MemoryMap() & { return memory_map; }
+
+      InternalAllocatorCache &Cache() & { return allocation_cache; }
+
+     private:
+      RecursiveScopedLock raii_lock;
+      AsanMemoryList &asan_memory;
+      AsanMemoryMap &memory_map;
+      InternalAllocatorCache &allocation_cache;
+    } map_guard(*asan_heap_ptr);
+    return map_guard;
+  }
+
+  [[nodiscard]] auto RtlReentrancyLockGuard() & {
+    // When using the Low Fragmentation Heap, there can be a possibility for an
+    // Rtl allocation/deallocation function to experience reentrancy into
+    // another Rtl function to allocate internals. These internals will not show
+    // up when walking the heap and we don't want ASAN handling them, so instead
+    // if we detect any reentrancy, we call into the real RTL implementation of
+    // the heap functions. Call and take this lock only when LFH is in use.
+    // A side effect of this is that while one thread is calling a real Rtl
+    // function, another thread cannot call any Rtl function. We also need to
+    // take the heap lock while holding this, otherwise we may invert lock
+    // ordering. The heap lock must be able to be taken while inside the real
+    // RTL function, and may be taken prior as well.
+    CHECK(Valid());
+
+    class RtlReentrancyLockGuard_impl {
+     public:
+      explicit RtlReentrancyLockGuard_impl(AsanHeapHandle &h)
+          : heap_handle(h), raii_lock_ptr(nullptr) {
+        // Note that debug checks must be done outside LFH check
+        // so we maintain our tracking even when not using LFH.
+        DCHECK(!heap_handle.Debug_AreAnyLocksHeldLocally());
+        DCHECK(heap_handle.Debug_RegisterWin32HeapLockHeld(true));
+        DCHECK(heap_handle.Debug_RegisterReentrancyLockHeld(true));
+
+        if (heap_handle.IsLowFragmentationHeap()) {
+          ::HeapLock(heap_handle.Win32Handle());
+          raii_lock_ptr = new (storage) RecursiveScopedLock(
+              heap_handle.asan_heap_ptr->rtl_reentrancy_lock,
+              heap_handle.asan_heap_ptr->rtl_reentrancy_thread_id);
+        }
+      }
+
+      ~RtlReentrancyLockGuard_impl() {
+        // Note that debug checks must be done even when empty
+        // so we maintain our tracking even when not using LFH.
+        DCHECK(!heap_handle.Debug_IsMemoryMapLockHeld());
+
+        if (raii_lock_ptr) {
+          raii_lock_ptr->~RecursiveScopedLock();
+          ::HeapUnlock(heap_handle.Win32Handle());
+        }
+
+#if SANITIZER_DEBUG
+        if (cleanup_dchecks) {
+          DCHECK(heap_handle.Debug_RegisterReentrancyLockHeld(false));
+          DCHECK(heap_handle.Debug_RegisterWin32HeapLockHeld(false));
+        }
+#endif
+      }
+
+      RtlReentrancyLockGuard_impl(RtlReentrancyLockGuard_impl &&rhs)
+          : heap_handle(rhs.heap_handle), raii_lock_ptr(nullptr) {
+        if (rhs.raii_lock_ptr) {
+          // This variable indicates whether lock is active, be sure to set to
+          // nullptr.
+          rhs.raii_lock_ptr = nullptr;
+          REAL(memcpy)(&storage, &rhs.storage, sizeof(RecursiveScopedLock));
+          raii_lock_ptr = reinterpret_cast<RecursiveScopedLock *>(&storage);
+        }
+        DCHECK(!(rhs.cleanup_dchecks = false));
+      }
+
+      RtlReentrancyLockGuard_impl &&operator=(RtlReentrancyLockGuard_impl &&) =
+          delete;
+      RtlReentrancyLockGuard_impl(const RtlReentrancyLockGuard_impl &) = delete;
+      RtlReentrancyLockGuard_impl &operator=(
+          const RtlReentrancyLockGuard_impl &) = delete;
+
+     private:
+      AsanHeapHandle &heap_handle;
+      alignas(RecursiveScopedLock) unsigned char storage[sizeof(
+          RecursiveScopedLock)];
+      RecursiveScopedLock *raii_lock_ptr;
+#if SANITIZER_DEBUG
+      bool cleanup_dchecks = true;
+#endif
+    } rtl_guard{*this};
+
+    return rtl_guard;
+  }
+
+  bool IsLowFragmentationHeap() const {
+    CHECK(Valid());
+    return asan_heap_ptr->heap.signature == LOW_FRAG_HEAP_SIGNATURE;
+  }
+
+  bool IsLfhInternal(const DWORD flags) const {
+    CHECK(Valid());
+
+    // Only use this prior to instantiating the RTL reentrancy guard, otherwise
+    // may return true.
+    DCHECK(!Debug_IsReentrancyLockHeldLocally());
+
+    if (!IsLowFragmentationHeap()) {
+      // Only the LFH is reentrant.
+      return false;
+    }
+
+    if (flags & HEAP_NO_CACHE_BLOCK) {
+      // LFH allocations will be marked with this flag when reentrant.
+      return true;
+    }
+
+    // This check requires that the RtlReentrancyLockGuard is taken during
+    // every call back into the real RTL functions.
+    if (atomic_load(&asan_heap_ptr->rtl_reentrancy_thread_id,
+                    __sanitizer::memory_order_seq_cst) ==
+        GetCurrentThreadId()) {
+      return true;
+    }
+
+    return false;
+  }
+
+  HANDLE Win32Handle() const {
+    CHECK(Valid());
+    return (HANDLE)&asan_heap_ptr->heap;
+  }
+
+  bool Release() {
+    CHECK(Valid());
+    DCHECK(!Debug_AreAnyLocksHeldLocally());
+    const bool deleted = asan_heap_ptr->Release();
+    asan_heap_ptr = nullptr;
+    return deleted;
+  }
+
+  static AsanHeapHandle GetDefaultHeapHandle(DebugChecks dbg) {
+    AsanHeap *default_heap = GetDefaultHeap();
+    DCHECK(default_heap);
+    return AsanHeapHandle(default_heap, dbg);
+  }
+
+ private:
+  explicit AsanHeapHandle(AsanHeap *ptr, DebugChecks dbg)
+      : DebugChecks(dbg), asan_heap_ptr(nullptr) {
+    Acquire(ptr);
+  }
+
+  void Acquire(AsanHeap *ptr) {
+    asan_heap_ptr = ptr;
+    DCHECK(Debug_RegisterAsanHeap(asan_heap_ptr));
+    if (asan_heap_ptr) {
+      asan_heap_ptr->Acquire();
+    }
+  }
+
+  void Move(AsanHeap **ptr) {
+    asan_heap_ptr = *ptr;
+    DCHECK(Debug_RegisterAsanHeap(asan_heap_ptr));
+    *ptr = nullptr;
+  }
+
+  AsanHeap *asan_heap_ptr;
+};
+
+static void DeleteAsanHeap(void *heap_handle) {
+  DCHECK(heap_handle != nullptr);
+  DCHECK(heap_handle != GetProcessHeap());
+
+  AsanHeapMap::Handle h_delete(
+      GetAsanHeapMap(), reinterpret_cast<uptr>(heap_handle), true, false);
+
+  if (h_delete.exists()) {
+    // Release AsanHeapMap's ownership of asan heap pointer.
+    (*h_delete)->Release();
+  }
+}
+
+static auto GetAsanHeap(void *heap_handle, DebugChecks dbg) {
+  DCHECK(heap_handle != nullptr);
+
+  if (heap_handle == GetProcessHeap()) {
+    return AsanHeapHandle::GetDefaultHeapHandle(dbg);
+  }
+
+  AsanHeapMap::Handle h_find_or_create(
+      GetAsanHeapMap(), reinterpret_cast<uptr>(heap_handle), false, true);
+
+  if (h_find_or_create.created()) {
+    *h_find_or_create = new AsanHeap(heap_handle);  // starts at refcount 1
+  }
+
+  // Note that AsanHeapMap::Handle grants shared access, must construct the
+  // AsanHeapHandle object while it is in scope to ensure it isn't deleted prior
+  // to being acquired.
+  return AsanHeapHandle(h_find_or_create, dbg);
+}
+
+struct AllocationOwnership : public DebugChecks {
   enum { NEITHER = 0, ASAN = 1, RTL = 2 };
   const int ownership;
 
-  AllocationOwnership(void *memory, void *heap)
-      : ownership(get_ownership(memory, heap)) {}
+  AllocationOwnership(void *heap, void *memory, DebugChecks dbg)
+      : DebugChecks(dbg), ownership(get_ownership(memory, heap)) {}
 
  private:
   int get_ownership(void *memory, void *heap) {
@@ -556,9 +1158,19 @@ struct AllocationOwnership {
       return NEITHER;
     } else if (__sanitizer_get_ownership(memory)) {
       return ASAN;
-    } else if (IsSystemHeapAddress(reinterpret_cast<uptr>(memory), heap)) {
+    }
+
+    DCHECK(!Debug_AreAnyLocksHeldLocally());
+    DCHECK(Debug_RegisterWin32HeapLockHeld(true));
+    const bool is_rtl =
+        IsSystemHeapAddress(reinterpret_cast<uptr>(memory), heap);
+    DCHECK(Debug_RegisterWin32HeapLockHeld(false));
+    DCHECK(!Debug_AreAnyLocksHeldLocally());
+
+    if (is_rtl) {
       return RTL;
     }
+
     return NEITHER;
   }
 
@@ -586,51 +1198,6 @@ struct AllocationOwnership {
   }
 };
 
-struct AsanHeapMap : public __sanitizer::AddrHashMap<AsanHeap *, 37> {
-  using __sanitizer::AddrHashMap<AsanHeap *, 37>::Handle;
-
-  static void *operator new(size_t, void *p) { return p; }
-};
-
-struct AsanHeapHandle {
-  AsanHeap &heap;
-  RecursiveScopedLock raii_lock;
-  AllocationOwnership owner;
-
-  AsanHeapHandle(AsanHeap &heap, void *memory)
-      : heap(heap),
-        raii_lock(heap.lock, heap.thread_id),
-        owner(memory, reinterpret_cast<void *>(&heap.heap)) {}
-};
-
-AsanHeapMap *GetAsanHeapMap() { return &immortalize<AsanHeapMap>(); }
-AsanHeap *GetDefaultHeap() {
-  return &immortalize<AsanHeap, void *>(GetProcessHeap());
-}
-
-AsanHeap *GetAsanHeap(void *heap) {
-  AsanHeap *asan_heap;
-  if (heap == GetProcessHeap()) {
-    asan_heap = GetDefaultHeap();
-  } else {
-    AsanHeapMap::Handle h_find_or_create(
-        GetAsanHeapMap(), reinterpret_cast<uptr>(heap), false, true);
-
-    if (h_find_or_create.created()) {
-      asan_heap = new AsanHeap(heap);
-      *h_find_or_create = asan_heap;
-    } else {
-      asan_heap = *h_find_or_create;
-    }
-  }
-
-  return asan_heap;
-}
-
-AsanHeapHandle GetAsanHeapHandle(void *heap, void *memory) {
-  return AsanHeapHandle(*GetAsanHeap(heap), memory);
-}
-
 // The following functions are undocumented and subject to change.
 // However, hooking them is necessary to hook Windows heap
 // allocations with detours and their definitions are unlikely to change.
@@ -656,50 +1223,42 @@ void *RtlReAllocateHeap(void *HeapHandle, DWORD Flags, void *BaseAddress,
 // This function is completely undocumented.
 size_t RtlSizeHeap(void *HeapHandle, DWORD Flags, void *BaseAddress);
 
-// TODO: This doesn't gracefully handle the situation that one thread is trying
-// to use this heap while it is being destroyed.
 INTERCEPTOR_WINAPI(void *, RtlDestroyHeap, void *HeapHandle) {
-  AsanHeapMap::Handle h_delete(GetAsanHeapMap(),
-                               reinterpret_cast<uptr>(HeapHandle), true, false);
-  if (UNLIKELY(!h_delete.exists() && HeapHandle != GetProcessHeap())) {
+  if (UNLIKELY(HeapHandle == nullptr || HeapHandle == GetProcessHeap())) {
+    // RtlDestroyHeap won't do anything in these cases, so we don't
+    // delete anything either.
     return REAL(RtlDestroyHeap)(HeapHandle);
   }
 
-  AsanHeap *asan_heap = GetAsanHeap(HeapHandle);
-
-  GET_STACK_TRACE_FREE;
-  asan_heap->lock.Lock();
-
-  // Free all memory managed by asan and associated with this heap.
-  while (!asan_heap->asan_memory.empty()) {
-    asan_free(asan_heap->asan_memory.front()->memory, &stack, FROM_MALLOC);
-    delete asan_heap->asan_memory.front();
-    asan_heap->asan_memory.pop_front();
-  }
-
-  if (HeapHandle != GetProcessHeap()) {
-    delete asan_heap;
-  }
-
+  DeleteAsanHeap(HeapHandle);
   return REAL(RtlDestroyHeap)(HeapHandle);
 }
 
 INTERCEPTOR_WINAPI(size_t, RtlSizeHeap, HANDLE HeapHandle, DWORD Flags,
                    void *BaseAddress) {
   if (UNLIKELY(!asan_inited || !BaseAddress)) {
+    // DebugCheck omitted: Asan can't handle the call yet/invalid arguments.
     return REAL(RtlSizeHeap)(HeapHandle, Flags, BaseAddress);
   }
 
-  AsanHeapHandle heap_handle = GetAsanHeapHandle(HeapHandle, BaseAddress);
-  if (UNLIKELY(heap_handle.owner != AllocationOwnership::ASAN)) {
+  DebugChecksData dbg_data;
+  DebugChecks dbg{dbg_data};
+
+  AllocationOwnership owner(HeapHandle, BaseAddress, dbg);
+  if (UNLIKELY(owner != AllocationOwnership::ASAN)) {
+    // DebugCheck omitted: RtlSizeHeap does not suffer from a potential
+    // reentrancy issue.
     return REAL(RtlSizeHeap)(HeapHandle, Flags, BaseAddress);
   }
 
   {
+    auto heap_handle = GetAsanHeap(HeapHandle, dbg);
+    auto access_locked = heap_handle.MemoryMapLockGuard();
+    AsanMemoryMap &memory_map = access_locked.MemoryMap();
     // We know that ASAN owns the memory but let's make sure it is owned by
     // this heap.
-    AsanMemoryMap::Handle h(&(heap_handle.heap.memory_map),
-                            reinterpret_cast<uptr>(BaseAddress), false, false);
+    AsanMemoryMap::Handle h(&memory_map, reinterpret_cast<uptr>(BaseAddress),
+                            false, false);
     // If the pointer is not in the heap's allocated memory map one of
     // two things could be happening:
     // 1. The memory passed into RtlSizeHeap was allocated with malloc or new.
@@ -716,82 +1275,78 @@ INTERCEPTOR_WINAPI(size_t, RtlSizeHeap, HANDLE HeapHandle, DWORD Flags,
 
   GET_CURRENT_PC_BP_SP;
   (void)sp;
+  DCHECK_ASSERT_LOCK_INVARIANT_CALL_ASAN(dbg);
   return asan_malloc_usable_size(BaseAddress, pc, bp);
 }
 
 INTERCEPTOR_WINAPI(void *, RtlAllocateHeap, HANDLE HeapHandle, DWORD Flags,
                    size_t Size) {
   if (UNLIKELY(!asan_inited)) {
+    // DebugCheck omitted: Asan can't handle the call yet.
     return REAL(RtlAllocateHeap)(HeapHandle, Flags, Size);
   }
 
-  AsanHeapHandle heap_handle = GetAsanHeapHandle(HeapHandle, nullptr);
-  if (UNLIKELY(!heap_handle.heap.is_supported)) {
-    return REAL(RtlAllocateHeap)(HeapHandle, Flags, Size);
-  }
+  DebugChecksData dbg_data;
+  DebugChecks dbg{dbg_data};
 
-  const DWORD all_flags = Flags | heap_handle.heap.GetFlags();
+  auto heap_handle = GetAsanHeap(HeapHandle, dbg);
+  const DWORD all_flags = heap_handle.GetFlags() | Flags & ~HEAP_TAG_MASK;
   const DWORD unsupported_flags = all_flags & HEAP_ALLOCATE_UNSUPPORTED_FLAGS;
 
-  if (UNLIKELY(unsupported_flags)) {
+  if (UNLIKELY(!heap_handle.IsSupported() || unsupported_flags ||
+               heap_handle.IsLfhInternal(Flags))) {
+    auto rtlguard = heap_handle.RtlReentrancyLockGuard();
+
+    DCHECK_ASSERT_LOCK_INVARIANT_CALL_RTL(dbg);
     return REAL(RtlAllocateHeap)(HeapHandle, Flags, Size);
   }
 
   GET_STACK_TRACE_MALLOC;
+
+  DCHECK_ASSERT_LOCK_INVARIANT_CALL_ASAN(dbg);
   void *p = asan_malloc(Size, &stack);
+
   // Reading MSDN suggests that the *entire* usable allocation is zeroed out.
   // Otherwise it is difficult to HeapReAlloc with HEAP_ZERO_MEMORY.
   // https://blogs.msdn.microsoft.com/oldnewthing/20120316-00/?p=8083
-  if (p && (Flags & HEAP_ZERO_MEMORY)) {
+  if (p && (all_flags & HEAP_ZERO_MEMORY)) {
     GET_CURRENT_PC_BP_SP;
     (void)sp;
+    DCHECK_ASSERT_LOCK_INVARIANT_CALL_ASAN(dbg);
     auto usable_size = asan_malloc_usable_size(p, pc, bp);
     internal_memset(p, 0, usable_size);
   }
 
-  AsanHeapMemoryNode *mem_node = new AsanHeapMemoryNode(p);
-  AsanHeapMemoryNode *prev_tail = heap_handle.heap.asan_memory.back();
-  heap_handle.heap.asan_memory.push_back(mem_node);
-
   {
-    AsanMemoryMap::Handle h(&(heap_handle.heap.memory_map),
-                            reinterpret_cast<uptr>(p), false, true);
-    *h = prev_tail;
+    auto access_locked = heap_handle.MemoryMapLockGuard();
+    AsanMemoryList &asan_memory = access_locked.AsanMemory();
+    AsanMemoryMap &memory_map = access_locked.MemoryMap();
+
+    AsanHeapMemoryNode *mem_node =
+        new (&access_locked.Cache()) AsanHeapMemoryNode(p);
+    AsanHeapMemoryNode *prev_tail = asan_memory.back();
+    asan_memory.push_back(mem_node);
+
+    {
+      AsanMemoryMap::Handle h(&memory_map, reinterpret_cast<uptr>(p), false,
+                              true);
+      *h = prev_tail;
+    }
   }
 
   return p;
 }
 
-INTERCEPTOR_WINAPI(LOGICAL, RtlFreeHeap, void *HeapHandle, DWORD Flags,
-                   void *BaseAddress) {
-  if (UNLIKELY(!asan_inited || !BaseAddress)) {
-    return REAL(RtlFreeHeap)(HeapHandle, Flags, BaseAddress);
-  }
-
-  AsanHeapHandle heap_handle = GetAsanHeapHandle(HeapHandle, BaseAddress);
-  if (UNLIKELY(heap_handle.owner == AllocationOwnership::RTL)) {
-    return REAL(RtlFreeHeap)(HeapHandle, Flags, BaseAddress);
-  }
-
-  if (heap_handle.owner == AllocationOwnership::NEITHER) {
-    // If we're calling RtlFreeHeap inside of another call to an Rtl* function
-    // we assume that ntdll knows what it's doing.
-    if (!heap_handle.raii_lock.serialized) {
-      return REAL(RtlFreeHeap)(HeapHandle, Flags, BaseAddress);
-    }
-
-    GET_STACK_TRACE_FREE;
-    // This should either return double-free or wild pointer errors
-    asan_free(BaseAddress, &stack, FROM_MALLOC);
-
-    return false;
-  }
+static void __asan_wrap_RtlFreeHeap_UpdateTracking(AsanHeapHandle &heap_handle,
+                                                   void *BaseAddress) {
+  auto access_locked = heap_handle.MemoryMapLockGuard();
+  AsanMemoryList &asan_memory = access_locked.AsanMemory();
+  AsanMemoryMap &memory_map = access_locked.MemoryMap();
 
   AsanHeapMemoryNode *found;
   {
-    AsanMemoryMap::Handle h_delete(&(heap_handle.heap.memory_map),
-                                   reinterpret_cast<uptr>(BaseAddress), true,
-                                   false);
+    AsanMemoryMap::Handle h_delete(
+        &memory_map, reinterpret_cast<uptr>(BaseAddress), true, false);
 
     // If the pointer is not in the heap's allocated memory map one of
     // two things could be happening:
@@ -799,17 +1354,13 @@ INTERCEPTOR_WINAPI(LOGICAL, RtlFreeHeap, void *HeapHandle, DWORD Flags,
     // 2. ASAN owns the memory but the wrong heap was passed into RtlFreeHeap.
     // We should emit ASan error for this in the future.
     if (!h_delete.exists()) {
-      if (HeapHandle != GetProcessHeap()) {
+      if (heap_handle.Win32Handle() != GetProcessHeap()) {
         // TODO: Emit an ASan error because the memory does not belong to the
         // referenced heap.
       }
 
-      GET_STACK_TRACE_FREE;
-      asan_free(BaseAddress, &stack, FROM_MALLOC);
-
-      return true;
+      return;
     }
-
     found = *h_delete;
   }
 
@@ -817,12 +1368,12 @@ INTERCEPTOR_WINAPI(LOGICAL, RtlFreeHeap, void *HeapHandle, DWORD Flags,
   AsanHeapMemoryNode *update;
   if (found) {
     remove = found->next;
-    heap_handle.heap.asan_memory.extract(found, found->next);
+    asan_memory.extract(found, found->next);
     update = found->next;
   } else {
-    remove = heap_handle.heap.asan_memory.front();
-    heap_handle.heap.asan_memory.pop_front();
-    update = heap_handle.heap.asan_memory.front();
+    remove = asan_memory.front();
+    asan_memory.pop_front();
+    update = asan_memory.front();
   }
 
   CHECK(remove->memory == BaseAddress &&
@@ -831,21 +1382,60 @@ INTERCEPTOR_WINAPI(LOGICAL, RtlFreeHeap, void *HeapHandle, DWORD Flags,
 
   if (update) {
     {
-      AsanMemoryMap::Handle h_update(&(heap_handle.heap.memory_map),
-                                     reinterpret_cast<uptr>(update->memory),
-                                     true, false);
+      AsanMemoryMap::Handle h_update(
+          &memory_map, reinterpret_cast<uptr>(update->memory), true, false);
     }
     {
-      AsanMemoryMap::Handle h_update(&(heap_handle.heap.memory_map),
-                                     reinterpret_cast<uptr>(update->memory),
-                                     false, true);
+      AsanMemoryMap::Handle h_update(
+          &memory_map, reinterpret_cast<uptr>(update->memory), false, true);
       *h_update = found;
     }
   }
 
-  delete remove;
+  remove->~AsanHeapMemoryNode();
+  AsanHeapMemoryNode::operator delete(remove, &access_locked.Cache());
+}
+
+INTERCEPTOR_WINAPI(LOGICAL, RtlFreeHeap, void *HeapHandle, DWORD Flags,
+                   void *BaseAddress) {
+  if (UNLIKELY(!asan_inited || !BaseAddress)) {
+    // DebugCheck omitted: Asan can't handle the call yet/invalid arguments.
+    return REAL(RtlFreeHeap)(HeapHandle, Flags, BaseAddress);
+  }
+
+  DebugChecksData dbg_data;
+  DebugChecks dbg{dbg_data};
+
+  AllocationOwnership owner(HeapHandle, BaseAddress, dbg);
+  auto heap_handle = GetAsanHeap(HeapHandle, dbg);
+
+  if (UNLIKELY(owner == AllocationOwnership::RTL)) {
+    auto rtlguard = heap_handle.RtlReentrancyLockGuard();
+
+    DCHECK_ASSERT_LOCK_INVARIANT_CALL_RTL(dbg);
+    return REAL(RtlFreeHeap)(HeapHandle, Flags, BaseAddress);
+  }
+
+  if (owner == AllocationOwnership::NEITHER) {
+    if (UNLIKELY(heap_handle.IsLfhInternal(Flags))) {
+      auto rtlguard = heap_handle.RtlReentrancyLockGuard();
+
+      DCHECK_ASSERT_LOCK_INVARIANT_CALL_RTL(dbg);
+      return REAL(RtlFreeHeap)(HeapHandle, Flags, BaseAddress);
+    }
+
+    GET_STACK_TRACE_FREE;
+    // This should either return double-free or wild pointer errors
+    DCHECK_ASSERT_LOCK_INVARIANT_CALL_ASAN(dbg);
+    asan_free(BaseAddress, &stack, FROM_MALLOC);
+
+    return false;
+  }
+
+  __asan_wrap_RtlFreeHeap_UpdateTracking(heap_handle, BaseAddress);
 
   GET_STACK_TRACE_FREE;
+  DCHECK_ASSERT_LOCK_INVARIANT_CALL_ASAN(dbg);
   asan_free(BaseAddress, &stack, FROM_MALLOC);
 
   return true;
@@ -854,21 +1444,32 @@ INTERCEPTOR_WINAPI(LOGICAL, RtlFreeHeap, void *HeapHandle, DWORD Flags,
 INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
                    void *BaseAddress, size_t Size) {
   if (UNLIKELY(!asan_inited)) {
+    // DebugCheck omitted: Asan can't handle the call yet/invalid arguments.
     return REAL(RtlReAllocateHeap)(HeapHandle, Flags, BaseAddress, Size);
   }
 
   if (UNLIKELY(!BaseAddress)) {
+    // DebugCheck omitted: Calling back directly into our implementation.
     return WRAP(RtlAllocateHeap)(HeapHandle, Flags, Size);
   }
 
-  AsanHeapHandle heap_handle = GetAsanHeapHandle(HeapHandle, BaseAddress);
-  if (UNLIKELY(!heap_handle.heap.is_supported)) {
+  DebugChecksData dbg_data;
+  DebugChecks dbg{dbg_data};
+
+  AllocationOwnership owner(HeapHandle, BaseAddress, dbg);
+  auto heap_handle = GetAsanHeap(HeapHandle, dbg);
+
+  if (UNLIKELY(!heap_handle.IsSupported() ||
+               heap_handle.IsLfhInternal(Flags))) {
+    auto rtlguard = heap_handle.RtlReentrancyLockGuard();
+
+    DCHECK_ASSERT_LOCK_INVARIANT_CALL_RTL(dbg);
     return REAL(RtlReAllocateHeap)(HeapHandle, Flags, BaseAddress, Size);
   }
 
-  const DWORD all_flags = Flags | heap_handle.heap.GetFlags();
+  const DWORD all_flags = heap_handle.GetFlags() | Flags & ~HEAP_TAG_MASK;
   const DWORD asan_unsupported_flags =
-      (HEAP_REALLOC_UNSUPPORTED_FLAGS & all_flags);
+      all_flags & HEAP_REALLOC_UNSUPPORTED_FLAGS;
 
   GET_STACK_TRACE_MALLOC;
   GET_CURRENT_PC_BP_SP;
@@ -876,30 +1477,35 @@ INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
 
   void *replacement_alloc = nullptr;
   size_t old_size;
-  if (heap_handle.owner == AllocationOwnership::NEITHER) {
+
+  if (owner == AllocationOwnership::NEITHER) {
     // This should cause a use-after-free or wild pointer error. If it is a
     // wild pointer error the pointer was either nonsense or came from
     // another heap.
+
+    DCHECK_ASSERT_LOCK_INVARIANT_CALL_ASAN(dbg);
     replacement_alloc = asan_realloc(BaseAddress, Size, &stack);
+
     CHECK((all_flags & HEAP_ZERO_MEMORY) == 0 &&
           "We cannot zero the memory as we do not know the previous size of "
           "the memory. This error should only occur if ASAN errors are "
           "non-fatal.");
 
     if (replacement_alloc) {
-      AsanHeapMemoryNode *mem_node = new AsanHeapMemoryNode(replacement_alloc);
-      AsanHeapMemoryNode *prev_tail = heap_handle.heap.asan_memory.back();
-      heap_handle.heap.asan_memory.push_back(mem_node);
+      auto access_locked = heap_handle.MemoryMapLockGuard();
+      AsanMemoryList &asan_memory = access_locked.AsanMemory();
+      AsanMemoryMap &memory_map = access_locked.MemoryMap();
 
-      {
-        AsanMemoryMap::Handle h(&(heap_handle.heap.memory_map),
-                                reinterpret_cast<uptr>(replacement_alloc),
-                                false, true);
-        *h = prev_tail;
-      }
+      AsanHeapMemoryNode *mem_node =
+          new (&access_locked.Cache()) AsanHeapMemoryNode(replacement_alloc);
+      AsanHeapMemoryNode *prev_tail = asan_memory.back();
+      asan_memory.push_back(mem_node);
+
+      AsanMemoryMap::Handle h(
+          &memory_map, reinterpret_cast<uptr>(replacement_alloc), false, true);
+      *h = prev_tail;
     }
-  } else if (!asan_unsupported_flags &&
-             heap_handle.owner == AllocationOwnership::ASAN) {
+  } else if (!asan_unsupported_flags && owner == AllocationOwnership::ASAN) {
     // HeapReAlloc and HeapAlloc both happily accept 0 sized allocations.
     // passing a 0 size into asan_realloc will free the allocation.
     // To avoid this and keep behavior consistent, fudge the size if 0.
@@ -909,42 +1515,21 @@ INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
     }
 
     if (all_flags & HEAP_ZERO_MEMORY) {
+      DCHECK_ASSERT_LOCK_INVARIANT_CALL_ASAN(dbg);
       old_size = asan_malloc_usable_size(BaseAddress, pc, bp);
     }
 
-    AsanHeapMemoryNode *found;
-    bool new_malloc_rtl_mismatch = false;
-    {
-      AsanMemoryMap::Handle h_delete(&(heap_handle.heap.memory_map),
-                                     reinterpret_cast<uptr>(BaseAddress), true,
-                                     false);
-
-      // If the pointer is not in the heap's allocated memory map one of
-      // two things could be happening:
-      // 1. The memory passed into RtlReAllocateHeap was allocated with malloc
-      // or new. We should emit an error for this.
-      // 2. ASAN owns the memory but the wrong heap was passed into
-      // RtlReAllocateHeap. We should emit an ASan error in the future.
-      if (!h_delete.exists()) {
-        if (HeapHandle == GetProcessHeap()) {
-          new_malloc_rtl_mismatch = true;
-        } else {
-          // TODO: Emit an ASan error here
-          new_malloc_rtl_mismatch = true;
-        }
-      }
-
-      found = *h_delete;
-    }
-
+    DCHECK_ASSERT_LOCK_INVARIANT_CALL_ASAN(dbg);
     replacement_alloc = asan_realloc(BaseAddress, Size, &stack);
     if (replacement_alloc == nullptr) {
       return nullptr;
     }
 
     if (all_flags & HEAP_ZERO_MEMORY) {
+      DCHECK_ASSERT_LOCK_INVARIANT_CALL_ASAN(dbg);
       size_t new_size = asan_malloc_usable_size(replacement_alloc, pc, bp);
       if (old_size < new_size) {
+        // DebugCheck omitted: Memset does not allocate.
         REAL(memset)
         (((u8 *)replacement_alloc) + old_size, 0, new_size - old_size);
       }
@@ -953,11 +1538,39 @@ INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
     // We need to remove the old pointer from both the heap list and the heap
     // map and then add the new pointer.
     if (replacement_alloc != BaseAddress) {
+      auto access_locked = heap_handle.MemoryMapLockGuard();
+      AsanMemoryList &asan_memory = access_locked.AsanMemory();
+      AsanMemoryMap &memory_map = access_locked.MemoryMap();
+
+      AsanHeapMemoryNode *found;
+      bool new_malloc_rtl_mismatch = false;
+      {
+        AsanMemoryMap::Handle h_delete(
+            &memory_map, reinterpret_cast<uptr>(BaseAddress), true, false);
+
+        // If the pointer is not in the heap's allocated memory map one of
+        // two things could be happening:
+        // 1. The memory passed into RtlReAllocateHeap was allocated with malloc
+        // or new. We should emit an error for this.
+        // 2. ASAN owns the memory but the wrong heap was passed into
+        // RtlReAllocateHeap. We should emit an ASan error in the future.
+        if (!h_delete.exists()) {
+          if (HeapHandle == GetProcessHeap()) {
+            new_malloc_rtl_mismatch = true;
+          } else {
+            // TODO: Emit an ASan error here
+            new_malloc_rtl_mismatch = true;
+          }
+        }
+
+        found = *h_delete;
+      }
+
       if (!new_malloc_rtl_mismatch) {
         if (found) {
           found->next->memory = replacement_alloc;
         } else {
-          heap_handle.heap.asan_memory.front()->memory = replacement_alloc;
+          asan_memory.front()->memory = replacement_alloc;
         }
       } else {
         // If the function which created this allocation was not an Rtl
@@ -965,47 +1578,67 @@ INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
         // list.
         // TODO: Emit an ASan error here
         AsanHeapMemoryNode *mem_node =
-            new AsanHeapMemoryNode(replacement_alloc);
-        found = heap_handle.heap.asan_memory.back();
-        heap_handle.heap.asan_memory.push_back(mem_node);
+            new (&access_locked.Cache()) AsanHeapMemoryNode(replacement_alloc);
+        found = asan_memory.back();
+        asan_memory.push_back(mem_node);
       }
 
-      AsanMemoryMap::Handle h_new(&(heap_handle.heap.memory_map),
-                                  reinterpret_cast<uptr>(replacement_alloc),
-                                  false, true);
+      AsanMemoryMap::Handle h_new(
+          &memory_map, reinterpret_cast<uptr>(replacement_alloc), false, true);
       *h_new = found;
     }
   } else if (UNLIKELY(!asan_unsupported_flags &&
-                      heap_handle.owner == AllocationOwnership::RTL)) {
+                      owner == AllocationOwnership::RTL)) {
+    // DebugCheck omitted: RtlSizeHeap is not re-entrant.
     old_size = REAL(RtlSizeHeap)(HeapHandle, Flags, BaseAddress);
 
     if (old_size != ~size_t{0}) {
+      DCHECK_ASSERT_LOCK_INVARIANT_CALL_ASAN(dbg);
       replacement_alloc = WRAP(RtlAllocateHeap)(HeapHandle, Flags, Size);
+
       if (replacement_alloc == nullptr) {
         return nullptr;
       } else {
+        // DebugCheck omitted: memcpy does not allocate.
         REAL(memcpy)
         (replacement_alloc, BaseAddress, Min<size_t>(Size, old_size));
+
+        auto rtlguard = heap_handle.RtlReentrancyLockGuard();
+
+        DCHECK_ASSERT_LOCK_INVARIANT_CALL_RTL(dbg);
         REAL(RtlFreeHeap)(HeapHandle, Flags, BaseAddress);
       }
     } else {
       return nullptr;
     }
   } else if (UNLIKELY(asan_unsupported_flags &&
-                      heap_handle.owner == AllocationOwnership::ASAN)) {
+                      owner == AllocationOwnership::ASAN)) {
     // Conversion to unsupported flags allocation,
     // transfer this allocation to the original allocator.
-    replacement_alloc = REAL(RtlAllocateHeap)(HeapHandle, Flags, Size);
+    {
+      auto rtlguard = heap_handle.RtlReentrancyLockGuard();
+
+      DCHECK_ASSERT_LOCK_INVARIANT_CALL_RTL(dbg);
+      replacement_alloc = REAL(RtlAllocateHeap)(HeapHandle, Flags, Size);
+    }
 
     if (replacement_alloc) {
+      DCHECK_ASSERT_LOCK_INVARIANT_CALL_ASAN(dbg);
       old_size = asan_malloc_usable_size(BaseAddress, pc, bp);
+
+      // DebugChecks omitted: memcpy does not allocate.
       REAL(memcpy)(replacement_alloc, BaseAddress, Min<size_t>(Size, old_size));
+
+      DCHECK_ASSERT_LOCK_INVARIANT_CALL_ASAN(dbg);
       WRAP(RtlFreeHeap)(HeapHandle, Flags, BaseAddress);
     }
   } else if (UNLIKELY(asan_unsupported_flags &&
-                      heap_handle.owner == AllocationOwnership::RTL)) {
+                      owner == AllocationOwnership::RTL)) {
     // Currently owned by rtl using unsupported ASAN flags,
     // just pass back to original allocator.
+    auto rtlguard = heap_handle.RtlReentrancyLockGuard();
+
+    DCHECK_ASSERT_LOCK_INVARIANT_CALL_RTL(dbg);
     replacement_alloc =
         REAL(RtlReAllocateHeap)(HeapHandle, Flags, BaseAddress, Size);
   }

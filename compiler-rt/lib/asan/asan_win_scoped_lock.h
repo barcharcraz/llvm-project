@@ -22,11 +22,14 @@ class RecursiveScopedLock {
  public:
   bool serialized = false;
 
-  explicit RecursiveScopedLock(__sanitizer::SpinMutex &_lock,
-                               __sanitizer::atomic_uint32_t &_thread_id)
+  RecursiveScopedLock(__sanitizer::SpinMutex &_lock,
+                      __sanitizer::atomic_uint32_t &_thread_id)
       : lock(_lock), thread_id(_thread_id), serialized(false) {
-    if (atomic_load(&thread_id, __sanitizer::memory_order_seq_cst) !=
-        GetCurrentThreadId()) {
+    // Save thread id as local volatile so it is captured in minidumps to aid
+    // debugging.
+    volatile __sanitizer::u32 saved_thread_id =
+        atomic_load(&thread_id, __sanitizer::memory_order_seq_cst);
+    if (saved_thread_id != GetCurrentThreadId()) {
       serialized = true;
       lock.Lock();
       atomic_store(&thread_id, GetCurrentThreadId(),
@@ -41,8 +44,18 @@ class RecursiveScopedLock {
     }
   }
 
+  RecursiveScopedLock(RecursiveScopedLock &&rhs)
+      : lock(rhs.lock), thread_id(rhs.thread_id), serialized(rhs.serialized) {
+    rhs.serialized = false;
+  }
+
+  RecursiveScopedLock &operator=(RecursiveScopedLock &&) = delete;
+  RecursiveScopedLock(const RecursiveScopedLock &) = delete;
+  RecursiveScopedLock &operator=(const RecursiveScopedLock &) = delete;
+
  private:
   __sanitizer::SpinMutex &lock;
   __sanitizer::atomic_uint32_t &thread_id;
 };
-#endif  // SANITIZER_WINDOWS
+
+#endif  // SANITIZER_WINDOWS
