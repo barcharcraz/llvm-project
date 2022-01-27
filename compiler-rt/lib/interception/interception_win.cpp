@@ -729,7 +729,7 @@ static size_t GetInstructionSize(uptr address, size_t* rel_offset = nullptr) {
     case 0x247c8948:  // 48 89 7c 24 XX   mov QWORD ptr [rsp + XX], rdi
     case 0x246c8d48:  // 48 8d 6c 24 XX : lea rbp, [rsp + XX]
       return 5;
-    case 0x24648348:  // 48 83 64 24 XX YY : and QWORD PTR [rsp + XX], YY                      
+    case 0x24648348:  // 48 83 64 24 XX YY : and QWORD PTR [rsp + XX], YY
       return 6;
   }
 
@@ -1032,9 +1032,10 @@ bool OverrideFunctionWithHotPatch(uptr old_func, uptr new_func,
 
   // Validate that the function is hot patchable.
   size_t instruction_size = GetInstructionSize(old_func);
+
   if (instruction_size < kShortJumpInstructionLength ||
       (!guaranteed_hotpatchable &&
-       !FunctionHasPadding(old_func, kHotPatchHeaderLen))) {
+      !FunctionHasPadding(old_func, kHotPatchHeaderLen))) {
     return false;
   }
 
@@ -1165,25 +1166,25 @@ static dll_info *InterestingDLLsAvailable() {
   };
 
   static const dll_pair InterestingDLLs[] = {
-    {"kernel32.dll", true},
+    {"kernel32.dll", SANITIZER_WINDOWS64},
 #if defined(_DEBUG)
     {"msvcr100d.dll", false},      // VS2010
     {"msvcr110d.dll", false},      // VS2012
     {"msvcr120d.dll", false},      // VS2013
     {"vcruntime140d.dll", false},  // VS2015
-    {"ucrtbased.dll", true},       // Universal CRT
+    {"ucrtbased.dll", SANITIZER_WINDOWS64},       // Universal CRT
 #else
     {"msvcr100.dll", false},      // VS2010
     {"msvcr110.dll", false},      // VS2012
     {"msvcr120.dll", false},      // VS2013
     {"vcruntime140.dll", false},  // VS2015
-    {"ucrtbase.dll", true},       // Universal CRT
+    {"ucrtbase.dll", SANITIZER_WINDOWS64},       // Universal CRT
 #endif
     // KernelBase for GlobalAlloc and LocalAlloc (dynamic)
-    {"KERNELBASE.dll", true},
+    {"KERNELBASE.dll", SANITIZER_WINDOWS64},
     // NTDLL should go last as it exports some functions that we should
     // override in the CRT [presumably only used internally].
-    {"ntdll.dll", true},
+    {"ntdll.dll", SANITIZER_WINDOWS64},
     {nullptr, false}
   };
   static dll_info result[ARRAY_SIZE(InterestingDLLs)] = {0};
