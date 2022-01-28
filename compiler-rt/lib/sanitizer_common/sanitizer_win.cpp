@@ -1239,6 +1239,36 @@ void LogFullErrorReport(const char *buffer) {
 
 void InitializePlatformCommonFlags(CommonFlags *cf) {}
 
+// A view into Windows _PEB_LDR_DATA to determine if the process is shutting
+// down.
+struct SanitizerProcessEnvironmentBlock {
+  struct PEBLDR {
+    // This data structure is undocumented and is subject to change.
+    // This is a partial definition and does not represent a full object, only a
+    // view on Win _PEB_LDR_DATA in order to obtain ShutdownInProgress.
+    ULONG Length;
+    BOOLEAN Initialized;
+    void *Padding[8];
+    BOOLEAN ShutdownInProgress;
+
+    PEBLDR() = delete;
+    ~PEBLDR() = delete;
+  };
+
+  explicit SanitizerProcessEnvironmentBlock(void *_peb)
+      : peb(*(reinterpret_cast<PEBLDR *>(_peb))) {}
+
+  bool IsShutdownInProgress() const { return peb.ShutdownInProgress; }
+
+  const PEBLDR &peb;
+};
+
+bool IsProcessTerminating() {
+  return SanitizerProcessEnvironmentBlock(
+             NtCurrentTeb()->ProcessEnvironmentBlock->Ldr)
+      .IsShutdownInProgress();
+}
+
 }  // namespace __sanitizer
 
 #endif  // _WIN32

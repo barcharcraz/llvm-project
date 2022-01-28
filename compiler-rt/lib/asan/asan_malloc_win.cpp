@@ -28,6 +28,7 @@
 #include "interception/interception.h"
 #include "sanitizer_common/sanitizer_allocator_internal.h"
 #include "sanitizer_common/sanitizer_placement_new.h"
+#include "sanitizer_common/sanitizer_win.h"
 #include "sanitizer_common/sanitizer_win_immortalize.h"
 
 // Intentionally not including windows.h here, to avoid the risk of
@@ -711,7 +712,13 @@ struct DebugChecks {
     // If calling into other potentially-allocating asan functions,
     // the MemoryMapLock must not be taken and RtlReentrancyLock+Win32HeapLock
     // must be taken (if applicable). See Lock Usage section above for details.
-    return 0x110;  // Only MemoryMapLock is unlocked.
+    if (LIKELY(!__sanitizer::IsProcessTerminating())) {
+      return 0x110;  // Only MemoryMapLock is unlocked.
+    }
+
+    // If the process is terminating, the targeted lock state will be unlocked
+    // (0x0).
+    return 0x000;
   }
 
 #define DCHECK_ASSERT_LOCK_INVARIANT_CALL_ASAN(DBG)           \
@@ -932,6 +939,7 @@ class AsanHeapHandle : public DebugChecks {
     // access is no longer needed to avoid any lock order inversion issues.
     CHECK(Valid());
     DCHECK(!Debug_AreAnyLocksHeldLocally());
+    DCHECK(!__sanitizer::IsProcessTerminating());
 
     class MemoryMapLockGuard_impl {
      public:
@@ -979,6 +987,7 @@ class AsanHeapHandle : public DebugChecks {
         DCHECK(!heap_handle.Debug_AreAnyLocksHeldLocally());
         DCHECK(heap_handle.Debug_RegisterWin32HeapLockHeld(true));
         DCHECK(heap_handle.Debug_RegisterReentrancyLockHeld(true));
+        DCHECK(!__sanitizer::IsProcessTerminating());
 
         if (heap_handle.IsLowFragmentationHeap()) {
           ::HeapLock(heap_handle.Win32Handle());
@@ -1061,6 +1070,7 @@ class AsanHeapHandle : public DebugChecks {
 
     // This check requires that the RtlReentrancyLockGuard is taken during
     // every call back into the real RTL functions.
+    DCHECK(!__sanitizer::IsProcessTerminating());
     if (atomic_load(&asan_heap_ptr->rtl_reentrancy_thread_id,
                     __sanitizer::memory_order_seq_cst) ==
         GetCurrentThreadId()) {
@@ -1115,6 +1125,7 @@ class AsanHeapHandle : public DebugChecks {
 static void DeleteAsanHeap(void *heap_handle) {
   DCHECK(heap_handle != nullptr);
   DCHECK(heap_handle != GetProcessHeap());
+  DCHECK(!__sanitizer::IsProcessTerminating());
 
   AsanHeapMap::Handle h_delete(
       GetAsanHeapMap(), reinterpret_cast<uptr>(heap_handle), true, false);
@@ -1127,6 +1138,7 @@ static void DeleteAsanHeap(void *heap_handle) {
 
 static auto GetAsanHeap(void *heap_handle, DebugChecks dbg) {
   DCHECK(heap_handle != nullptr);
+  DCHECK(!__sanitizer::IsProcessTerminating());
 
   if (heap_handle == GetProcessHeap()) {
     return AsanHeapHandle::GetDefaultHeapHandle(dbg);
@@ -1230,7 +1242,12 @@ INTERCEPTOR_WINAPI(void *, RtlDestroyHeap, void *HeapHandle) {
     return REAL(RtlDestroyHeap)(HeapHandle);
   }
 
-  DeleteAsanHeap(HeapHandle);
+  // If the process is terminating, we should not grab the write lock of the
+  // AsanHeapMap
+  if (!__sanitizer::IsProcessTerminating()) {
+    DeleteAsanHeap(HeapHandle);
+  }
+
   return REAL(RtlDestroyHeap)(HeapHandle);
 }
 
@@ -1251,7 +1268,7 @@ INTERCEPTOR_WINAPI(size_t, RtlSizeHeap, HANDLE HeapHandle, DWORD Flags,
     return REAL(RtlSizeHeap)(HeapHandle, Flags, BaseAddress);
   }
 
-  {
+  if (!__sanitizer::IsProcessTerminating()) {
     auto heap_handle = GetAsanHeap(HeapHandle, dbg);
     auto access_locked = heap_handle.MemoryMapLockGuard();
     AsanMemoryMap &memory_map = access_locked.MemoryMap();
@@ -1281,7 +1298,7 @@ INTERCEPTOR_WINAPI(size_t, RtlSizeHeap, HANDLE HeapHandle, DWORD Flags,
 
 INTERCEPTOR_WINAPI(void *, RtlAllocateHeap, HANDLE HeapHandle, DWORD Flags,
                    size_t Size) {
-  if (UNLIKELY(!asan_inited)) {
+  if (UNLIKELY(!asan_inited || __sanitizer::IsProcessTerminating())) {
     // DebugCheck omitted: Asan can't handle the call yet.
     return REAL(RtlAllocateHeap)(HeapHandle, Flags, Size);
   }
@@ -1407,32 +1424,44 @@ INTERCEPTOR_WINAPI(LOGICAL, RtlFreeHeap, void *HeapHandle, DWORD Flags,
   DebugChecks dbg{dbg_data};
 
   AllocationOwnership owner(HeapHandle, BaseAddress, dbg);
-  auto heap_handle = GetAsanHeap(HeapHandle, dbg);
 
-  if (UNLIKELY(owner == AllocationOwnership::RTL)) {
-    auto rtlguard = heap_handle.RtlReentrancyLockGuard();
+  if (LIKELY(!__sanitizer::IsProcessTerminating())) {
+    auto heap_handle = GetAsanHeap(HeapHandle, dbg);
 
-    DCHECK_ASSERT_LOCK_INVARIANT_CALL_RTL(dbg);
-    return REAL(RtlFreeHeap)(HeapHandle, Flags, BaseAddress);
-  }
-
-  if (owner == AllocationOwnership::NEITHER) {
-    if (UNLIKELY(heap_handle.IsLfhInternal(Flags))) {
+    if (UNLIKELY(owner == AllocationOwnership::RTL)) {
       auto rtlguard = heap_handle.RtlReentrancyLockGuard();
 
       DCHECK_ASSERT_LOCK_INVARIANT_CALL_RTL(dbg);
       return REAL(RtlFreeHeap)(HeapHandle, Flags, BaseAddress);
     }
 
-    GET_STACK_TRACE_FREE;
-    // This should either return double-free or wild pointer errors
-    DCHECK_ASSERT_LOCK_INVARIANT_CALL_ASAN(dbg);
-    asan_free(BaseAddress, &stack, FROM_MALLOC);
+    if (owner == AllocationOwnership::NEITHER) {
+      if (UNLIKELY(heap_handle.IsLfhInternal(Flags))) {
+        auto rtlguard = heap_handle.RtlReentrancyLockGuard();
 
-    return false;
+        DCHECK_ASSERT_LOCK_INVARIANT_CALL_RTL(dbg);
+        return REAL(RtlFreeHeap)(HeapHandle, Flags, BaseAddress);
+      }
+
+      GET_STACK_TRACE_FREE;
+      // This should either return double-free or wild pointer errors
+      DCHECK_ASSERT_LOCK_INVARIANT_CALL_ASAN(dbg);
+      asan_free(BaseAddress, &stack, FROM_MALLOC);
+
+      return false;
+    }
+
+    __asan_wrap_RtlFreeHeap_UpdateTracking(heap_handle, BaseAddress);
+  } else {
+    // If the process is terminating, we do not want to obtain any locks.
+    // Instead, we will just call the free for whichever allocation owner is
+    // present without attempting to lock.
+    if (owner == AllocationOwnership::RTL ||
+        owner == AllocationOwnership::NEITHER) {
+      DCHECK_ASSERT_LOCK_INVARIANT_CALL_RTL(dbg);
+      return REAL(RtlFreeHeap)(HeapHandle, Flags, BaseAddress);
+    }
   }
-
-  __asan_wrap_RtlFreeHeap_UpdateTracking(heap_handle, BaseAddress);
 
   GET_STACK_TRACE_FREE;
   DCHECK_ASSERT_LOCK_INVARIANT_CALL_ASAN(dbg);
@@ -1443,7 +1472,7 @@ INTERCEPTOR_WINAPI(LOGICAL, RtlFreeHeap, void *HeapHandle, DWORD Flags,
 
 INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
                    void *BaseAddress, size_t Size) {
-  if (UNLIKELY(!asan_inited)) {
+  if (UNLIKELY(!asan_inited || __sanitizer::IsProcessTerminating())) {
     // DebugCheck omitted: Asan can't handle the call yet/invalid arguments.
     return REAL(RtlReAllocateHeap)(HeapHandle, Flags, BaseAddress, Size);
   }
@@ -1687,7 +1716,8 @@ HANDLE GlobalLocalGenericFree(GlobalLocalUnlock lockFunction,
 HANDLE SharedLockUnlock(HANDLE hMem, GlobalLocalLock lockFunc,
                         LockAction action) {
   CHECK(lockFunc != nullptr);
-  if (asan_inited && !IsSystemHeapAddress(reinterpret_cast<uptr>(hMem))) {
+  if (asan_inited && !__sanitizer::IsProcessTerminating() &&
+      !IsSystemHeapAddress(reinterpret_cast<uptr>(hMem))) {
     if (action == LockAction::Increment)
       return MoveableMemoryManager::GetInstance()->IncrementLockCount(hMem);
     else
