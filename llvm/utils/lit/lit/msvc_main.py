@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 
-from __future__ import absolute_import
-from __future__ import absolute_import
 import os
 import platform
 import random
@@ -60,49 +58,49 @@ class TestingProgressDisplay(object):
 
         # Show the test result line.
         test_name = test.getFullName()
-        print('%s: %s (%d of %d)' % (test.result.code.name, test_name,
-                                     self.completed, self.numTests))
+        print(('%s: %s (%d of %d)' % (test.result.code.name, test_name,
+                                     self.completed, self.numTests)))
 
         # Show the test failure output, if requested.
         if (test.result.code.isFailure and self.opts.showOutput) or \
            self.opts.showAllOutput:
             if test.result.code.isFailure:
-                print("%s TEST '%s' FAILED %s" % ('*'*20, test.getFullName(),
-                                                  '*'*20))
-            print(test.result.output)
-            print("*" * 20)
+                print(("%s TEST '%s' FAILED %s" % ('*'*20, test.getFullName(),
+                                                  '*'*20)))
+            print((test.result.output))
+            print(("*" * 20))
 
         # Report test metrics, if present.
         if test.result.metrics:
-            print("%s TEST '%s' RESULTS %s" % ('*'*10, test.getFullName(),
-                                               '*'*10))
+            print(("%s TEST '%s' RESULTS %s" % ('*'*10, test.getFullName(),
+                                               '*'*10)))
             items = sorted(test.result.metrics.items())
             for metric_name, value in items:
-                print('%s: %s ' % (metric_name, value.format()))
-            print("*" * 10)
+                print(('%s: %s ' % (metric_name, value.format())))
+            print(("*" * 10))
 
         # Report micro-tests, if present
         if test.result.microResults:
             items = sorted(test.result.microResults.items())
             for micro_test_name, micro_test in items:
-                print("%s MICRO-TEST: %s" %
-                         ('*'*3, micro_test_name))
+                print(("%s MICRO-TEST: %s" %
+                         ('*'*3, micro_test_name)))
 
                 if micro_test.metrics:
                     sorted_metrics = sorted(micro_test.metrics.items())
                     for metric_name, value in sorted_metrics:
-                        print('    %s:  %s ' % (metric_name, value.format()))
+                        print(('    %s:  %s ' % (metric_name, value.format())))
 
         # Ensure the output is flushed.
         sys.stdout.flush()
 def slashsan(stri):
     return stri.replace("\\","\\\\")
 
-print """
+print("""
     Run LLVM/Clang/ASAN unit tests on MSVC/ASAN
     usage:
     a) run vcvarsall or setenv from the compiler path you want to use to add include libs etc.
-    b) set TEST_C_COMPILER=c:\\the\compiler\path\\to\use.exe
+    b) set TEST_C_COMPILER=c:\\the\compiler\path\\to\\use.exe
     c) set TEST_OUTPUT_DIR=c:\\the\output\directory\\
     d) set ASAN_RT_LIB_DIR=c:\\path\\to\\runtime\\libs
     e) set ASAN_RT_SRC_ROOT=e:\\path\\to\\compiler\\rt\\src
@@ -119,7 +117,7 @@ print """
     optionally:
     add  ` --run_test testfile.cpp  `
     to run a specific test rather than the whole suite
-"""
+""")
 parser = argparse.ArgumentParser()
 parser.add_argument('test_paths',
                     nargs='*',
@@ -271,7 +269,7 @@ args = opts.test_paths
 
 
 if opts.show_version:
-    print("lit %s" % (lit.__version__,))
+    print(("lit %s" % (lit.__version__,)))
 
 
 if not args:
@@ -507,9 +505,9 @@ suite = lit.Test.TestSuite("msvc",sys.argv[1], os.environ['TEST_OUTPUT_DIR'], te
 # grab the list of test source files in the directory we've selected
 # If the suite uses .test files, only use those (ex: fuzzer). Otherwise, treat all source files as tests (ex: asan).
 files = os.listdir(suite.source_root)
-cc_files = filter(lambda x: ".test" in x[-5:], files)
+cc_files = [x for x in files if ".test" in x[-5:]]
 if not cc_files:
-    cc_files = filter(lambda x: ".c" in x[-2:] or ".cpp" in x[-4:], files)
+    cc_files = [x for x in files if ".c" in x[-2:] or ".cpp" in x[-4:]]
 
 #set up some blank lists and dicts for use later.
 tests_to_run = []
@@ -580,14 +578,14 @@ for cc_file in cc_files:
         __testConfig.environment['_LINK_'] += " /force:multiple "
         __suite = lit.Test.TestSuite("msvc",sys.argv[1], os.path.join(__testConfig.environment['TEST_OUTPUT_DIR'],cc_file.replace(".","")+opts.testTargetArch), __testConfig)
         __test = lit.Test.Test(__suite,[ cc_file],__testConfig)
-        print "found test %s"%(cc_file)
+        print("found test %s"%(cc_file))
         tests_to_run.append( (cc_file, __test, __litConfig) )
         #print test.suite.getSourcePath(test.path_in_suite)
         if opts.print_env:
             for item in sorted(__testConfig.environment.keys()):
-                print str(item) + "=" + __testConfig.environment[item]
+                print(str(item) + "=" + __testConfig.environment[item])
             for item in sorted(__testConfig.substitutions):
-                print item
+                print(item)
         """
         #print result.output
         results[cc_file] = result
@@ -616,7 +614,7 @@ def RunTest(tester,testObj):
 
 for testObj in tests_to_run:
     t = threading.Thread(target=RunTest, args=(lit.TestRunner, testObj,))
-    t.setName(testObj[0])
+    t.name = testObj[0]
     """
     if "dll" in testObj[0]:
         run_single_tests.append((testObj[0],t))
@@ -649,7 +647,7 @@ while waiting_on_count > 0:
 
         thread.join(.1)
         if thread.is_alive():
-            print "\rwaiting on %03d threads (%s)."% (waiting_on_count, thread.getName())
+            print("\rwaiting on %03d threads (%s)."% (waiting_on_count, thread.name))
         else:
             current_active -= 1
             waiting_on_count -= 1
@@ -673,19 +671,19 @@ xfailed = 0
 failed = 0
 total = 0
 
-print "Outputs ================================================================="
+print("Outputs =================================================================")
 
 for result in results:
-    print "%s ================================================================="%result
-    print results[result].code
-    print results[result].output
+    print("%s ================================================================="%result)
+    print(results[result].code)
+    print(results[result].output)
 
 xpasses = []
 xfails = []
 passes = []
 fails = []
 
-print "Expected Passes ================================================================="
+print("Expected Passes =================================================================")
 
 for result in sorted(results.keys()):
     total += 1
@@ -693,9 +691,9 @@ for result in sorted(results.keys()):
     if robj.code == lit.Test.PASS:
         xpassed += 1
         xpasses.append(result)
-        print result
+        print(result)
 
-print "Expected Failures ================================================================="
+print("Expected Failures =================================================================")
 
 for result in sorted(results.keys()):
     total += 1
@@ -703,18 +701,18 @@ for result in sorted(results.keys()):
     if robj.code == lit.Test.XFAIL:
         xfailed += 1
         xfails.append(result)
-        print result
+        print(result)
 
-print "Unexpected Passes ================================================================="
+print("Unexpected Passes =================================================================")
 count = 0
 for result in sorted(results.keys()):
     robj = results[result]
     if robj.code == lit.Test.XPASS:
         passed += 1
         passes.append(result)
-        print result
+        print(result)
 
-print "Unexpected Failures ================================================================="
+print("Unexpected Failures =================================================================")
 
 count = 0
 for result in sorted(results.keys()):
@@ -722,9 +720,9 @@ for result in sorted(results.keys()):
     if robj.code == lit.Test.FAIL:
         failed += 1
         fails.append(result)
-        print result
+        print(result)
 
-print "passed %d out of %d tests"%(xpassed + xfailed ,xpassed+xfailed+passed+failed)
+print("passed %d out of %d tests"%(xpassed + xfailed ,xpassed+xfailed+passed+failed))
 
 retcode = 1
 if xpassed+xfailed  == xpassed+xfailed+passed+failed:
