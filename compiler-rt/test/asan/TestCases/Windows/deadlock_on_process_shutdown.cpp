@@ -1,4 +1,6 @@
 // RUN: %clang_cl_asan -Od %s -Fe%t
+// RUN: %clang_cl_asan -Od %p/deadlock_on_process_shutdown_driver.cpp -Fe%p/deadlock_on_process_shutdown_driver.exe
+// RUN: %run %p/deadlock_on_process_shutdown_driver.exe
 
 #include <iostream>
 #include <ppl.h>

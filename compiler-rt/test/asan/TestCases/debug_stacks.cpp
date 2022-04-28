@@ -3,6 +3,7 @@
 // RUN: %clangxx_asan -O0 %s -o %t && not %run %t 2>&1 | FileCheck %s
 
 // FIXME: Figure out why allocation/free stack traces may be too short on ARM.
+// FIXME: Figure out a better way to test stack trace differences for MT(d)/MD(d)
 // REQUIRES: stable-runtime
 
 #if _WIN64
@@ -11,7 +12,7 @@
 #define PTR "%lx"
 #endif
 
-//windows dynamic debug has a few more frames, increasing limit from 10 to 12.
+// windows dynamic debug has a few more frames, increasing limit from 10 to 12.
 #define FRAME_LIMIT 12
 
 #include <sanitizer/asan_interface.h>
@@ -56,8 +57,6 @@ int main() {
   // CHECK: thread id = 0
   fprintf(stderr, "0x" PTR "\n", trace[0]);
   // CHECK: [[FREE_FRAME_0:0x[0-9a-f]+]]
-  fprintf(stderr, "0x" PTR "\n", trace[1]);
-  // CHECK: [[FREE_FRAME_1:0x[0-9a-f]+]]
 
   mem[0] = 'A'; // BOOM
 
@@ -65,7 +64,7 @@ int main() {
   // CHECK: WRITE of size 1 at 0x{{.*}}
   // CHECK: freed by thread T0 here:
   // CHECK: #0 [[FREE_FRAME_0]]
-  // CHECK: #1 [[FREE_FRAME_1]]
+  // CHECK: #1 0x{{.*}} in func2
   // CHECK: previously allocated by thread T0 here:
   // CHECK: #0 [[ALLOC_FRAME_0]]
   // CHECK: #1 [[ALLOC_FRAME_1]]

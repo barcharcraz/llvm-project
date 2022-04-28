@@ -32,9 +32,9 @@
 #include "ubsan/ubsan_init.h"
 #include "ubsan/ubsan_platform.h"
 
-uptr __asan_shadow_memory_dynamic_address;  // Global interface symbol.
+uptr __asan_shadow_memory_dynamic_address;        // Global interface symbol.
 int __asan_option_detect_stack_use_after_return;  // Global interface symbol.
-uptr *__asan_test_only_reported_buggy_pointer;  // Used only for testing asan.
+uptr *__asan_test_only_reported_buggy_pointer;    // Used only for testing asan.
 
 namespace __asan {
 
@@ -44,7 +44,8 @@ static void AsanDie() {
   static atomic_uint32_t num_calls;
   if (atomic_fetch_add(&num_calls, 1, memory_order_relaxed) != 0) {
     // Don't die twice - run a busy loop.
-    while (1) { }
+    while (1) {
+    }
   }
   if (common_flags()->print_module_map >= 1)
     DumpProcessMap();
@@ -54,11 +55,11 @@ static void AsanDie() {
   }
   if (flags()->unmap_shadow_on_exit) {
     if (kMidMemBeg) {
-      UnmapOrDie((void*)kLowShadowBeg, kMidMemBeg - kLowShadowBeg);
-      UnmapOrDie((void*)kMidMemEnd, kHighShadowEnd - kMidMemEnd);
+      UnmapOrDie((void *)kLowShadowBeg, kMidMemBeg - kLowShadowBeg);
+      UnmapOrDie((void *)kMidMemEnd, kHighShadowEnd - kMidMemEnd);
     } else {
       if (kHighShadowEnd)
-        UnmapOrDie((void*)kLowShadowBeg, kHighShadowEnd - kLowShadowBeg);
+        UnmapOrDie((void *)kLowShadowBeg, kHighShadowEnd - kLowShadowBeg);
     }
   }
 }
@@ -97,22 +98,22 @@ static void OnLowLevelAllocate(uptr ptr, uptr size) {
 
 // -------------------------- Run-time entry ------------------- {{{1
 // exported functions
-#define ASAN_REPORT_ERROR(type, is_write, size)                     \
-extern "C" NOINLINE INTERFACE_ATTRIBUTE                             \
-void __asan_report_ ## type ## size(uptr addr) {                    \
-  GET_CALLER_PC_BP_SP;                                              \
-  ReportGenericError(pc, bp, sp, addr, is_write, size, 0, true);    \
-}                                                                   \
-extern "C" NOINLINE INTERFACE_ATTRIBUTE                             \
-void __asan_report_exp_ ## type ## size(uptr addr, u32 exp) {       \
-  GET_CALLER_PC_BP_SP;                                              \
-  ReportGenericError(pc, bp, sp, addr, is_write, size, exp, true);  \
-}                                                                   \
-extern "C" NOINLINE INTERFACE_ATTRIBUTE                             \
-void __asan_report_ ## type ## size ## _noabort(uptr addr) {        \
-  GET_CALLER_PC_BP_SP;                                              \
-  ReportGenericError(pc, bp, sp, addr, is_write, size, 0, false);   \
-}                                                                   \
+#define ASAN_REPORT_ERROR(type, is_write, size)                                \
+  extern "C" NOINLINE INTERFACE_ATTRIBUTE void __asan_report_##type##size(     \
+      uptr addr) {                                                             \
+    GET_CALLER_PC_BP_SP;                                                       \
+    ReportGenericError(pc, bp, sp, addr, is_write, size, 0, true);             \
+  }                                                                            \
+  extern "C" NOINLINE INTERFACE_ATTRIBUTE void __asan_report_exp_##type##size( \
+      uptr addr, u32 exp) {                                                    \
+    GET_CALLER_PC_BP_SP;                                                       \
+    ReportGenericError(pc, bp, sp, addr, is_write, size, exp, true);           \
+  }                                                                            \
+  extern "C" NOINLINE INTERFACE_ATTRIBUTE void                                 \
+      __asan_report_##type##size##_noabort(uptr addr) {                        \
+    GET_CALLER_PC_BP_SP;                                                       \
+    ReportGenericError(pc, bp, sp, addr, is_write, size, 0, false);            \
+  }
 
 ASAN_REPORT_ERROR(load, false, 1)
 ASAN_REPORT_ERROR(load, false, 2)
@@ -125,22 +126,22 @@ ASAN_REPORT_ERROR(store, true, 4)
 ASAN_REPORT_ERROR(store, true, 8)
 ASAN_REPORT_ERROR(store, true, 16)
 
-#define ASAN_REPORT_ERROR_N(type, is_write)                                 \
-extern "C" NOINLINE INTERFACE_ATTRIBUTE                                     \
-void __asan_report_ ## type ## _n(uptr addr, uptr size) {                   \
-  GET_CALLER_PC_BP_SP;                                                      \
-  ReportGenericError(pc, bp, sp, addr, is_write, size, 0, true);            \
-}                                                                           \
-extern "C" NOINLINE INTERFACE_ATTRIBUTE                                     \
-void __asan_report_exp_ ## type ## _n(uptr addr, uptr size, u32 exp) {      \
-  GET_CALLER_PC_BP_SP;                                                      \
-  ReportGenericError(pc, bp, sp, addr, is_write, size, exp, true);          \
-}                                                                           \
-extern "C" NOINLINE INTERFACE_ATTRIBUTE                                     \
-void __asan_report_ ## type ## _n_noabort(uptr addr, uptr size) {           \
-  GET_CALLER_PC_BP_SP;                                                      \
-  ReportGenericError(pc, bp, sp, addr, is_write, size, 0, false);           \
-}                                                                           \
+#define ASAN_REPORT_ERROR_N(type, is_write)                                  \
+  extern "C" NOINLINE INTERFACE_ATTRIBUTE void __asan_report_##type##_n(     \
+      uptr addr, uptr size) {                                                \
+    GET_CALLER_PC_BP_SP;                                                     \
+    ReportGenericError(pc, bp, sp, addr, is_write, size, 0, true);           \
+  }                                                                          \
+  extern "C" NOINLINE INTERFACE_ATTRIBUTE void __asan_report_exp_##type##_n( \
+      uptr addr, uptr size, u32 exp) {                                       \
+    GET_CALLER_PC_BP_SP;                                                     \
+    ReportGenericError(pc, bp, sp, addr, is_write, size, exp, true);         \
+  }                                                                          \
+  extern "C" NOINLINE INTERFACE_ATTRIBUTE void                               \
+      __asan_report_##type##_n_noabort(uptr addr, uptr size) {               \
+    GET_CALLER_PC_BP_SP;                                                     \
+    ReportGenericError(pc, bp, sp, addr, is_write, size, 0, false);          \
+  }
 
 ASAN_REPORT_ERROR_N(load, false)
 ASAN_REPORT_ERROR_N(store, true)
@@ -157,19 +158,19 @@ ASAN_REPORT_ERROR_N(store, true)
     }                                                                          \
   }
 
-#define ASAN_MEMORY_ACCESS_CALLBACK(type, is_write, size)                      \
-  extern "C" NOINLINE INTERFACE_ATTRIBUTE                                      \
-  void __asan_##type##size(uptr addr) {                                        \
-    ASAN_MEMORY_ACCESS_CALLBACK_BODY(type, is_write, size, 0, true)            \
-  }                                                                            \
-  extern "C" NOINLINE INTERFACE_ATTRIBUTE                                      \
-  void __asan_exp_##type##size(uptr addr, u32 exp) {                           \
-    ASAN_MEMORY_ACCESS_CALLBACK_BODY(type, is_write, size, exp, true)          \
-  }                                                                            \
-  extern "C" NOINLINE INTERFACE_ATTRIBUTE                                      \
-  void __asan_##type##size ## _noabort(uptr addr) {                            \
-    ASAN_MEMORY_ACCESS_CALLBACK_BODY(type, is_write, size, 0, false)           \
-  }                                                                            \
+#define ASAN_MEMORY_ACCESS_CALLBACK(type, is_write, size)                     \
+  extern "C" NOINLINE INTERFACE_ATTRIBUTE void __asan_##type##size(           \
+      uptr addr) {                                                            \
+    ASAN_MEMORY_ACCESS_CALLBACK_BODY(type, is_write, size, 0, true)           \
+  }                                                                           \
+  extern "C" NOINLINE INTERFACE_ATTRIBUTE void __asan_exp_##type##size(       \
+      uptr addr, u32 exp) {                                                   \
+    ASAN_MEMORY_ACCESS_CALLBACK_BODY(type, is_write, size, exp, true)         \
+  }                                                                           \
+  extern "C" NOINLINE INTERFACE_ATTRIBUTE void __asan_##type##size##_noabort( \
+      uptr addr) {                                                            \
+    ASAN_MEMORY_ACCESS_CALLBACK_BODY(type, is_write, size, 0, false)          \
+  }
 
 ASAN_MEMORY_ACCESS_CALLBACK(load, false, 1)
 ASAN_MEMORY_ACCESS_CALLBACK(load, false, 2)
@@ -182,54 +183,50 @@ ASAN_MEMORY_ACCESS_CALLBACK(store, true, 4)
 ASAN_MEMORY_ACCESS_CALLBACK(store, true, 8)
 ASAN_MEMORY_ACCESS_CALLBACK(store, true, 16)
 
-extern "C"
-NOINLINE INTERFACE_ATTRIBUTE
-void __asan_loadN(uptr addr, uptr size) {
+extern "C" NOINLINE INTERFACE_ATTRIBUTE void __asan_loadN(uptr addr,
+                                                          uptr size) {
   if (__asan_region_is_poisoned(addr, size)) {
     GET_CALLER_PC_BP_SP;
     ReportGenericError(pc, bp, sp, addr, false, size, 0, true);
   }
 }
 
-extern "C"
-NOINLINE INTERFACE_ATTRIBUTE
-void __asan_exp_loadN(uptr addr, uptr size, u32 exp) {
+extern "C" NOINLINE INTERFACE_ATTRIBUTE void __asan_exp_loadN(uptr addr,
+                                                              uptr size,
+                                                              u32 exp) {
   if (__asan_region_is_poisoned(addr, size)) {
     GET_CALLER_PC_BP_SP;
     ReportGenericError(pc, bp, sp, addr, false, size, exp, true);
   }
 }
 
-extern "C"
-NOINLINE INTERFACE_ATTRIBUTE
-void __asan_loadN_noabort(uptr addr, uptr size) {
+extern "C" NOINLINE INTERFACE_ATTRIBUTE void __asan_loadN_noabort(uptr addr,
+                                                                  uptr size) {
   if (__asan_region_is_poisoned(addr, size)) {
     GET_CALLER_PC_BP_SP;
     ReportGenericError(pc, bp, sp, addr, false, size, 0, false);
   }
 }
 
-extern "C"
-NOINLINE INTERFACE_ATTRIBUTE
-void __asan_storeN(uptr addr, uptr size) {
+extern "C" NOINLINE INTERFACE_ATTRIBUTE void __asan_storeN(uptr addr,
+                                                           uptr size) {
   if (__asan_region_is_poisoned(addr, size)) {
     GET_CALLER_PC_BP_SP;
     ReportGenericError(pc, bp, sp, addr, true, size, 0, true);
   }
 }
 
-extern "C"
-NOINLINE INTERFACE_ATTRIBUTE
-void __asan_exp_storeN(uptr addr, uptr size, u32 exp) {
+extern "C" NOINLINE INTERFACE_ATTRIBUTE void __asan_exp_storeN(uptr addr,
+                                                               uptr size,
+                                                               u32 exp) {
   if (__asan_region_is_poisoned(addr, size)) {
     GET_CALLER_PC_BP_SP;
     ReportGenericError(pc, bp, sp, addr, true, size, exp, true);
   }
 }
 
-extern "C"
-NOINLINE INTERFACE_ATTRIBUTE
-void __asan_storeN_noabort(uptr addr, uptr size) {
+extern "C" NOINLINE INTERFACE_ATTRIBUTE void __asan_storeN_noabort(uptr addr,
+                                                                   uptr size) {
   if (__asan_region_is_poisoned(addr, size)) {
     GET_CALLER_PC_BP_SP;
     ReportGenericError(pc, bp, sp, addr, true, size, 0, false);
@@ -300,7 +297,8 @@ static void asan_atexit() {
   __asan_print_accumulated_stats();
   // Print AsanMappingProfile.
   for (uptr i = 0; i < kAsanMappingProfileSize; i++) {
-    if (AsanMappingProfile[i] == 0) continue;
+    if (AsanMappingProfile[i] == 0)
+      continue;
     Printf("asan_mapping.h:%zd -- %zd\n", i, AsanMappingProfile[i]);
   }
 }
@@ -317,41 +315,38 @@ static void InitializeHighMemEnd() {
 
 void PrintAddressSpaceLayout() {
   if (kHighMemBeg) {
-    Printf("|| `[%p, %p]` || HighMem    ||\n",
-           (void*)kHighMemBeg, (void*)kHighMemEnd);
-    Printf("|| `[%p, %p]` || HighShadow ||\n",
-           (void*)kHighShadowBeg, (void*)kHighShadowEnd);
+    Printf("|| `[%p, %p]` || HighMem    ||\n", (void *)kHighMemBeg,
+           (void *)kHighMemEnd);
+    Printf("|| `[%p, %p]` || HighShadow ||\n", (void *)kHighShadowBeg,
+           (void *)kHighShadowEnd);
   }
   if (kMidMemBeg) {
-    Printf("|| `[%p, %p]` || ShadowGap3 ||\n",
-           (void*)kShadowGap3Beg, (void*)kShadowGap3End);
-    Printf("|| `[%p, %p]` || MidMem     ||\n",
-           (void*)kMidMemBeg, (void*)kMidMemEnd);
-    Printf("|| `[%p, %p]` || ShadowGap2 ||\n",
-           (void*)kShadowGap2Beg, (void*)kShadowGap2End);
-    Printf("|| `[%p, %p]` || MidShadow  ||\n",
-           (void*)kMidShadowBeg, (void*)kMidShadowEnd);
+    Printf("|| `[%p, %p]` || ShadowGap3 ||\n", (void *)kShadowGap3Beg,
+           (void *)kShadowGap3End);
+    Printf("|| `[%p, %p]` || MidMem     ||\n", (void *)kMidMemBeg,
+           (void *)kMidMemEnd);
+    Printf("|| `[%p, %p]` || ShadowGap2 ||\n", (void *)kShadowGap2Beg,
+           (void *)kShadowGap2End);
+    Printf("|| `[%p, %p]` || MidShadow  ||\n", (void *)kMidShadowBeg,
+           (void *)kMidShadowEnd);
   }
-  Printf("|| `[%p, %p]` || ShadowGap  ||\n",
-         (void*)kShadowGapBeg, (void*)kShadowGapEnd);
+  Printf("|| `[%p, %p]` || ShadowGap  ||\n", (void *)kShadowGapBeg,
+         (void *)kShadowGapEnd);
   if (kLowShadowBeg) {
-    Printf("|| `[%p, %p]` || LowShadow  ||\n",
-           (void*)kLowShadowBeg, (void*)kLowShadowEnd);
-    Printf("|| `[%p, %p]` || LowMem     ||\n",
-           (void*)kLowMemBeg, (void*)kLowMemEnd);
+    Printf("|| `[%p, %p]` || LowShadow  ||\n", (void *)kLowShadowBeg,
+           (void *)kLowShadowEnd);
+    Printf("|| `[%p, %p]` || LowMem     ||\n", (void *)kLowMemBeg,
+           (void *)kLowMemEnd);
   }
-  Printf("MemToShadow(shadow): %p %p",
-         (void*)MEM_TO_SHADOW(kLowShadowBeg),
-         (void*)MEM_TO_SHADOW(kLowShadowEnd));
+  Printf("MemToShadow(shadow): %p %p", (void *)MEM_TO_SHADOW(kLowShadowBeg),
+         (void *)MEM_TO_SHADOW(kLowShadowEnd));
   if (kHighMemBeg) {
-    Printf(" %p %p",
-           (void*)MEM_TO_SHADOW(kHighShadowBeg),
-           (void*)MEM_TO_SHADOW(kHighShadowEnd));
+    Printf(" %p %p", (void *)MEM_TO_SHADOW(kHighShadowBeg),
+           (void *)MEM_TO_SHADOW(kHighShadowEnd));
   }
   if (kMidMemBeg) {
-    Printf(" %p %p",
-           (void*)MEM_TO_SHADOW(kMidShadowBeg),
-           (void*)MEM_TO_SHADOW(kMidShadowEnd));
+    Printf(" %p %p", (void *)MEM_TO_SHADOW(kMidShadowBeg),
+           (void *)MEM_TO_SHADOW(kMidShadowEnd));
   }
   Printf("\n");
   Printf("redzone=%zu\n", (uptr)flags()->redzone);
@@ -373,7 +368,8 @@ void PrintAddressSpaceLayout() {
 }
 
 static void AsanInitInternal() {
-  if (LIKELY(asan_inited)) return;
+  if (LIKELY(asan_inited))
+    return;
   SanitizerToolName = "AddressSanitizer";
   CHECK(!asan_init_is_running && "ASan init calls itself!");
   asan_init_is_running = true;
@@ -454,6 +450,15 @@ static void AsanInitInternal() {
   asan_inited = 1;
   asan_init_is_running = false;
 
+// Moving CaptureSystemHeapAllocations anywhere prior to asan_inited=1 exposes a
+// race condition with the rtl reentrancy lock. Asan_inited can be set during an
+// Rtl call that is reentrant on start up, and frequently deadlocks on MTd
+// suites.
+#ifdef SANITIZER_WINDOWS
+  // Keep track of allocations that happened prior to asan init only on windows
+  CaptureSystemHeapAllocations();
+#endif
+
   if (flags()->atexit)
     Atexit(asan_atexit);
 
@@ -508,9 +513,7 @@ static void AsanInitInternal() {
 
 // Initialize as requested from some part of ASan runtime library (interceptors,
 // allocator, etc).
-void AsanInitFromRtl() {
-  AsanInitInternal();
-}
+void AsanInitFromRtl() { AsanInitInternal(); }
 
 #if ASAN_DYNAMIC
 // Initialize runtime in case it's LD_PRELOAD-ed into unsanitized executable
@@ -518,9 +521,7 @@ void AsanInitFromRtl() {
 
 class AsanInitializer {
  public:
-  AsanInitializer() {
-    AsanInitFromRtl();
-  }
+  AsanInitializer() { AsanInitFromRtl(); }
 };
 
 static AsanInitializer asan_initializer;

@@ -17,19 +17,19 @@
 #include "asan_interface_internal.h"
 #include "sanitizer_common/sanitizer_common.h"
 #include "sanitizer_common/sanitizer_internal_defs.h"
-#include "sanitizer_common/sanitizer_stacktrace.h"
 #include "sanitizer_common/sanitizer_libc.h"
+#include "sanitizer_common/sanitizer_stacktrace.h"
 
 #if __has_feature(address_sanitizer) || defined(__SANITIZE_ADDRESS__)
-# error "The AddressSanitizer run-time should not be"
-        " instrumented by AddressSanitizer"
+#error "The AddressSanitizer run-time should not be"
+" instrumented by AddressSanitizer"
 #endif
 
 // Build-time configuration options.
 
 // If set, asan will intercept C++ exception api call(s).
 #ifndef ASAN_HAS_EXCEPTIONS
-# define ASAN_HAS_EXCEPTIONS 1
+#define ASAN_HAS_EXCEPTIONS 1
 #endif
 
 // If set, values like allocator chunk size, as well as defaults for some flags
@@ -43,11 +43,11 @@
 #endif
 
 #ifndef ASAN_DYNAMIC
-# ifdef PIC
-#  define ASAN_DYNAMIC 1
-# else
-#  define ASAN_DYNAMIC 0
-# endif
+#ifdef PIC
+#define ASAN_DYNAMIC 1
+#else
+#define ASAN_DYNAMIC 0
+#endif
 #endif
 
 // All internal functions in asan reside inside the __asan namespace
@@ -67,6 +67,34 @@ void InitializePlatformExceptionHandlers();
 // 'addr' must point to the beginning of the block.
 bool IsSystemHeapAddress(uptr addr, void *heap = nullptr);
 
+#ifdef SANITIZER_WINDOWS
+  // Returns whether an address was allocated prior to ASAN initialization.
+  // Used on Windows to determine if the CRT allocated memory in order to not
+  // report false negatives with reallocs or frees.
+  bool AllocatedPriorToAsanInit(void *addr);
+
+  // Specialized version of AllocatedPriorToAsanInit for aligned memory
+  bool AlignedAllocatedPriorToAsanInit(void *addr);
+
+#if _DEBUG
+  // Used in debug functions instead of the above in order to account for
+  // differences in allocations caused by the debug heap
+  bool DbgAllocatedPriorToAsanInit(void *addr);
+
+  // Specialized version of DbgAllocatedPriorToAsanInit for aligned memory
+  bool DbgAlignedAllocatedPriorToAsanInit(void *addr);
+#endif
+
+  // Records allocations that occured prior to the ASAN runtime initialization.
+  // This should only be called once during the ASAN runtime initialization
+  // after the asan allocator is set up
+  void CaptureSystemHeapAllocations();
+
+  // Stops tracking a pointer from the system allocations map. Pointers passed
+  // in should only be present if they were allocated prior to asan
+  // initialization
+  void RemoveFromSystemHeapAllocationsMap(void *oldPtr);
+#endif
 // asan_rtl.cpp
 void PrintAddressSpaceLayout();
 void NORETURN ShowStatsAndAbort();
@@ -125,15 +153,17 @@ bool HandleDlopenInit();
 
 // Add convenient macro for interface functions that may be represented as
 // weak hooks.
-#define ASAN_MALLOC_HOOK(ptr, size)                                   \
-  do {                                                                \
-    if (&__sanitizer_malloc_hook) __sanitizer_malloc_hook(ptr, size); \
-    RunMallocHooks(ptr, size);                                        \
+#define ASAN_MALLOC_HOOK(ptr, size)       \
+  do {                                    \
+    if (&__sanitizer_malloc_hook)         \
+      __sanitizer_malloc_hook(ptr, size); \
+    RunMallocHooks(ptr, size);            \
   } while (false)
-#define ASAN_FREE_HOOK(ptr)                                 \
-  do {                                                      \
-    if (&__sanitizer_free_hook) __sanitizer_free_hook(ptr); \
-    RunFreeHooks(ptr);                                      \
+#define ASAN_FREE_HOOK(ptr)       \
+  do {                            \
+    if (&__sanitizer_free_hook)   \
+      __sanitizer_free_hook(ptr); \
+    RunFreeHooks(ptr);            \
   } while (false)
 #define ASAN_ON_ERROR() \
   if (&__asan_on_error) __asan_on_error()

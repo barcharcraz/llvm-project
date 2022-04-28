@@ -24,6 +24,7 @@
 #include "asan_internal.h"
 #include "asan_malloc_win_moveable.h"
 #include "asan_stack.h"
+#include "asan_win_runtime_functions.h"
 #include "asan_win_scoped_lock.h"
 #include "interception/interception.h"
 #include "sanitizer_common/sanitizer_allocator_internal.h"
@@ -73,6 +74,11 @@ DWORD WINAPI GetCurrentThreadId();
 BOOL WINAPI HeapLock(HANDLE);
 BOOL WINAPI HeapUnlock(HANDLE);
 
+// TODO: Bug #1514368
+// We should add logic to interceptors and allocators to decorate allocations
+// so when a mismatched free is called (e.g. GlobalAlloc allocation with free or
+// anything besides GlobalFree) we should report an error back to the user
+// regarding the mismatch.
 _declspec(dllimport) HGLOBAL WINAPI GlobalAlloc(UINT uFlags, SIZE_T dwBytes);
 _declspec(dllimport) HGLOBAL WINAPI GlobalFree(HGLOBAL hMem);
 _declspec(dllimport) HGLOBAL WINAPI GlobalSize(HGLOBAL hMem);
@@ -92,17 +98,6 @@ _declspec(dllimport) HLOCAL WINAPI LocalHandle(HLOCAL hMem);
 }
 
 using namespace __asan;
-
-// MT: Simply defining functions with the same signature in *.obj
-// files overrides the standard functions in the CRT.
-// MD: Memory allocation functions are defined in the CRT .dll,
-// so we have to intercept them before they are called for the first time.
-
-#if ASAN_DYNAMIC
-#define ALLOCATION_FUNCTION_ATTRIBUTE
-#else
-#define ALLOCATION_FUNCTION_ATTRIBUTE SANITIZER_INTERFACE_ATTRIBUTE
-#endif
 
 extern "C" {
 ALLOCATION_FUNCTION_ATTRIBUTE
@@ -1936,51 +1931,20 @@ static void TryToOverrideFunction(const char *fname, uptr new_func) {
 }
 
 void ReplaceSystemMalloc() {
-  TryToOverrideFunction("_aligned_free", (uptr)_aligned_free);
   TryToOverrideFunction("_aligned_malloc", (uptr)_aligned_malloc);
-  TryToOverrideFunction("_aligned_msize", (uptr)_aligned_msize);
   TryToOverrideFunction("_aligned_offset_malloc", (uptr)_aligned_offset_malloc);
-  TryToOverrideFunction("_aligned_offset_realloc",
-                        (uptr)_aligned_offset_realloc);
-  TryToOverrideFunction("_aligned_offset_recalloc",
-                        (uptr)_aligned_offset_recalloc);
-  TryToOverrideFunction("_aligned_realloc", (uptr)_aligned_realloc);
-  TryToOverrideFunction("_aligned_recalloc", (uptr)_aligned_recalloc);
   TryToOverrideFunction("_calloc_base", (uptr)calloc);
   TryToOverrideFunction("_calloc_crt", (uptr)calloc);
-  TryToOverrideFunction("_expand", (uptr)_expand);
-  TryToOverrideFunction("_expand_base", (uptr)_expand);
-  TryToOverrideFunction("_free_base", (uptr)free);
   TryToOverrideFunction("_malloc_base", (uptr)malloc);
   TryToOverrideFunction("_malloc_crt", (uptr)malloc);
-  TryToOverrideFunction("_msize", (uptr)_msize);
-  TryToOverrideFunction("_msize_base", (uptr)_msize);
-  TryToOverrideFunction("_realloc_base", (uptr)realloc);
-  TryToOverrideFunction("_realloc_crt", (uptr)realloc);
-  TryToOverrideFunction("_recalloc", (uptr)_recalloc);
-  TryToOverrideFunction("_recalloc_base", (uptr)_recalloc);
-  TryToOverrideFunction("_recalloc_crt", (uptr)_recalloc);
   TryToOverrideFunction("calloc", (uptr)calloc);
-  TryToOverrideFunction("free", (uptr)free);
   TryToOverrideFunction("malloc", (uptr)malloc);
-  TryToOverrideFunction("realloc", (uptr)realloc);
 #ifdef _DEBUG
   TryToOverrideFunction("_aligned_malloc_dbg", (uptr)_aligned_malloc_dbg);
   TryToOverrideFunction("_aligned_offset_malloc_dbg",
                         (uptr)_aligned_offset_malloc_dbg);
-  TryToOverrideFunction("_aligned_offset_realloc_dbg",
-                        (uptr)_aligned_offset_realloc_dbg);
-  TryToOverrideFunction("_aligned_offset_recalloc_dbg",
-                        (uptr)_aligned_offset_recalloc_dbg);
-  TryToOverrideFunction("_aligned_realloc_dbg", (uptr)_aligned_realloc_dbg);
-  TryToOverrideFunction("_aligned_recalloc_dbg", (uptr)_aligned_recalloc_dbg);
   TryToOverrideFunction("_calloc_dbg", (uptr)_calloc_dbg);
-  TryToOverrideFunction("_expand_dbg", (uptr)_expand_dbg);
-  TryToOverrideFunction("_free_dbg", (uptr)_free_dbg);
   TryToOverrideFunction("_malloc_dbg", (uptr)_malloc_dbg);
-  TryToOverrideFunction("_msize_dbg", (uptr)_msize_dbg);
-  TryToOverrideFunction("_realloc_dbg", (uptr)_realloc_dbg);
-  TryToOverrideFunction("_recalloc_dbg", (uptr)_recalloc_dbg);
 
   // We should intercept these functions but it's okay that we don't right now.
   // All of these functions are currently implemented as no-ops for ASan and
@@ -2009,6 +1973,13 @@ void ReplaceSystemMalloc() {
   // (uptr)_CrtSetDbgFlag); TryToOverrideFunction("_CrtSetDumpClient",
   // (uptr)_CrtSetDumpClient);
 #endif
+
+  // Malloc and calloc are intercepted above rather than by each individual
+  // runtime that is present. Allocations that take place prior to asan
+  // initialization will either be transferred to asan ownership after a change
+  // to that allocation (like reallocating), or it will be freed.
+  OverrideFunctionsForEachCrt();
+
   if (flags()->windows_hook_legacy_allocators) {
     INTERCEPT_FUNCTION(GlobalAlloc);
     INTERCEPT_FUNCTION(GlobalFree);

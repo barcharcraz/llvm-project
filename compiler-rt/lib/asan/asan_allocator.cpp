@@ -680,6 +680,8 @@ struct Allocator {
     uptr chunk_beg = p - kChunkHeaderSize;
     AsanChunk *m = reinterpret_cast<AsanChunk *>(chunk_beg);
 
+    // TODO: Should be able to remove this check after distinguishing between
+    // HeapAlloc and free mismatches BUG #1514368
     // On Windows, uninstrumented DLLs may allocate memory before ASan hooks
     // malloc. Don't report an invalid free in this case.
     if (SANITIZER_WINDOWS &&

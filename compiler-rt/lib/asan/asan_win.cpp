@@ -14,8 +14,8 @@
 #include "sanitizer_common/sanitizer_platform.h"
 #if SANITIZER_WINDOWS
 #define WIN32_LEAN_AND_MEAN
-#include <windows.h>
 #include <stdlib.h>
+#include <windows.h>
 
 #include "asan_interceptors.h"
 #include "asan_internal.h"
@@ -23,8 +23,10 @@
 #include "asan_report.h"
 #include "asan_stack.h"
 #include "asan_thread.h"
+#include "sanitizer_common/sanitizer_addrhashmap.h"
 #include "sanitizer_common/sanitizer_libc.h"
 #include "sanitizer_common/sanitizer_mutex.h"
+#include "sanitizer_common/sanitizer_placement_new.h"
 #include "sanitizer_common/sanitizer_win.h"
 #include "sanitizer_common/sanitizer_win_defs.h"
 
@@ -48,8 +50,8 @@ uptr __asan_get_shadow_memory_dynamic_address() {
 static LPTOP_LEVEL_EXCEPTION_FILTER default_seh_handler;
 static LPTOP_LEVEL_EXCEPTION_FILTER user_seh_handler;
 
-extern "C" SANITIZER_INTERFACE_ATTRIBUTE
-long __asan_unhandled_exception_filter(EXCEPTION_POINTERS *info) {
+extern "C" SANITIZER_INTERFACE_ATTRIBUTE long __asan_unhandled_exception_filter(
+    EXCEPTION_POINTERS *info) {
   EXCEPTION_RECORD *exception_record = info->ExceptionRecord;
   CONTEXT *context = info->ContextRecord;
 
@@ -95,14 +97,16 @@ INTERCEPTOR_WINAPI(void, RtlRaiseException, EXCEPTION_RECORD *ExceptionRecord) {
   REAL(RtlRaiseException)(ExceptionRecord);
 }
 
-INTERCEPTOR_WINAPI(void, RaiseException, DWORD dwExceptionCode, DWORD dwExceptionFlags, 
-                   DWORD nNumberOfArguments, const ULONG_PTR *lpArguments) {
+INTERCEPTOR_WINAPI(void, RaiseException, DWORD dwExceptionCode,
+                   DWORD dwExceptionFlags, DWORD nNumberOfArguments,
+                   const ULONG_PTR *lpArguments) {
   CHECK(REAL(RaiseException));
   // This is a noreturn function, unless it's one of the exceptions raised to
   // communicate with the debugger, such as the one from OutputDebugStringA.
   if (dwExceptionCode != DBG_PRINTEXCEPTION_C)
     __asan_handle_no_return();
-  REAL(RaiseException)(dwExceptionCode, dwExceptionFlags, nNumberOfArguments, lpArguments);
+  REAL(RaiseException)
+  (dwExceptionCode, dwExceptionFlags, nNumberOfArguments, lpArguments);
 }
 
 #ifdef _WIN64
@@ -186,6 +190,62 @@ void InitializePlatformInterceptors() {
   }
 }
 
+// This mocks an internal CRT data structure which is subject to change.
+// _CrtMemBlockHeader
+struct AllocationDebugHeader {
+  void *a, *b, *c;
+  int d;
+  int block_use;
+  size_t data_size;
+  long g;
+  unsigned char h[4];
+
+  AllocationDebugHeader() = delete;
+  ~AllocationDebugHeader() = delete;
+};
+
+// A hash map of allocations which occured before ASAN initialization
+// that can be used to determine if the CRT (or user in some cases) allocated
+// memory prior to ASAN.
+using SystemAllocationMap = __sanitizer::AddrHashMap<PROCESS_HEAP_ENTRY, 1031>;
+alignas(SystemAllocationMap) unsigned char system_allocation_storage[sizeof(
+    SystemAllocationMap)];
+SystemAllocationMap *system_allocations;
+
+// TODO: Should investigate all versions of msvcr to make sure that the process
+// heap is used Only allocations that happen on the process heap prior to asan
+// initialization are tracked
+// This currently only tracks allocations that originated through call stacks
+// containing malloc from the process heap in order to correctly report back
+// asan errors to the consumer
+void CaptureSystemHeapAllocations() {
+  new (system_allocation_storage) SystemAllocationMap();
+  system_allocations =
+      reinterpret_cast<SystemAllocationMap *>(system_allocation_storage);
+
+  PROCESS_HEAP_ENTRY lpEntry;
+
+  HANDLE heap = ::GetProcessHeap();
+  lpEntry.lpData = NULL;
+  while (::HeapWalk(heap, &lpEntry)) {
+    if (lpEntry.wFlags & PROCESS_HEAP_ENTRY_BUSY) {
+      // Allocations are stored agnostic of debug/release information and based
+      // on the runtime mode will call the correct functions to inspect the
+      // allocation
+      SystemAllocationMap::Handle h(system_allocations,
+                                    reinterpret_cast<uptr>(lpEntry.lpData),
+                                    false, true);
+      *h = lpEntry;
+    }
+  }
+  ::HeapUnlock(heap);
+}
+
+void RemoveFromSystemHeapAllocationsMap(void *oldPtr) {
+  SystemAllocationMap::Handle h(system_allocations,
+                                reinterpret_cast<uptr>(oldPtr), true, false);
+}
+
 void AsanApplyToGlobals(globals_op_fptr op, const void *needle) {
   UNIMPLEMENTED();
 }
@@ -244,9 +304,7 @@ void PlatformTSDDtor(void *tsd) { AsanThread::TSDDtor(tsd); }
 // }}}
 
 // ---------------------- Various stuff ---------------- {{{
-void *AsanDoesNotSupportStaticLinkage() {
-  return 0;
-}
+void *AsanDoesNotSupportStaticLinkage() { return 0; }
 
 uptr FindDynamicShadowStart() {
   return MapDynamicShadow(MemToShadowSize(kHighMemEnd), ASAN_SHADOW_SCALE,
@@ -267,22 +325,27 @@ bool PlatformUnpoisonStacks() { return false; }
 
 #if SANITIZER_WINDOWS64
 
-// If you change these constants, make the same changes in vcasan.lib... and any other future 
-// Windows, AddressSanitizer functionalities, which are closely integrated with the Visual Studio IDE.
+// If you change these constants, make the same changes in vcasan.lib... and any
+// other future Windows, AddressSanitizer functionalities, which are closely
+// integrated with the Visual Studio IDE.
 
 // Two constants for vcasan.lib -> IDE
-static constexpr unsigned kVCAsanLibSanitzer = ('san' | 0xE0000000);            // 0xe073616e
-static constexpr unsigned kVCAsanLibAddressSanitzer = (kVCAsanLibSanitzer + 1); // 0xe073616f
+static constexpr unsigned kVCAsanLibSanitzer =
+    ('san' | 0xE0000000);  // 0xe073616e
+static constexpr unsigned kVCAsanLibAddressSanitzer =
+    (kVCAsanLibSanitzer + 1);  // 0xe073616f
 
 // Next threee constants for Asan RT -> IDE
 
 // 0xe0736170 debugger IDE specific
-static constexpr unsigned kVSEnlighten = (kVCAsanLibSanitzer + 2); 
+static constexpr unsigned kVSEnlighten = (kVCAsanLibSanitzer + 2);
 
-// 0xe0736171 – fake eh code used internally by the debugger to let users possibly stop on the first chance exception
+// 0xe0736171 â€“ fake eh code used internally by the debugger to let users
+// possibly stop on the first chance exception
 static constexpr unsigned kVSRawThrown = (kVCAsanLibSanitzer + 3);
 
-// 0xe0736172 – AV was not handled by the address sanitizer runtime. The debugger maps to STATUS_ACCESS_VIOLATION.
+// 0xe0736172 â€“ AV was not handled by the address sanitizer runtime. The
+// debugger maps to STATUS_ACCESS_VIOLATION.
 static constexpr unsigned kVSRealExeAVThrown = (kVCAsanLibSanitzer + 4);
 
 __declspec(noinline) static void EnlightenVSDebugger() {
@@ -323,7 +386,7 @@ ShadowExceptionHandler(PEXCEPTION_POINTERS exception_pointers) {
 
         // Inform VS this is the AsanRuntime paging in shadow byte area.
         // Effects only if VS was previously informed this was an ASan binary.
-        RaiseException(kVSRealExeAVThrown, 0,_countof(args), args);
+        RaiseException(kVSRealExeAVThrown, 0, _countof(args), args);
       } __except (EXCEPTION_EXECUTE_HANDLER) {
       }
     }
@@ -336,7 +399,7 @@ ShadowExceptionHandler(PEXCEPTION_POINTERS exception_pointers) {
   // the relevant page and let execution continue.
 
   // Commit the page.
-  if(!::VirtualAlloc((LPVOID)addr, 1, MEM_COMMIT, PAGE_READWRITE)) {
+  if (!::VirtualAlloc((LPVOID)addr, 1, MEM_COMMIT, PAGE_READWRITE)) {
     return EXCEPTION_CONTINUE_SEARCH;
   }
 
@@ -355,17 +418,160 @@ void InitializePlatformExceptionHandlers() {
 #endif
 }
 
+// Debug and release versions of the allocation header are different
+static uptr GetAlignedAllocationHeader(void *addr) {
+  static constexpr auto ptrSize = sizeof(void *);
+  uptr ptr;
+  ptr = reinterpret_cast<uptr>(addr);
+  ptr = (ptr & ~(ptrSize - 1)) - ptrSize;
+  ptr = *(reinterpret_cast<uintptr_t *>(ptr));
+  return ptr;
+}
+
+// Returns the debug header information for a potential debug allocation
+static AllocationDebugHeader *const GetAllocationDebugHeader(void *addr) {
+  return static_cast<AllocationDebugHeader *>(addr) - 1;
+}
+
+bool AllocatedPriorToAsanInit(void *addr) {
+  auto found = false;
+  if (!addr) {
+    return found;
+  }
+
+  // First attempt to look up the address passed in from the system allocations
+  // map
+  SystemAllocationMap::Handle h(system_allocations,
+                                reinterpret_cast<uptr>(addr), false, false);
+  found = h.exists();
+
+#if _DEBUG
+  // In debug, some non-debug CRT functions will call their debug counterparts
+  // (e.g. free calls free_dbg) In the event that a debug allocation is passed
+  // to a non-debug function, we want to attempt to pass through to the debug
+  // call if we have not found the allocation in the map yet. This means we need
+  // to attempt to look up the debug allocation address.
+  if (!found) {
+    found = DbgAllocatedPriorToAsanInit(addr);
+  }
+#endif
+
+  return found;
+}
+
+bool AlignedAllocatedPriorToAsanInit(void *addr) {
+  auto found = false;
+  if (!addr) {
+    return found;
+  }
+
+  SystemAllocationMap::Handle alignedHandle(
+      system_allocations, GetAlignedAllocationHeader(addr), false, false);
+  found = alignedHandle.exists();
+  // TODO: May need to update checks after asan respects aligned offset
+
+#if _DEBUG
+  if (!found) {
+    found = DbgAlignedAllocatedPriorToAsanInit(addr);
+  }
+#endif
+
+  return found;
+}
+
+#if _DEBUG
 // This mocks an internal CRT data structure which is subject to change.
-struct AllocationDebugHeader {
-  void *a, *b, *c;
-  int d;
+// _AlignMemBlockHdr
+struct AlignedAllocationDebugHeader {
+  void *head;
+  unsigned char gap[sizeof(void *)];
 
-  int block_use;
-  size_t data_size;
-
-  long g;
-  unsigned char h[4];
+  AlignedAllocationDebugHeader() = delete;
+  ~AlignedAllocationDebugHeader() = delete;
 };
+
+// Returns debug aligned allocation header information for a potential debug
+// allocation
+static AlignedAllocationDebugHeader *const GetAlignedAllocationDebugHeader(
+    void *addr) {
+  return reinterpret_cast<AlignedAllocationDebugHeader *>(
+             reinterpret_cast<uptr>(addr) & ~(sizeof(uptr) - 1)) -
+         1;
+}
+
+// Checks to see whether or not the address was a valid allocation from the
+// debug heap or not
+static bool IsValidDebugAllocation(uptr addr, PROCESS_HEAP_ENTRY &heapEntry) {
+  // We need to ensure proper access before inspection
+  // First need to make sure that the address matches a debug allocation header,
+  // then that the allocation is big enough to be a debug allocation before
+  // reading debug header members
+  return reinterpret_cast<uptr>(heapEntry.lpData) +
+                 sizeof(AllocationDebugHeader) ==
+             addr &&
+         heapEntry.cbData >= sizeof(AllocationDebugHeader) &&
+         reinterpret_cast<AllocationDebugHeader *>(heapEntry.lpData)
+             ->block_use &&
+         reinterpret_cast<AllocationDebugHeader *>(heapEntry.lpData)
+                 ->data_size < heapEntry.cbData;
+}
+
+// Checks whether or not an address is present in the system allocations map
+// captured prior to asan initialization. The lookupAddr should be the address
+// needed to look up from the map, which will vary depending on allocation types
+// that add headers to allocations (debug, aligned_debug, etc.). For normal
+// debug allocations lookupAddr will be the debug header starting address. It is
+// the same for aligned debug allocations, however that address can only be
+// found by first inspecting the aligned allocation header. The checkAddr should
+// be the address that the debug block was actually allocated at. For normal
+// debug allocations, that will be the starting address after the debug header.
+// It is the same for aligned debug allocations, but again the aligned
+// allocation header must first be inspected to determine that address
+static bool AllocationPresentAndValid(void *lookupAddr, void *checkAddr) {
+  SystemAllocationMap::Handle h(
+      system_allocations, reinterpret_cast<uptr>(lookupAddr), false, false);
+  if (h.exists()) {
+    return IsValidDebugAllocation(reinterpret_cast<uptr>(checkAddr), *h);
+  }
+
+  return false;
+}
+
+bool DbgAllocatedPriorToAsanInit(void *addr) {
+  auto found = false;
+  if (!addr) {
+    return found;
+  }
+
+  // If the debug header address is in the map, there is a chance it could be a
+  // debug allocation. We need to check the process heap entry fields after the
+  // validating the ability to read them
+  found = AllocationPresentAndValid(GetAllocationDebugHeader(addr), addr);
+
+  return found;
+}
+
+bool DbgAlignedAllocatedPriorToAsanInit(void *addr) {
+  auto found = false;
+  if (!addr) {
+    return found;
+  }
+
+  auto alignedAllocationHeaderStartingAddr =
+      GetAlignedAllocationDebugHeader(addr);
+
+  if (alignedAllocationHeaderStartingAddr &&
+      alignedAllocationHeaderStartingAddr->head) {
+    auto debugAllocatedBlock = alignedAllocationHeaderStartingAddr->head;
+    found = AllocationPresentAndValid(
+        GetAllocationDebugHeader(debugAllocatedBlock), debugAllocatedBlock);
+    // TODO: May need to update checks after asan respects aligned offset
+  }
+
+  return found;
+}
+
+#endif
 
 // We need to check if this address belongs to any of the heaps in the process.
 bool IsSystemHeapAddress(uptr addr, void *heap) {
@@ -375,9 +581,9 @@ bool IsSystemHeapAddress(uptr addr, void *heap) {
   void **curr, **end;
   if (heap == nullptr) {
     curr = heaps;
-    DWORD num_heaps = ::GetProcessHeaps(sizeof(heaps)/sizeof(HANDLE), heaps);
-    CHECK(num_heaps <= sizeof(heaps)/sizeof(HANDLE) &&
-            "You have exceeded the maximum number of supported heaps.");
+    DWORD num_heaps = ::GetProcessHeaps(sizeof(heaps) / sizeof(HANDLE), heaps);
+    CHECK(num_heaps <= sizeof(heaps) / sizeof(HANDLE) &&
+          "You have exceeded the maximum number of supported heaps.");
     end = curr + num_heaps;
   } else {
     curr = &heap;
@@ -398,13 +604,11 @@ bool IsSystemHeapAddress(uptr addr, void *heap) {
 // The CRT adds extra space in front of an allocation in debug mode so we do
 // our best detecting such allocations.
 #ifdef _DEBUG
-        if (reinterpret_cast<uptr>(lpEntry.lpData) + sizeof(AllocationDebugHeader) == addr &&
-            reinterpret_cast<AllocationDebugHeader*>(lpEntry.lpData)->block_use &&
-            reinterpret_cast<AllocationDebugHeader*>(lpEntry.lpData)->data_size < lpEntry.cbData) {
+        if (IsValidDebugAllocation(addr, lpEntry)) {
           ::HeapUnlock(*curr);
           return true;
         }
-#endif // _DEBUG
+#endif  // _DEBUG
       }
     }
 

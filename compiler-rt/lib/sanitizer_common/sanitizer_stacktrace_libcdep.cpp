@@ -18,6 +18,27 @@
 
 namespace __sanitizer {
 
+#if SANITIZER_WINDOWS
+// We want to avoid reporting some functions back to consumers as the stack
+// trace may differ on architectures due to compilers and optimizations. To avoid
+// this, we will skip over printing these functions when they appear in the
+// stack trace.
+static bool ExcludeFromPrint(const char * name)
+{
+  // add functions to this list to exclude
+  static const char *FunctionsToExclude[] = {"__RuntimeFunctions"};
+  
+  for(auto i = 0; i < sizeof(FunctionsToExclude) / sizeof(char *); ++i)
+  {
+    if(internal_strstr(name, FunctionsToExclude[i]))
+    {
+      return true;
+    }
+  }
+  return false;
+}
+#endif
+
 namespace {
 
 class StackTraceTextPrinter {
@@ -44,6 +65,13 @@ class StackTraceTextPrinter {
                   symbolize_ ? &cur->info : nullptr,
                   common_flags()->symbolize_vs_style,
                   common_flags()->strip_path_prefix);
+#if SANITIZER_WINDOWS
+      if(ExcludeFromPrint(frame_desc.data()))
+      {
+        frame_num--;
+        continue;
+      }
+#endif
 
       if (prev_len != output_->length())
         output_->append("%c", frame_delimiter_);

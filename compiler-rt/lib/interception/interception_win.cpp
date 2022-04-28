@@ -212,6 +212,18 @@ static char *_strchr(char *str, char c) {
   return nullptr;
 }
 
+static int _strcmp(const char *s1, const char *s2) {
+  while (true) {
+    unsigned c1 = *s1;
+    unsigned c2 = *s2;
+    if (c1 != c2) return (c1 < c2) ? -1 : 1;
+    if (c1 == 0) break;
+    s1++;
+    s2++;
+  }
+  return 0;
+}
+
 static void _memset(void *p, int value, size_t sz) {
   for (size_t i = 0; i < sz; ++i) ((char *)p)[i] = (char)value;
 }
@@ -1035,7 +1047,7 @@ bool OverrideFunctionWithHotPatch(uptr old_func, uptr new_func,
 
   if (instruction_size < kShortJumpInstructionLength ||
       (!guaranteed_hotpatchable &&
-      !FunctionHasPadding(old_func, kHotPatchHeaderLen))) {
+       !FunctionHasPadding(old_func, kHotPatchHeaderLen))) {
     return false;
   }
 
@@ -1154,6 +1166,7 @@ bool OverrideFunction(uptr old_func, uptr new_func, uptr *orig_old_func,
 struct dll_info {
   void *data;
   bool guaranteed_hotpatchable;
+  const char *dll_name;
 };
 
 static dll_info *InterestingDLLsAvailable() {
@@ -1168,17 +1181,17 @@ static dll_info *InterestingDLLsAvailable() {
   static const dll_pair InterestingDLLs[] = {
     {"kernel32.dll", SANITIZER_WINDOWS64},
 #if defined(_DEBUG)
-    {"msvcr100d.dll", false},      // VS2010
-    {"msvcr110d.dll", false},      // VS2012
-    {"msvcr120d.dll", false},      // VS2013
-    {"vcruntime140d.dll", false},  // VS2015
-    {"ucrtbased.dll", SANITIZER_WINDOWS64},       // Universal CRT
+    {"msvcr100d.dll", false},                // VS2010
+    {"msvcr110d.dll", false},                // VS2012
+    {"msvcr120d.dll", false},                // VS2013
+    {"vcruntime140d.dll", false},            // VS2015
+    {"ucrtbased.dll", SANITIZER_WINDOWS64},  // Universal CRT
 #else
-    {"msvcr100.dll", false},      // VS2010
-    {"msvcr110.dll", false},      // VS2012
-    {"msvcr120.dll", false},      // VS2013
-    {"vcruntime140.dll", false},  // VS2015
-    {"ucrtbase.dll", SANITIZER_WINDOWS64},       // Universal CRT
+    {"msvcr100.dll", false},                // VS2010
+    {"msvcr110.dll", false},                // VS2012
+    {"msvcr120.dll", false},                // VS2013
+    {"vcruntime140.dll", false},            // VS2015
+    {"ucrtbase.dll", SANITIZER_WINDOWS64},  // Universal CRT
 #endif
     // KernelBase for GlobalAlloc and LocalAlloc (dynamic)
     {"KERNELBASE.dll", SANITIZER_WINDOWS64},
@@ -1188,10 +1201,12 @@ static dll_info *InterestingDLLsAvailable() {
     {nullptr, false}
   };
   static dll_info result[ARRAY_SIZE(InterestingDLLs)] = {0};
+
   if (!result[0].data) {
     for (size_t i = 0, j = 0; InterestingDLLs[i].dll_name; ++i) {
       if (HMODULE h = GetModuleHandleA(InterestingDLLs[i].dll_name))
-        result[j++] = {(void *)h, InterestingDLLs[i].guaranteed_hotpatchable};
+        result[j++] = {(void *)h, InterestingDLLs[i].guaranteed_hotpatchable,
+                       InterestingDLLs[i].dll_name};
     }
   }
   return &result[0];
@@ -1277,14 +1292,25 @@ uptr InternalGetProcAddress(void *module, const char *func_name) {
   return 0;
 }
 
-bool OverrideFunction(const char *func_name, uptr new_func,
-                      uptr *orig_old_func) {
+bool OverrideFunction(const char *func_name, uptr new_func, uptr *orig_old_func,
+                      const char *dllName) {
   bool hooked = false;
   dll_info *DLLs = InterestingDLLsAvailable();
   for (size_t i = 0; DLLs[i].data; ++i) {
     uptr func_addr = InternalGetProcAddress(DLLs[i].data, func_name);
-    if (func_addr && OverrideFunction(func_addr, new_func, orig_old_func,
-                                      DLLs[i].guaranteed_hotpatchable)) {
+    auto attemptOverride = [&]() -> bool {
+      return func_addr && OverrideFunction(func_addr, new_func, orig_old_func,
+                                           DLLs[i].guaranteed_hotpatchable);
+    };
+    // If a dll name was passed in, we only want to override the function for
+    // that specific dll and exit
+    if (dllName && !_strcmp(DLLs[i].dll_name, dllName)) {
+      return attemptOverride();
+    }
+
+    // If a dll name wasn't passed in, keep iterating through the dlls
+    // and trying to override the function by name
+    else if (!dllName && attemptOverride()) {
       hooked = true;
     }
   }

@@ -31,6 +31,7 @@ set(ASAN_SOURCES
   asan_suppressions.cpp
   asan_thread.cpp
   asan_win.cpp
+  asan_win_runtime_functions.cpp
   )
 
 if (NOT WIN32 AND NOT APPLE)

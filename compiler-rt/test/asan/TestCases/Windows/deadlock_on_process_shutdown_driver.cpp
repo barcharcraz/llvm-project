@@ -1,6 +1,3 @@
-// RUN: %clang_cl_asan -Od %s -Fe%t
-// RUN: %run %t
-
 #include <iostream>
 #include <stdio.h>
 #include <stdlib.h>
