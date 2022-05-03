@@ -131,6 +131,15 @@ const u8 kIdentityCodeWithJump[] = {
     0xC3,                    // ret
 };
 
+const u8 kPatchableLikeAlignedOffsetRecalloc[] = {
+  0x55,                    // push ebp
+  0x8B, 0xEC,              // mov ebp, esp
+  0x56,                    // push esi
+  0x8B, 0x75, 0x0C,        // esi, dword ptr [ebp+0Ch]
+  0x57,                    // push edi
+  0x33, 0xFF,              // xor edi, edi
+  0x85, 0xF6               // test esi, esi
+};
 #endif
 
 const u8 kPatchableCode1[] = {
@@ -661,6 +670,7 @@ TEST(Interception, PatchableFunctionWithTrampoline) {
   EXPECT_FALSE(TestFunctionPatching(kUnpatchableCode9, override, prefix));
 #else
   EXPECT_TRUE(TestFunctionPatching(kPatchableCode3, override, prefix));
+  //EXPECT_TRUE(TestFunctionPatching(kPatchableLikeAlignedOffsetRecalloc, override, prefix));
 #endif
   EXPECT_FALSE(TestFunctionPatching(kPatchableCode4, override, prefix));
 
