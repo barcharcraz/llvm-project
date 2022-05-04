@@ -995,6 +995,18 @@ void *asan_realloc(void *p, uptr size, BufferedStackTrace *stack) {
   return SetErrnoOnNull(instance.Reallocate(p, size, stack));
 }
 
+void *asan_recalloc(void *p, uptr nmemb, uptr size, BufferedStackTrace *stack) {
+  if (!p)
+    return SetErrnoOnNull(instance.Calloc(nmemb, size, stack));
+  uptr old_size = instance.AllocationSize(reinterpret_cast<uptr>(p));
+  uptr new_size = nmemb * size;
+  void *ret = asan_realloc(p, new_size, stack);
+  if (ret && new_size > old_size) {
+    REAL(memset)(static_cast<u8 *>(ret) + old_size, 0, new_size - old_size);
+  }
+  return ret;
+}
+
 void *asan_valloc(uptr size, BufferedStackTrace *stack) {
   return SetErrnoOnNull(
       instance.Allocate(size, GetPageSizeCached(), stack, FROM_MALLOC, true));
@@ -1223,9 +1235,6 @@ uptr __sanitizer_get_allocated_size(const void *p) {
 
 void __sanitizer_purge_allocator() {
   GET_STACK_TRACE_MALLOC;
-#if SANITIZER_WINDOWS
-  MoveableMemoryManager::GetInstance()->Purge();  
-#endif
   instance.Purge(&stack);
 }
 

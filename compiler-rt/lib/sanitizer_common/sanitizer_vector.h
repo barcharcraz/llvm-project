@@ -42,6 +42,10 @@ class Vector {
     return end_ - begin_;
   }
 
+  bool Empty() const {
+    return end_ == begin_;
+  }
+
   T &operator[](uptr i) {
     DCHECK_LT(i, end_ - begin_);
     return begin_[i];
@@ -66,9 +70,22 @@ class Vector {
     return p;
   }
 
+  template <typename... Args>
+  T *EmplaceBack(Args&&... args) {
+    // Requires including sanitizer_placement_new.h
+    EnsureSize(Size() + 1);
+    T *p = new (&end_[-1]) T(static_cast<Args&&>(args)...);
+    return p;
+  }
+
   void PopBack() {
     DCHECK_GT(end_, begin_);
     end_--;
+  }
+
+  const T& Back() const {
+    DCHECK_LT(1, end_ - begin_);
+    return end_[-1];
   }
 
   void Resize(uptr size) {

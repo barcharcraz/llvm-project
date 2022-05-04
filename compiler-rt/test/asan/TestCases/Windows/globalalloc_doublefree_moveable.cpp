@@ -13,9 +13,12 @@ int main(){
     fprintf(stderr, "Test type: %s\n", TEST_TYPE);
     // CHECK: Test type: [[TYPE:(Global|Local)]]
 
-    void* allocation = ALLOC(FixedType, 10);
+    void* allocation = ALLOC(MOVEABLE, 10);
     CHECK(allocation != 0);
-    print_addr("addr", allocation);
+
+    void *ptr = LOCK(allocation);
+    CHECK(ptr != 0);
+    print_addr("addr", ptr);
     // CHECK: addr: [[addr:0x[0-9a-fA-F]+]]
 
     CHECK( FREE(allocation) == NULL );

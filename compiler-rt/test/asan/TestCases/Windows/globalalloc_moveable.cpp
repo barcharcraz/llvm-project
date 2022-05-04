@@ -13,8 +13,9 @@ int main() {
   fprintf(stderr, "Test type: %s\n", TEST_TYPE);
 // CHECK: Test type: [[TYPE:(Global|Local)]]
 
-  char *buffer;
-  buffer = (char*)ALLOC(GMEM_FIXED, 32),
+  auto handle = ALLOC(MOVEABLE, 32);
+  char *buffer = (char*)LOCK(handle);
+  CHECK(handle != buffer);
 
   print_addr("target-ptr", reinterpret_cast<void *>(reinterpret_cast<uint64_t>(buffer) + 33));
 // CHECK: target-ptr: [[ADDR:0x[0-9a-f]+]]

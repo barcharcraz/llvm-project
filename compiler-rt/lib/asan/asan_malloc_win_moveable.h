@@ -1,3 +1,15 @@
+//===-- asan_malloc_win_moveable.h ----------------------------------------===//
+//
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+//
+// This file is a part of AddressSanitizer, an address sanity checker.
+//
+// Movable heap allocation manager for Global/Local Alloc interception.
+//===----------------------------------------------------------------------===//
 #pragma once
 
 #define FIXED 0x0000
@@ -9,7 +21,7 @@
 #define LOCAL_DISCARDABLE 0x0F00
 #define GLOBAL_DISCARDABLE 0x0100
 #define GLOBAL_NOT_BANKED 0x1000
-#define GLOBAL_SHARE 0x2000 // same as GMEM_DDESHARE and SHARE
+#define GLOBAL_SHARE 0x2000  // same as GMEM_DDESHARE and SHARE
 #define GLOBAL_NOTIFY 0x4000
 #define INVALID_HANDLE 0x8000
 #define GLOBAL_VALID_FLAGS 0x7F72
@@ -20,64 +32,21 @@
 #define ERROR_NOT_LOCKED 0x9E
 #define ERROR_INVALID_HANDLE 0x6
 
-class MoveableAllocEntry {
-  // the physical address entry, split so the pointers can be sorted separately
-  // for faster ptr->handle lookup.
-public:
-  void *addr;
-  void *handle;
-  bool freed;       // set if this the entry is freed, may not be needed
-  size_t lockCount; // lock count for this movable section.
+#define GMEM_LOCKCOUNT 0x00FF
 
-  MoveableAllocEntry(size_t handle_index, void *pointer_entry)
-      : addr(pointer_entry), lockCount(0), freed(false) {
-    handle = reinterpret_cast<void *>(handle_index);
-  }
+namespace __sanitizer {
+    struct BufferedStackTrace;
+}
 
-  MoveableAllocEntry(size_t handle_index)
-      : addr(nullptr), lockCount(0), freed(false) {
-    handle = reinterpret_cast<void *>(handle_index);
-  }
-};
-
+namespace __asan_win_moveable {
 enum class HeapCaller { GLOBAL, LOCAL };
-struct MemoryManagerResources;
 
-class MoveableMemoryManager {
-private:
-  MoveableMemoryManager();
-  ~MoveableMemoryManager();
-  void *ReallocHandleToFixed(void *original, bool zero_init);
-  void *ReallocFixedToHandle(void *original, bool zero_init);
-  void *ReallocFixedToFixed(void *original, size_t new_size, bool zero_init);
-  void *ReallocHandleToHandle(void *original, size_t new_size, bool zero_init);
-  void *AddMoveableAllocation(size_t size, bool zero_init);
-  void *AddFixedAllocation(size_t size, bool zero_init);
-  size_t ResolveHandleToIndex(void *handle);
-  MoveableAllocEntry *ResolveHandleToTableEntry(void *handle);
-  void *TagHandleIndex(size_t);
-  bool IsOwnedHandle(void *item);
-  bool IsOwnedPointer(void *item);
-  void *GetHandleReservation();
-  size_t GetHandleTag();
-
-public:
-  bool IsOwned(void *item);
-  // These functions all take in an untyped identifier, rather
-  // than make this more confusing I'll avoid labeling the param
-  // 'pointer' or 'handle'; we have to check in the functions anyway.
-  void *ResolveHandleToPointer(void *memory_ident);
-  void *ResolvePointerToHandle(void *memory_ident);
-  size_t GetAllocationSize(void *memory_ident);
-  void *IncrementLockCount(void *memory_ident);
-  void *DecrementLockCount(void *memory_ident);
-  size_t GetLockCount(void *memory_ident);
-  void *Free(void *ident);
-  void *Alloc(unsigned long flags, size_t size);
-  void *ReAllocate(void *ident, size_t flags, size_t size, HeapCaller caller);
-  void Purge();
-  static MoveableMemoryManager *MoveableMemoryManager::GetInstance();
-  static bool MoveableMemoryManager::ManagerIsAlive();
-  friend struct ::MemoryManagerResources;
-
-};
+bool IsOwned(void *item);
+void *ResolvePointerToHandle(void *item, __sanitizer::BufferedStackTrace&);
+size_t GetAllocationSize(void *item, __sanitizer::BufferedStackTrace&);
+void *IncrementLockCount(void *item, __sanitizer::BufferedStackTrace&);
+bool DecrementLockCount(void *item, __sanitizer::BufferedStackTrace&);
+void *Free(void *item, __sanitizer::BufferedStackTrace&);
+void *Alloc(unsigned long flags, size_t size, __sanitizer::BufferedStackTrace&);
+void *ReAllocate(void *item, unsigned long flags, size_t size, HeapCaller caller, __sanitizer::BufferedStackTrace&);
+}  // namespace __asan_win_moveable
