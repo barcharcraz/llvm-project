@@ -91,7 +91,6 @@ if(NOT WIN32 AND NOT CYGWIN)
 endif()
 
 check_cxx_compiler_flag(/GR COMPILER_RT_HAS_GR_FLAG)
-check_cxx_compiler_flag(/GS COMPILER_RT_HAS_GS_FLAG)
 check_cxx_compiler_flag(/MT COMPILER_RT_HAS_MT_FLAG)
 check_cxx_compiler_flag(/Oy COMPILER_RT_HAS_Oy_FLAG)
 

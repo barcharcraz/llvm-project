@@ -361,7 +361,6 @@ if(MSVC)
     endforeach()
   endif()
   append_list_if(COMPILER_RT_HAS_Oy_FLAG /Oy- SANITIZER_COMMON_CFLAGS)
-  append_list_if(COMPILER_RT_HAS_GS_FLAG /GS- SANITIZER_COMMON_CFLAGS)
 
   # Disable thread safe initialization for static locals. ASan shouldn't need
   # it. Thread safe initialization assumes that the CRT has already been
