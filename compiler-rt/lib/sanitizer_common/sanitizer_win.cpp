@@ -901,7 +901,7 @@ void FutexWake(atomic_uint32_t *p, u32 count) {
     WakeByAddressSingle(p);
   else
     WakeByAddressAll(p);
-void BlockingMutex::CheckLocked() {
+}
 
 uptr GetTlsSize() { return 0; }
 

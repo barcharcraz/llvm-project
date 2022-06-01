@@ -826,7 +826,14 @@ INTERCEPTOR(void *, memcpy, void *dst, const void *src, uptr size) {
   // N.B.: If we switch this to internal_ we'll have to use internal_memmove
   // due to memcpy being an alias of memmove on OS X.
   void *ctx;
-#if PLATFORM_HAS_DIFFERENT_MEMCPY_AND_MEMMOVE &&
+  #ifndef PLATFORM_HAS_DIFFERENT_MEMCPY_AND_MEMMOVE
+#error "Nao definito"
+#endif 
+
+#ifndef PLATFORM_MEMCPY_MEMMOVE_CAN_BE_FOLDED
+#error "Nao definido"
+#endif
+#if PLATFORM_HAS_DIFFERENT_MEMCPY_AND_MEMMOVE && \
       !PLATFORM_MEMCPY_MEMMOVE_CAN_BE_FOLDED
     COMMON_INTERCEPTOR_MEMCPY_IMPL(ctx, dst, src, size);
 #else

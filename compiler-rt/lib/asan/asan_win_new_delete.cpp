@@ -14,7 +14,6 @@
 
 #include "asan_allocator.h"
 #include "asan_internal.h"
-#include "asan_malloc_local.h"
 #include "asan_report.h"
 #include "asan_stack.h"
 
@@ -35,7 +34,6 @@ struct __asan_win_new_delete_data {
 };
 
 #define OPERATOR_NEW_BODY(type, nothrow)                          \
-  MAYBE_ALLOCATE_FROM_LOCAL_POOL(nothrow);                        \
   GET_STACK_TRACE_MALLOC_WIN(data->pc, data->bp, data->caller_pc, \
                              data->extra_context);                \
   void *res = asan_memalign(0, size, &stack, type);               \
@@ -44,7 +42,6 @@ struct __asan_win_new_delete_data {
   return res;
 
 #define OPERATOR_NEW_BODY_ALIGN(type, nothrow)                    \
-  MAYBE_ALLOCATE_FROM_LOCAL_POOL(nothrow);                        \
   GET_STACK_TRACE_MALLOC_WIN(data->pc, data->bp, data->caller_pc, \
                              data->extra_context);                \
   void *res = asan_memalign((uptr)align, size, &stack, type);     \
@@ -53,29 +50,21 @@ struct __asan_win_new_delete_data {
   return res;
 
 #define OPERATOR_DELETE_BODY(type)                              \
-  if (IS_FROM_LOCAL_POOL(ptr))                                  \
-    return;                                                     \
   GET_STACK_TRACE_FREE_WIN(data->pc, data->bp, data->caller_pc, \
                            data->extra_context);                \
   asan_delete(ptr, 0, 0, &stack, type);
 
 #define OPERATOR_DELETE_BODY_SIZE(type)                         \
-  if (IS_FROM_LOCAL_POOL(ptr))                                  \
-    return;                                                     \
   GET_STACK_TRACE_FREE_WIN(data->pc, data->bp, data->caller_pc, \
                            data->extra_context);                \
   asan_delete(ptr, size, 0, &stack, type);
 
 #define OPERATOR_DELETE_BODY_ALIGN(type)                        \
-  if (IS_FROM_LOCAL_POOL(ptr))                                  \
-    return;                                                     \
   GET_STACK_TRACE_FREE_WIN(data->pc, data->bp, data->caller_pc, \
                            data->extra_context);                \
   asan_delete(ptr, 0, static_cast<uptr>(align), &stack, type);
 
 #define OPERATOR_DELETE_BODY_SIZE_ALIGN(type)                   \
-  if (IS_FROM_LOCAL_POOL(ptr))                                  \
-    return;                                                     \
   GET_STACK_TRACE_FREE_WIN(data->pc, data->bp, data->caller_pc, \
                            data->extra_context);                \
   asan_delete(ptr, size, static_cast<uptr>(align), &stack, type);

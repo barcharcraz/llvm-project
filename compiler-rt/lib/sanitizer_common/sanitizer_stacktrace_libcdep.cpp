@@ -66,9 +66,9 @@ class StackTraceTextPrinter {
                   common_flags()->symbolize_vs_style,
                   common_flags()->strip_path_prefix);
 #if SANITIZER_WINDOWS
-      if(ExcludeFromPrint(frame_desc.data()))
+      if(ExcludeFromPrint(output_->data()))
       {
-        frame_num--;
+        frame_num_--;
         continue;
       }
 #endif
