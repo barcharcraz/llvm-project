@@ -250,10 +250,27 @@ void AsanApplyToGlobals(globals_op_fptr op, const void *needle) {
   UNIMPLEMENTED();
 }
 
+// Since asan's mapping is compacting, the shadow chunk may be
+// not page-aligned, so we only flush the page-aligned portion.
 void FlushUnneededASanShadowMemory(uptr p, uptr size) {
-  // Since asan's mapping is compacting, the shadow chunk may be
-  // not page-aligned, so we only flush the page-aligned portion.
+// On Windows we should avoid the overhead of a call to ReleaseMemoryPagesToOS
+// which attempts to MEM_RELEASE a reserved region if possible. We know that
+// the shadow memory should never get MEM_RELEASEd so just MEM_DECOMMIT it.
+#if SANITIZER_WINDOWS64
+  uptr page_size = GetPageSizeCached();
+  uptr beg_aligned = RoundUpTo(p, page_size);
+  uptr end_aligned = RoundDownTo(p + size, page_size);
+
+  if (end_aligned > beg_aligned) {
+    uptr shadow_beg = MEM_TO_SHADOW(beg_aligned);
+    uptr shadow_end = MEM_TO_SHADOW(end_aligned - SHADOW_GRANULARITY) - 1;
+
+    ::VirtualFree(reinterpret_cast<LPVOID>(shadow_beg),
+                  static_cast<size_t>(shadow_end - shadow_beg), MEM_DECOMMIT);
+  }
+#else
   ReleaseMemoryPagesToOS(MemToShadow(p), MemToShadow(p + size));
+#endif
 }
 
 // ---------------------- TSD ---------------- {{{
