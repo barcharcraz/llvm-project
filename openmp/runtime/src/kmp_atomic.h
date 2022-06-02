@@ -999,9 +999,6 @@ void __kmpc_atomic_20(ident_t *id_ref, int gtid, void *lhs, void *rhs,
 void __kmpc_atomic_32(ident_t *id_ref, int gtid, void *lhs, void *rhs,
                       void (*f)(void *, void *, void *));
 
-// READ, WRITE, CAPTURE are supported only on IA-32 architecture and Intel(R) 64
-#if KMP_ARCH_X86 || KMP_ARCH_X86_64
-
 //  Below routines for atomic READ are listed
 char __kmpc_atomic_fixed1_rd(ident_t *id_ref, int gtid, char *loc);
 short __kmpc_atomic_fixed2_rd(ident_t *id_ref, int gtid, short *loc);
@@ -1838,7 +1835,7 @@ kmp_int64 __kmpc_atomic_val_8_cas_cpt(ident_t *loc, int gtid, kmp_int64 *x,
 
 // End OpenMP 5.1 compare + capture
 
-#endif // KMP_ARCH_X86 || KMP_ARCH_X86_64
+
 
 /* ------------------------------------------------------------------------ */
 
