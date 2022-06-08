@@ -58,7 +58,7 @@ ALWAYS_INLINE void CommitShadowMemory(uptr aligned_beg, uptr aligned_size) {
 #if SANITIZER_WINDOWS64
     uptr shadow_beg = MEM_TO_SHADOW(aligned_beg);
     uptr shadow_end = MEM_TO_SHADOW(aligned_beg + aligned_size -
-                                    SHADOW_GRANULARITY) + 1;
+                                    ASAN_SHADOW_GRANULARITY) + 1;
     ::VirtualAlloc((LPVOID)shadow_beg, (size_t)(shadow_end - shadow_beg),
                    MEM_COMMIT, PAGE_READWRITE);
 #endif
