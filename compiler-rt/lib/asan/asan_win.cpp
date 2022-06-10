@@ -263,7 +263,7 @@ void FlushUnneededASanShadowMemory(uptr p, uptr size) {
 
   if (end_aligned > beg_aligned) {
     uptr shadow_beg = MEM_TO_SHADOW(beg_aligned);
-    uptr shadow_end = MEM_TO_SHADOW(end_aligned - SHADOW_GRANULARITY) - 1;
+    uptr shadow_end = MEM_TO_SHADOW(end_aligned - ASAN_SHADOW_GRANULARITY) - 1;
 
     ::VirtualFree(reinterpret_cast<LPVOID>(shadow_beg),
                   static_cast<size_t>(shadow_end - shadow_beg), MEM_DECOMMIT);
