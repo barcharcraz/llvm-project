@@ -689,10 +689,18 @@ kmp_set_disp_num_buffers                    890
     __kmpc_atomic_fixed4_eqv               2079
     __kmpc_atomic_fixed8_eqv               2080
 
-    __kmpc_atomic_float10_add              2081
-    __kmpc_atomic_float10_sub              2082
-    __kmpc_atomic_float10_mul              2083
-    __kmpc_atomic_float10_div              2084
+
+    # These are specific to x86 and x64
+    %ifndef arch_64
+    %ifndef arch_aarch64
+
+        __kmpc_atomic_float10_add              2081
+        __kmpc_atomic_float10_sub              2082
+        __kmpc_atomic_float10_mul              2083
+        __kmpc_atomic_float10_div              2084
+    
+    %endif
+    %endif
 
     __kmpc_atomic_cmplx4_add               2085
     __kmpc_atomic_cmplx4_sub               2086
@@ -702,10 +710,19 @@ kmp_set_disp_num_buffers                    890
     __kmpc_atomic_cmplx8_sub               2090
     __kmpc_atomic_cmplx8_mul               2091
     __kmpc_atomic_cmplx8_div               2092
-    __kmpc_atomic_cmplx10_add              2093
-    __kmpc_atomic_cmplx10_sub              2094
-    __kmpc_atomic_cmplx10_mul              2095
-    __kmpc_atomic_cmplx10_div              2096
+
+    # These are specific to x86 and x64
+    %ifndef arch_64
+    %ifndef arch_aarch64
+
+        __kmpc_atomic_cmplx10_add              2093
+        __kmpc_atomic_cmplx10_sub              2094
+        __kmpc_atomic_cmplx10_mul              2095
+        __kmpc_atomic_cmplx10_div              2096
+    
+    %endif
+    %endif
+
     %ifdef HAVE_QUAD
     __kmpc_atomic_cmplx16_add              2097
     __kmpc_atomic_cmplx16_sub              2098
@@ -785,9 +802,27 @@ kmp_set_disp_num_buffers                    890
     __kmpc_atomic_2                        2248
    #__kmpc_atomic_4                    # declared above #100
    #__kmpc_atomic_8                    # declared above #101
-    __kmpc_atomic_10                       2251
+
+    # These are specific to x86 and x64
+    %ifndef arch_64
+    %ifndef arch_aarch64
+
+        __kmpc_atomic_10                       2251
+
+    %endif
+    %endif
+    
     __kmpc_atomic_16                       2252
-    __kmpc_atomic_20                       2253
+
+    # These are specific to x86 and x64
+    %ifndef arch_64
+    %ifndef arch_aarch64
+
+        __kmpc_atomic_20                       2253
+    
+    %endif
+    %endif
+
     __kmpc_atomic_32                       2254
 
     %ifdef arch_32
@@ -1232,28 +1267,35 @@ kmp_set_disp_num_buffers                    890
     __kmpc_atomic_fixed8u_mul_fp
     %endif
 
-    # OpenMP 5.1 atomics
-    __kmpc_atomic_float10_max              2139
-    __kmpc_atomic_float10_min              2140
-    __kmpc_atomic_float10_max_cpt          2141
-    __kmpc_atomic_float10_min_cpt          2142
+    # These are specific to x86 and x64
+    %ifndef arch_64
+    %ifndef arch_aarch64
 
-    __kmpc_atomic_bool_1_cas               2143
-    __kmpc_atomic_bool_2_cas               2144
-    __kmpc_atomic_bool_4_cas               2145
-    __kmpc_atomic_bool_8_cas               2146
-    __kmpc_atomic_val_1_cas                2147
-    __kmpc_atomic_val_2_cas                2148
-    __kmpc_atomic_val_4_cas                2149
-    __kmpc_atomic_val_8_cas                2150
-    __kmpc_atomic_bool_1_cas_cpt           2151
-    __kmpc_atomic_bool_2_cas_cpt           2152
-    __kmpc_atomic_bool_4_cas_cpt           2153
-    __kmpc_atomic_bool_8_cas_cpt           2154
-    __kmpc_atomic_val_1_cas_cpt            2155
-    __kmpc_atomic_val_2_cas_cpt            2156
-    __kmpc_atomic_val_4_cas_cpt            2157
-    __kmpc_atomic_val_8_cas_cpt            2158
+        # OpenMP 5.1 atomics
+        __kmpc_atomic_float10_max              2139
+        __kmpc_atomic_float10_min              2140
+        __kmpc_atomic_float10_max_cpt          2141
+        __kmpc_atomic_float10_min_cpt          2142
+
+        __kmpc_atomic_bool_1_cas               2143
+        __kmpc_atomic_bool_2_cas               2144
+        __kmpc_atomic_bool_4_cas               2145
+        __kmpc_atomic_bool_8_cas               2146
+        __kmpc_atomic_val_1_cas                2147
+        __kmpc_atomic_val_2_cas                2148
+        __kmpc_atomic_val_4_cas                2149
+        __kmpc_atomic_val_8_cas                2150
+        __kmpc_atomic_bool_1_cas_cpt           2151
+        __kmpc_atomic_bool_2_cas_cpt           2152
+        __kmpc_atomic_bool_4_cas_cpt           2153
+        __kmpc_atomic_bool_8_cas_cpt           2154
+        __kmpc_atomic_val_1_cas_cpt            2155
+        __kmpc_atomic_val_2_cas_cpt            2156
+        __kmpc_atomic_val_4_cas_cpt            2157
+        __kmpc_atomic_val_8_cas_cpt            2158
+    
+    %endif
+    %endif
 
 %endif
 
