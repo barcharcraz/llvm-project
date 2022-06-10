@@ -398,10 +398,10 @@ kmpc_set_disp_num_buffers                   267
 %endif
 
 %ifndef stub
-        __kmpc_copyprivate_light            279
-        __kmpc_sections_init                280
-        __kmpc_next_section                 281
-        __kmpc_end_sections                 282
+        __kmpc_copyprivate_light            290
+        __kmpc_sections_init                293
+        __kmpc_next_section                 296
+        __kmpc_end_sections                 298
 %endif
 
 
