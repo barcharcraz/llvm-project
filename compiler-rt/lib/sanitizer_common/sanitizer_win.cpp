@@ -1116,6 +1116,17 @@ const char *SignalContext::Describe() const {
 }
 
 uptr ReadBinaryName(/*out*/char *buf, uptr buf_len) {
+#if 1
+  // FIXME: Actually implement this function.
+  CHECK_GT(buf_len, 0);
+  buf[0] = 0;
+  return 0;
+#else
+  // TODO: Actually fix this.
+  // The problem is that InternalMmapVector<> will itself allocate memory,
+  // which fails because QueryVirtualMemoryInformation is not properly setup
+  // because InitializePlatformEarly hasn't been invoked. Figure out how the
+  // other platforms get around this.
   if (buf_len == 0)
     return 0;
 
@@ -1133,7 +1144,8 @@ uptr ReadBinaryName(/*out*/char *buf, uptr buf_len) {
   if ((unsigned)binary_name_len == buf_len)
     --binary_name_len;
   buf[binary_name_len] = '\0';
-  return binary_name_len;
+  return binary_name_len;\
+#endif // 1
 }
 
 uptr ReadLongProcessName(/*out*/ char *buf, uptr buf_len) {
