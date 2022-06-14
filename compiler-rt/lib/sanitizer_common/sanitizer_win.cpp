@@ -1144,7 +1144,7 @@ uptr ReadBinaryName(/*out*/char *buf, uptr buf_len) {
   if ((unsigned)binary_name_len == buf_len)
     --binary_name_len;
   buf[binary_name_len] = '\0';
-  return binary_name_len;\
+  return binary_name_len;
 #endif // 1
 }
 
