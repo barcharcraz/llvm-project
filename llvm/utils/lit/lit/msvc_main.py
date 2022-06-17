@@ -276,7 +276,7 @@ if not args:
     parser.error('No inputs specified')
 
 if opts.numThreads is None:
-    opts.numThreads = lit.util.detectCPUs()
+    opts.numThreads = lit.util.usable_core_count()
 
 if opts.echoAllCommands:
     opts.showOutput = True
