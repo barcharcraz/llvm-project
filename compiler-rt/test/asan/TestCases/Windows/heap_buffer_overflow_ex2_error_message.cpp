@@ -42,6 +42,5 @@ int main(void) {
   // CHECK-NEXT: ASan internal:           fe
   // CHECK-NEXT: Left alloca redzone:     ca
   // CHECK-NEXT: Right alloca redzone:    cb
-  // CHECK-NEXT: Shadow gap:              cc
   return 0;
 }

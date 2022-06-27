@@ -41,7 +41,6 @@ struct IntHolder {
     // CHECK-NEXT: ASan internal:           fe
     // CHECK-NEXT: Left alloca redzone:     ca
     // CHECK-NEXT: Right alloca redzone:    cb
-    // CHECK-NEXT: Shadow gap:              cc
   }
   void set(int *val) { val_ = val; }
   int *get() { return val_; }

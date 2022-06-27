@@ -73,7 +73,6 @@ __try{
   // CHECK-NEXT: ASan internal:           fe
   // CHECK-NEXT: Left alloca redzone:     ca
   // CHECK-NEXT: Right alloca redzone:    cb
-  // CHECK-NEXT: Shadow gap:              cc
   for (i=0;i<x;i++)
     if (bb[i] != (7+i))
       fail = 1;

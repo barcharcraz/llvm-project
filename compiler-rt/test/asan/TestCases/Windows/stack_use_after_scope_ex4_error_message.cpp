@@ -47,7 +47,6 @@ void explicit_temp() {
     // CHECK-NEXT: ASan internal:           fe
     // CHECK-NEXT: Left alloca redzone:     ca
     // CHECK-NEXT: Right alloca redzone:    cb
-    // CHECK-NEXT: Shadow gap:              cc
 }
 
 void temp_from_conversion() {
