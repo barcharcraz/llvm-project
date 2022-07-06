@@ -1,6 +1,8 @@
-// RUN: %clang_cl_asan -Od %s -Fe%t
-// RUN: %clang_cl_asan -Od %p/deadlock_on_process_shutdown_driver.cpp -Fe%p/deadlock_on_process_shutdown_driver.exe
-// RUN: %run %p/deadlock_on_process_shutdown_driver.exe
+// RUN: %clang_cl_asan /D_DISABLE_STRING_ANNOTATION -Od %s -Fe%t
+// RUN: %clang_cl_asan -Od %p/deadlock_on_process_shutdown_driver.cpp /D_DISABLE_STRING_ANNOTATION -Fe%t.exe
+// RUN: not %run %t.exe %t 2>&1 | FileCheck %s
+
+// TODO 06/28/2022: remove annotation compile option after Bug #1551295
 
 #include <iostream>
 #include <ppl.h>
@@ -24,4 +26,7 @@ int main(int argc, char *argv[]) {
       UserHeapManipulations();
     }
   });
+
+  // Message is printed from deadlock_on_process_shutdown_driver.cpp success
+  // CHECK: Success.
 }

@@ -3,23 +3,29 @@
 #include <stdlib.h>
 #include <string>
 #include <system_error>
-#include <vector>
 #include <windows.h>
 
 struct CommandAndMessage {
   LPSTR Command;
   const char *Message;
 
-  CommandAndMessage(LPSTR command, const char *message) : Command(command), Message(message) {}
+  CommandAndMessage(std::string command, const char *message) : Message(message) {
+    Command = strdup(command.c_str());
+  }
 };
 
 int main(int argc, const char *argv[]) {
 
-  static const CommandAndMessage tests[] = {{"cmd.exe /C deadlock_on_process_shutdown.exe", "Process Heap Test failure"}, {"cmd.exe /C deadlock_on_process_shutdown.exe \"UserHeap\"", "User Heap Test failure"}};
+  // Name and path to test command
+  std::string testName = argv[1];
+  std::string processHeapTest = "cmd.exe /C " + testName;
+  std::string userHeapTest = processHeapTest + " \"UserHeap\"";
 
-  // start the deadlock exe 50 times for both process and user heap manipulations to try and see if any deadlock on shutdown
+  static const CommandAndMessage tests[] = {{processHeapTest, "Process Heap Test failure"}, {userHeapTest, "User Heap Test failure"}};
+
+  // start the deadlock exe 5 times for both process and user heap manipulations to try and see if any deadlock on shutdown
   for (const auto &test : tests) {
-    for (auto i = 0; i < 50; ++i) {
+    for (auto i = 0; i < 5; ++i) {
       STARTUPINFO si{};
       PROCESS_INFORMATION pi{};
       if (!CreateProcess(nullptr, test.Command, nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) {
@@ -42,6 +48,8 @@ int main(int argc, const char *argv[]) {
       }
     }
   }
+
+  fputs("Success.\n", stderr);
 
   return EXIT_SUCCESS;
 }
