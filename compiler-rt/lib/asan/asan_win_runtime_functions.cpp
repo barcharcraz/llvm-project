@@ -70,7 +70,6 @@ namespace __asan {
 // pointing to some block of memory.
 // If new memory is allocated, it will then be tracked by asan since
 // rtl functions are intercepted
-#ifndef CHECK_AND_CALL
 #define CHECK_AND_CALL(allocationCheck, functionPointer, asanFunction, ptr, \
                        ...)                                                 \
   do {                                                                      \
@@ -79,11 +78,9 @@ namespace __asan {
     } else                                                                  \
       return asanFunction(ptr, __VA_ARGS__);                                \
   } while (0)
-#endif
 
 // If memory is freed, we need to remove system allocation map
 // tracking.
-#ifndef CHECK_AND_CALL_FREE
 #define CHECK_AND_CALL_FREE(allocationCheck, functionPointer, asanFunction, \
                             ptr, ...)                                       \
   do {                                                                      \
@@ -93,7 +90,6 @@ namespace __asan {
     } else                                                                  \
       return asanFunction(ptr, __VA_ARGS__);                                \
   } while (0)
-#endif
 
 // In cases where the allocation took place prior to asan initialization
 // asan will need to transition ownership of the memory to itself
@@ -175,6 +171,7 @@ struct __RuntimeFunctions {
   static inline void *AlignedOffsetRealloc(void *ptr, size_t size,
                                            size_t alignment, size_t offset) {
     SWITCH_TO_ASAN_ALLOCATION(AlignedAllocatedPriorToAsanInit,
+                              pAlignedMsize(ptr, alignment, offset),
                               ::_aligned_offset_realloc, AlignedFree(ptr), ptr,
                               size, alignment, offset);
   }
@@ -183,19 +180,21 @@ struct __RuntimeFunctions {
                                             size_t element_size,
                                             size_t alignment, size_t offset) {
     SWITCH_TO_ASAN_ALLOCATION(AlignedAllocatedPriorToAsanInit,
+                              pAlignedMsize(ptr, alignment, offset),
                               ::_aligned_offset_recalloc, AlignedFree(ptr), ptr,
                               num, element_size, alignment, offset);
   }
 
   static inline void *AlignedRealloc(void *ptr, size_t size, size_t alignment) {
-    SWITCH_TO_ASAN_ALLOCATION(AlignedAllocatedPriorToAsanInit,
-                              ::_aligned_realloc, AlignedFree(ptr), ptr, size,
-                              alignment);
+    SWITCH_TO_ASAN_ALLOCATION(
+        AlignedAllocatedPriorToAsanInit, pAlignedMsize(ptr, alignment, 0),
+        ::_aligned_realloc, AlignedFree(ptr), ptr, size, alignment);
   }
 
   static inline void *AlignedRecalloc(void *ptr, size_t num,
                                       size_t element_size, size_t alignment) {
     SWITCH_TO_ASAN_ALLOCATION(AlignedAllocatedPriorToAsanInit,
+                              pAlignedMsize(ptr, alignment, 0),
                               ::_aligned_recalloc, AlignedFree(ptr), ptr, num,
                               element_size, alignment);
   }
@@ -221,33 +220,33 @@ struct __RuntimeFunctions {
   }
 
   static inline void *Realloc(void *ptr, size_t size) {
-    SWITCH_TO_ASAN_ALLOCATION(AllocatedPriorToAsanInit, ::realloc, Free(ptr),
-                              ptr, size);
-  }
-
-  static inline void *ReallocBase(void *ptr, size_t size) {
-    SWITCH_TO_ASAN_ALLOCATION(AllocatedPriorToAsanInit, ::_realloc_base,
+    SWITCH_TO_ASAN_ALLOCATION(AllocatedPriorToAsanInit, pMsize(ptr), ::realloc,
                               Free(ptr), ptr, size);
   }
 
+  static inline void *ReallocBase(void *ptr, size_t size) {
+    SWITCH_TO_ASAN_ALLOCATION(AllocatedPriorToAsanInit, pMsize(ptr),
+                              ::_realloc_base, Free(ptr), ptr, size);
+  }
+
   static inline void *ReallocCrt(void *ptr, size_t size) {
-    SWITCH_TO_ASAN_ALLOCATION(AllocatedPriorToAsanInit, ::realloc, Free(ptr),
-                              ptr, size);
+    SWITCH_TO_ASAN_ALLOCATION(AllocatedPriorToAsanInit, pMsize(ptr), ::realloc,
+                              Free(ptr), ptr, size);
   }
 
   static inline void *RecallocBase(void *ptr, size_t num, size_t elem_size) {
-    SWITCH_TO_ASAN_ALLOCATION(AllocatedPriorToAsanInit, ::_recalloc_base,
-                              Free(ptr), ptr, num, elem_size);
+    SWITCH_TO_ASAN_ALLOCATION(AllocatedPriorToAsanInit, pMsize(ptr),
+                              ::_recalloc_base, Free(ptr), ptr, num, elem_size);
   }
 
   static inline void *Recalloc(void *ptr, size_t num, size_t elem_size) {
-    SWITCH_TO_ASAN_ALLOCATION(AllocatedPriorToAsanInit, ::_recalloc, Free(ptr),
-                              ptr, num, elem_size);
+    SWITCH_TO_ASAN_ALLOCATION(AllocatedPriorToAsanInit, pMsize(ptr),
+                              ::_recalloc, Free(ptr), ptr, num, elem_size);
   }
 
   static inline void *RecallocCrt(void *ptr, size_t num, size_t elem_size) {
-    SWITCH_TO_ASAN_ALLOCATION(AllocatedPriorToAsanInit, ::_recalloc, Free(ptr),
-                              ptr, num, elem_size);
+    SWITCH_TO_ASAN_ALLOCATION(AllocatedPriorToAsanInit, pMsize(ptr),
+                              ::_recalloc, Free(ptr), ptr, num, elem_size);
   }
 
   static inline void Free(void *ptr) {
@@ -263,20 +262,20 @@ struct __RuntimeFunctions {
   static inline void *AlignedOffsetReallocDbg(
       void *const ptr, size_t const size, size_t const alignment,
       size_t const offset, char const *const fileName, int const lineNumber) {
-    SWITCH_TO_ASAN_ALLOCATION(DbgAlignedAllocatedPriorToAsanInit,
-                              ::_aligned_offset_realloc_dbg,
-                              AlignedFreeDbg(ptr), ptr, size, alignment, offset,
-                              fileName, lineNumber);
+    SWITCH_TO_ASAN_ALLOCATION(
+        DbgAlignedAllocatedPriorToAsanInit, pMsizeDbg(ptr, _NORMAL_BLOCK),
+        ::_aligned_offset_realloc_dbg, AlignedFreeDbg(ptr), ptr, size,
+        alignment, offset, fileName, lineNumber);
   }
 
   static inline void *AlignedOffsetRecallocDbg(
       void *const ptr, size_t const num, size_t const element_size,
       size_t const alignment, size_t const offset, char const *const fileName,
       int const lineNumber) {
-    SWITCH_TO_ASAN_ALLOCATION(DbgAlignedAllocatedPriorToAsanInit,
-                              ::_aligned_offset_recalloc_dbg,
-                              AlignedFreeDbg(ptr), ptr, num, element_size,
-                              alignment, offset, fileName, lineNumber);
+    SWITCH_TO_ASAN_ALLOCATION(
+        DbgAlignedAllocatedPriorToAsanInit, pMsizeDbg(ptr, _NORMAL_BLOCK),
+        ::_aligned_offset_recalloc_dbg, AlignedFreeDbg(ptr), ptr, num,
+        element_size, alignment, offset, fileName, lineNumber);
   }
 
   static inline void *AlignedReallocDbg(void *const ptr, size_t const size,
@@ -284,6 +283,7 @@ struct __RuntimeFunctions {
                                         char const *const fileName,
                                         int const lineNumber) {
     SWITCH_TO_ASAN_ALLOCATION(DbgAlignedAllocatedPriorToAsanInit,
+                              pMsizeDbg(ptr, _NORMAL_BLOCK),
                               ::_aligned_realloc_dbg, AlignedFreeDbg(ptr), ptr,
                               size, alignment, fileName, lineNumber);
   }
@@ -294,6 +294,7 @@ struct __RuntimeFunctions {
                                          char const *const fileName,
                                          int const lineNumber) {
     SWITCH_TO_ASAN_ALLOCATION(DbgAlignedAllocatedPriorToAsanInit,
+                              pMsizeDbg(ptr, _NORMAL_BLOCK),
                               ::_aligned_recalloc_dbg, AlignedFreeDbg(ptr), ptr,
                               num, size, alignment, fileName, lineNumber);
   }
@@ -309,14 +310,15 @@ struct __RuntimeFunctions {
                         blockType);
   }
 
-  static inline size_t MsizeDbg(void *ptr, int size) {
+  static inline size_t MsizeDbg(void *ptr, int blockType) {
     CHECK_AND_CALL(DbgAllocatedPriorToAsanInit, pMsizeDbg, ::_msize_dbg, ptr,
-                   size);
+                   blockType);
   }
 
   static inline void *ReallocDbg(void *ptr, size_t size, int blockType,
                                  const char *fileName, int lineNumber) {
-    SWITCH_TO_ASAN_ALLOCATION(DbgAllocatedPriorToAsanInit, ::_realloc_dbg,
+    SWITCH_TO_ASAN_ALLOCATION(DbgAllocatedPriorToAsanInit,
+                              pMsizeDbg(ptr, _NORMAL_BLOCK), ::_realloc_dbg,
                               FreeDbg(ptr, blockType), ptr, size, blockType,
                               fileName, lineNumber);
   }
@@ -324,7 +326,8 @@ struct __RuntimeFunctions {
   static inline void *RecallocDbg(void *ptr, size_t num, size_t size,
                                   int blockType, const char *fileName,
                                   int lineNumber) {
-    SWITCH_TO_ASAN_ALLOCATION(DbgAllocatedPriorToAsanInit, ::_recalloc_dbg,
+    SWITCH_TO_ASAN_ALLOCATION(DbgAllocatedPriorToAsanInit,
+                              pMsizeDbg(ptr, _NORMAL_BLOCK), ::_recalloc_dbg,
                               FreeDbg(ptr, blockType), ptr, num, size,
                               blockType, fileName, lineNumber);
   }
@@ -388,12 +391,11 @@ struct __RuntimeFunctions {
          reinterpret_cast<uptr *>(&pRealloc)},
         {"_realloc_base", reinterpret_cast<uptr>(&ReallocBase),
          reinterpret_cast<uptr *>(&pReallocBase)},
+        {"_realloc_crt", reinterpret_cast<uptr>(&ReallocCrt),
+         reinterpret_cast<uptr *>(&pReallocCrt)},
         {"_recalloc", reinterpret_cast<uptr>(&Recalloc),
          reinterpret_cast<uptr *>(&pRecalloc)},
         {"_recalloc_base", reinterpret_cast<uptr>(&RecallocBase),
-         reinterpret_cast<uptr *>(&pRecallocBase)},
-        {"_recalloc_base",
-         (uptr) & static_cast<decltype(&RecallocBase)>(&RecallocBase),
          reinterpret_cast<uptr *>(&pRecallocBase)},
         {"_recalloc_crt", reinterpret_cast<uptr>(&RecallocCrt),
          reinterpret_cast<uptr *>(&pRecallocCrt)},
