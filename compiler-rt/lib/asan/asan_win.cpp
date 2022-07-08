@@ -437,9 +437,8 @@ void InitializePlatformExceptionHandlers() {
 
 // Debug and release versions of the allocation header are different
 static uptr GetAlignedAllocationHeader(void *addr) {
-  static constexpr auto ptrSize = sizeof(void *);
-  uptr ptr;
-  ptr = reinterpret_cast<uptr>(addr);
+  static constexpr auto ptrSize = sizeof(void*);
+  uintptr_t ptr = reinterpret_cast<uintptr_t>(addr);
   ptr = (ptr & ~(ptrSize - 1)) - ptrSize;
   ptr = *(reinterpret_cast<uintptr_t *>(ptr));
   return ptr;
@@ -547,7 +546,7 @@ static bool IsValidDebugAllocation(uptr addr, PROCESS_HEAP_ENTRY &heapEntry) {
 static bool AllocationPresentAndValid(void *lookupAddr, void *checkAddr) {
   SystemAllocationMap::Handle h(
       system_allocations, reinterpret_cast<uptr>(lookupAddr), false, false);
-  if (h.exists()) {
+  if (h.exists()){
     return IsValidDebugAllocation(reinterpret_cast<uptr>(checkAddr), *h);
   }
 

@@ -53,6 +53,7 @@
 #define _NORMAL_BLOCK 1
 #endif
 
+#include "asan_allocator.h"
 #include "asan_flags.h"
 #include "asan_interceptors_memintrinsics.h"
 #include "asan_interface_internal.h"
@@ -73,7 +74,7 @@ namespace __asan {
 #define CHECK_AND_CALL(allocationCheck, functionPointer, asanFunction, ptr, \
                        ...)                                                 \
   do {                                                                      \
-    if (allocationCheck(ptr)) {                                             \
+    if (!asan_mz_size(ptr) && allocationCheck(ptr)) {                                             \
       return functionPointer(ptr, __VA_ARGS__);                             \
     } else                                                                  \
       return asanFunction(ptr, __VA_ARGS__);                                \
@@ -86,7 +87,7 @@ namespace __asan {
 #define CHECK_AND_CALL_FREE(allocationCheck, functionPointer, asanFunction, \
                             ptr, ...)                                       \
   do {                                                                      \
-    if (allocationCheck(ptr)) {                                             \
+    if (!asan_mz_size(ptr) && allocationCheck(ptr)) {                                             \
       functionPointer(ptr, __VA_ARGS__);                                    \
       RemoveFromSystemHeapAllocationsMap(ptr);                              \
     } else                                                                  \
@@ -103,19 +104,17 @@ namespace __asan {
 // memory
 // Different versions of free need to be used depending on if a debug
 // version of a crt function is called or if an aligned crt function is called
-#ifndef SWITCH_TO_ASAN_ALLOCATION
-#define SWITCH_TO_ASAN_ALLOCATION(allocationCheck, asanFunction, freeFn, ptr, \
-                                  ...)                                        \
-  do {                                                                        \
-    if (allocationCheck(ptr)) {                                               \
-      auto __asanAllocation = asanFunction(nullptr, __VA_ARGS__);             \
-      REAL(memcpy)(__asanAllocation, ptr, _msize(__asanAllocation));          \
-      freeFn;                                                                 \
-      return __asanAllocation;                                                \
-    } else                                                                    \
-      return asanFunction(ptr, __VA_ARGS__);                                  \
+#define SWITCH_TO_ASAN_ALLOCATION(allocationCheck, sizeCheck, asanFunction, \
+                                  freeFn, ptr, ...)                         \
+  do {                                                                      \
+    if (!asan_mz_size(ptr) && allocationCheck(ptr)) {                           \
+      auto __asanAllocation = asanFunction(nullptr, __VA_ARGS__);           \
+      REAL(memcpy)(__asanAllocation, ptr, sizeCheck);                       \
+      freeFn;                                                               \
+      return __asanAllocation;                                              \
+    } else                                                                  \
+      return asanFunction(ptr, __VA_ARGS__);                                \
   } while (0)
-#endif
 
 template <typename Runtime>
 struct __RuntimeFunctions {
