@@ -3771,7 +3771,8 @@ KMP_EXPORT void __kmpc_copyprivate(ident_t *loc, kmp_int32 global_tid,
                                    void (*cpy_func)(void *, void *),
                                    kmp_int32 didit);
 
-KMP_EXPORT void *__kmpc_copyprivate_light(ident_t *loc, kmp_int32 gtid, void *cpy_data);
+KMP_EXPORT void *__kmpc_copyprivate_light(ident_t *loc, kmp_int32 gtid,
+                                          void *cpy_data);
 
 extern void KMPC_SET_NUM_THREADS(int arg);
 extern void KMPC_SET_DYNAMIC(int flag);

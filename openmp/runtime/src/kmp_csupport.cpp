@@ -2233,12 +2233,13 @@ void __kmpc_copyprivate(ident_t *loc, kmp_int32 gtid, size_t cpy_size,
 @return          the saved pointer to the data
 
 __kmpc_copyprivate_light is a lighter version of __kmpc_copyprivate: 
-__kmpc_copyprivate_light only saves the pointer it's given (if it's not 0, so coming from single),
-and returns that pointer in all calls (for single thread it's not needed).
-This version doesn't do any actual data copying. Data copying has to be done 
-somewhere else, e.g. inline in the generated code. Due to this, this function doesn't have
-any barrier at the end of the function, like __kmpc_copyprivate does, 
-so generated code needs barrier after copying of all data was done.
+__kmpc_copyprivate_light only saves the pointer it's given (if it's not 0, so
+coming from single), and returns that pointer in all calls (for single thread
+it's not needed). This version doesn't do any actual data copying. Data copying
+has to be done somewhere else, e.g. inline in the generated code. Due to this,
+this function doesn't have any barrier at the end of the function, like
+__kmpc_copyprivate does, so generated code needs barrier after copying of all
+data was done.
 */
 void* __kmpc_copyprivate_light(ident_t *loc, kmp_int32 gtid, void *cpy_data) {
   void **data_ptr;
@@ -2274,22 +2275,6 @@ void* __kmpc_copyprivate_light(ident_t *loc, kmp_int32 gtid, void *cpy_data) {
   __kmp_threads[gtid]->th.th_ident = loc;
 #endif
   __kmp_barrier(bs_plain_barrier, gtid, FALSE, 0, NULL, NULL);
-
-#if OMPT_SUPPORT
-  if (ompt_enabled.enabled) {
-    OMPT_STORE_RETURN_ADDRESS(gtid);
-  }
-#endif
-#if USE_ITT_NOTIFY
-  __kmp_threads[gtid]->th.th_ident = loc; // TODO: check if it is needed (e.g.
-// tasks can overwrite the location)
-#endif
-
-#if OMPT_SUPPORT && OMPT_OPTIONAL
-  if (ompt_enabled.enabled) {
-    ompt_frame->enter_frame = ompt_data_none;
-  }
-#endif
 
   return *data_ptr;
 }

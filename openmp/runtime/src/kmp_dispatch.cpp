@@ -2294,9 +2294,6 @@ kmp_int32 __kmpc_sections_init(ident_t *loc, kmp_int32 gtid) {
   dispatch_shared_info_template<kmp_int32> volatile *sh;
 
   KMP_DEBUG_ASSERT(__kmp_init_serial);
-#if OMPT_SUPPORT && OMPT_OPTIONAL
-  OMPT_STORE_RETURN_ADDRESS(gtid);
-#endif
 
   if (!TCR_4(__kmp_init_parallel))
     __kmp_parallel_initialize();
@@ -2354,7 +2351,7 @@ kmp_int32 __kmpc_sections_init(ident_t *loc, kmp_int32 gtid) {
     ompt_task_info_t *task_info = __ompt_get_task_info_object(0);
     ompt_callbacks.ompt_callback(ompt_callback_work)(
         ompt_work_sections, ompt_scope_begin, &(team_info->parallel_data),
-        &(task_info->task_data), 0, OMPT_LOAD_RETURN_ADDRESS(gtid));
+        &(task_info->task_data), 0, OMPT_GET_RETURN_ADDRESS(0));
   }
 #endif
   KMP_PUSH_PARTITIONED_TIMER(OMP_sections);
@@ -2375,14 +2372,12 @@ thread
 kmp_int32 __kmpc_next_section(ident_t *loc, kmp_int32 gtid,
                               kmp_int32 numberOfSections) {
 
-#if OMPT_SUPPORT && OMPT_OPTIONAL
-  OMPT_STORE_RETURN_ADDRESS(gtid);
-#endif
-
   KMP_TIME_PARTITIONED_BLOCK(OMP_sections);
 
   kmp_info_t *th = __kmp_threads[gtid];
+#ifdef KMP_DEBUG
   kmp_team_t *team = th->th.th_team;
+#endif
 
   KD_TRACE(1000, ("__kmp_dispatch_next: T#%d; number of sections:%d\n", gtid,
                   numberOfSections));
@@ -2440,12 +2435,14 @@ kmp_int32 __kmpc_next_section(ident_t *loc, kmp_int32 gtid,
     th->th.th_dispatch->th_dispatch_pr_current = NULL;
 
 #if OMPT_SUPPORT && OMPT_OPTIONAL
-    if (ompt_enabled.ompt_callback_work) {
+    if (ompt_enabled.ompt_callback_dispatch) {
       ompt_team_info_t *team_info = __ompt_get_teaminfo(0, NULL);
       ompt_task_info_t *task_info = __ompt_get_task_info_object(0);
-      ompt_callbacks.ompt_callback(ompt_callback_work)(
-          ompt_work_sections, ompt_scope_end, &(team_info->parallel_data),
-          &(task_info->task_data), 0, OMPT_LOAD_RETURN_ADDRESS(gtid));
+      ompt_data_t instance = ompt_data_none;
+      instance.ptr = OMPT_GET_RETURN_ADDRESS(0);
+      ompt_callbacks.ompt_callback(ompt_callback_dispatch)(
+          &(team_info->parallel_data), &(task_info->task_data),
+          ompt_dispatch_section, instance);
     }
 #endif
     KMP_POP_PARTITIONED_TIMER();
@@ -2467,21 +2464,17 @@ void __kmpc_end_sections(ident_t *loc, kmp_int32 gtid) {
   kmp_info_t *th = __kmp_threads[gtid];
   int active = !th->th.th_team->t.t_serialized;
 
-#if OMPT_SUPPORT && OMPT_OPTIONAL
-  OMPT_STORE_RETURN_ADDRESS(gtid);
-#endif
-
   KD_TRACE(100, ("__kmpc_end_sections: T#%d called\n", gtid));
 
   if (!active) {
-    // In active case oall finalization is done in __kmpc_next_section
+    // In active case call finalization is done in __kmpc_next_section
 #if OMPT_SUPPORT && OMPT_OPTIONAL
     if (ompt_enabled.ompt_callback_work) {
       ompt_team_info_t *team_info = __ompt_get_teaminfo(0, NULL);
       ompt_task_info_t *task_info = __ompt_get_task_info_object(0);
       ompt_callbacks.ompt_callback(ompt_callback_work)(
           ompt_work_sections, ompt_scope_end, &(team_info->parallel_data),
-          &(task_info->task_data), 0, OMPT_LOAD_RETURN_ADDRESS(gtid));
+          &(task_info->task_data), 0, OMPT_GET_RETURN_ADDRESS(0));
     }
 #endif
     KMP_POP_PARTITIONED_TIMER();
