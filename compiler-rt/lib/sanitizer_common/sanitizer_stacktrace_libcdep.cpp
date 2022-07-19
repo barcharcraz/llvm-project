@@ -25,6 +25,9 @@ namespace __sanitizer {
 // stack trace.
 static bool ExcludeFromPrint(const char * name)
 {
+  if(name == nullptr)
+    return false;
+
   // add functions to this list to exclude
   static const char *FunctionsToExclude[] = {"__RuntimeFunctions"};
   
@@ -61,17 +64,16 @@ class StackTraceTextPrinter {
 
     for (SymbolizedStack *cur = frames; cur; cur = cur->next) {
       uptr prev_len = output_->length();
+#if SANITIZER_WINDOWS
+      if(ExcludeFromPrint(cur->info.function))
+      {
+        continue;
+      }
+#endif
       RenderFrame(output_, stack_trace_fmt_, frame_num_++, cur->info.address,
                   symbolize_ ? &cur->info : nullptr,
                   common_flags()->symbolize_vs_style,
                   common_flags()->strip_path_prefix);
-#if SANITIZER_WINDOWS
-      if(ExcludeFromPrint(output_->data()))
-      {
-        frame_num_--;
-        continue;
-      }
-#endif
 
       if (prev_len != output_->length())
         output_->append("%c", frame_delimiter_);
