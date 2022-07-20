@@ -216,7 +216,7 @@ void __sanitizer_symbolize_global(void *data_ptr, const char *fmt,
 #define __sanitizer_return_address()                                           \
   __builtin_extract_return_addr(__builtin_return_address(0))
 #else
-extern "C" void *_ReturnAddress(void);
+  void *_ReturnAddress(void);
 #pragma intrinsic(_ReturnAddress)
 #define __sanitizer_return_address() _ReturnAddress()
 #endif
