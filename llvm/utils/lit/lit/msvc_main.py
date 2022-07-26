@@ -481,7 +481,8 @@ testConfig.substitutions = {
                             ("diff ", os.environ["UNIX_BIN_DIR"]+"\\diff.exe "),
                             ("-Wno-fortify-source", " "),
                             ("-Wl,-debug"," "),
-                            ("-Wl,-OPT:REF", "/link /OPT:REF")
+                            ("-Wl,-OPT:REF", "/link /OPT:REF"),
+                            ("%os", "Windows")
                             }
 
 if opts.force_dynamic:
