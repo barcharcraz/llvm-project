@@ -1116,22 +1116,19 @@ const char *SignalContext::Describe() const {
 }
 
 uptr ReadBinaryName(/*out*/char *buf, uptr buf_len) {
-#if 1
-  // FIXME: Actually implement this function.
-  CHECK_GT(buf_len, 0);
-  buf[0] = 0;
-  return 0;
-#else
-  // TODO: Actually fix this.
-  // The problem is that InternalMmapVector<> will itself allocate memory,
-  // which fails because QueryVirtualMemoryInformation is not properly setup
-  // because InitializePlatformEarly hasn't been invoked. Figure out how the
-  // other platforms get around this.
   if (buf_len == 0)
     return 0;
 
   // Get the UTF-16 path and convert to UTF-8.
+#if 0
+  // The problem is that InternalMmapVector<> will itself allocate memory,
+  // which fails because QueryVirtualMemoryInformation is not properly setup
+  // because InitializePlatformEarly hasn't been invoked. Figure out how the
+  // other platforms get around this.
   InternalMmapVector<wchar_t> binname_utf16(kMaxPathLength);
+#else
+  wchar_t binname_utf16[kMaxPathLength];
+#endif  // 0
   int binname_utf16_len =
       GetModuleFileNameW(NULL, &binname_utf16[0], kMaxPathLength);
   if (binname_utf16_len == 0) {
@@ -1145,7 +1142,6 @@ uptr ReadBinaryName(/*out*/char *buf, uptr buf_len) {
     --binary_name_len;
   buf[binary_name_len] = '\0';
   return binary_name_len;
-#endif // 1
 }
 
 uptr ReadLongProcessName(/*out*/ char *buf, uptr buf_len) {
