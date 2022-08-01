@@ -827,11 +827,11 @@ INTERCEPTOR(void *, memcpy, void *dst, const void *src, uptr size) {
   // due to memcpy being an alias of memmove on OS X.
   void *ctx;
   #ifndef PLATFORM_HAS_DIFFERENT_MEMCPY_AND_MEMMOVE
-#error "Nao definito"
+#error "Undefined"
 #endif 
 
 #ifndef PLATFORM_MEMCPY_MEMMOVE_CAN_BE_FOLDED
-#error "Nao definido"
+#error "Undefined"
 #endif
 #if PLATFORM_HAS_DIFFERENT_MEMCPY_AND_MEMMOVE && \
       !PLATFORM_MEMCPY_MEMMOVE_CAN_BE_FOLDED

@@ -220,7 +220,7 @@ function(add_asan_tests arch test_runtime)
   set(ASAN_INST_TEST_OBJECTS)
   generate_asan_tests(ASAN_INST_TEST_OBJECTS AsanUnitTests
     "Asan-${arch}${TEST_KIND}-Test"
-    SUBDIR "default"
+    SUBDIR ${STATIC_TEST_SUBDIR}
     LINK_FLAGS ${ASAN_UNITTEST_INSTRUMENTED_LINK_FLAGS}
     SOURCES ${ASAN_INST_TEST_SOURCES}
     CFLAGS ${ASAN_UNITTEST_INSTRUMENTED_CFLAGS} ${TEST_CFLAGS})

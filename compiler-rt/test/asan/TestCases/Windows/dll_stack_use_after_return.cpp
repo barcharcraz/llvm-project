@@ -1,6 +1,3 @@
-
-
-
 // RUN: %clang_cl_asan -Od %p/dll_host.cpp -Fe%t
 // RUN: %clang_cl_asan -LD -Od %s -Fe%t.dll
 // RUN: %env_asan_opts=detect_stack_use_after_return=1 not %run %t %t.dll 2>&1 | FileCheck %s
