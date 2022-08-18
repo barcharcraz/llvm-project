@@ -359,10 +359,13 @@ else:
 if opts.force_dynamic:
     testConfig.available_features = [ 'clang-dynamic-runtime',
     'asan-dynamic-runtime','stable-runtime',
-    "shadow-scale-3", "msvc-host", "win32", "windows", 'windows-msvc', 'win32-dynamic-asan']
+    'shadow-scale-3', 'msvc-host', 'win32', 'windows', 'windows-msvc', 'win32-dynamic-asan',
+    'compiler-rt-optimized']
 else:
-    testConfig.available_features = ['clang-static-runtime', 'asan-static-runtime','stable-runtime',
-    "shadow-scale-3", "msvc-host", "win32", "windows", "windows-msvc" , 'win32-static-asan' ]
+    testConfig.available_features = ['clang-static-runtime',
+    'asan-static-runtime','stable-runtime',
+    'shadow-scale-3', 'msvc-host', 'win32', 'windows', 'windows-msvc' , 'win32-static-asan',
+    'compiler-rt-optimized']
 
 testConfig.available_features += arch_specific_features
 
@@ -490,7 +493,7 @@ if opts.force_dynamic:
         ("%asan_dll_thunk_lib", slashsan(litConfig.compiler_rt_libdir) + "\\" + dynamic_runtime_thunk + " " + slashsan(litConfig.compiler_rt_libdir)+ "\\" + dynamic_import_lib)
     }
 testConfig.substitutions |= optimization_subs
-testConfig.environment["INCLUDE"] = testConfig.environment["INCLUDE"] + litConfig.compiler_rt_src_root + "\\include" + ";" + litConfig.compiler_rt_src_root + "\\test\\asan\\TestCases" + ";"
+testConfig.environment["INCLUDE"] = testConfig.environment["INCLUDE"] + litConfig.compiler_rt_src_root + "\\include" + ";" + litConfig.compiler_rt_src_root + "\\test\\asan\\TestCases" + ";" + litConfig.compiler_rt_src_root + "\\lib\\fuzzer" + ";"
 testConfig.environment["PATH"] += ";" + os.environ["ASAN_RT_BIN_DIR"] +";"+ os.environ["ASAN_RT_LIB_DIR"] + ";"
 
 #print litConfig.getToolsPath(opts.path[0],"",["cl.exe"])
