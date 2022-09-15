@@ -20,6 +20,10 @@
 
 namespace __sanitizer {
 
+#if SANITIZER_WINDOWS
+bool common_flags_inited = false;
+#endif 
+
 CommonFlags common_flags_dont_use;
 
 void CommonFlags::SetDefaults() {
@@ -134,6 +138,10 @@ void InitializeCommonFlags(CommonFlags *cf) {
   SetVerbosity(cf->verbosity);
 
   InitializePlatformCommonFlags(cf);
+#if SANITIZER_WINDOWS
+  // This must be set after all allocations are made for common flags
+  common_flags_inited = true;
+#endif 
 }
 
 }  // namespace __sanitizer

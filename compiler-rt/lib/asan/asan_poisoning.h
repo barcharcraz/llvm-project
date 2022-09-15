@@ -18,6 +18,7 @@
 #include "sanitizer_common/sanitizer_platform.h"
 
 #if SANITIZER_WINDOWS64
+#include "sanitizer_common/sanitizer_win.h"
 #include "sanitizer_common/sanitizer_win_defs.h"
 // These definitions are duplicated from Window.h in order to avoid conflicts
 // with other types in Windows.h.
@@ -46,9 +47,7 @@ void PoisonShadow(uptr addr, uptr size, u8 value);
 
 // Poisons the shadow memory for "redzone_size" bytes starting from
 // "addr + size".
-void PoisonShadowPartialRightRedzone(uptr addr,
-                                     uptr size,
-                                     uptr redzone_size,
+void PoisonShadowPartialRightRedzone(uptr addr, uptr size, uptr redzone_size,
                                      u8 value);
 
 // Commits the shadow memory for a range of aligned memory. This only matters
@@ -56,11 +55,12 @@ void PoisonShadowPartialRightRedzone(uptr addr,
 // violation is inefficient when we know the memory range ahead of time.
 ALWAYS_INLINE void CommitShadowMemory(uptr aligned_beg, uptr aligned_size) {
 #if SANITIZER_WINDOWS64
-    uptr shadow_beg = MEM_TO_SHADOW(aligned_beg);
-    uptr shadow_end = MEM_TO_SHADOW(aligned_beg + aligned_size -
-                                    ASAN_SHADOW_GRANULARITY) + 1;
-    ::VirtualAlloc((LPVOID)shadow_beg, (size_t)(shadow_end - shadow_beg),
-                   MEM_COMMIT, PAGE_READWRITE);
+  uptr shadow_beg = MEM_TO_SHADOW(aligned_beg);
+  uptr shadow_end =
+      MEM_TO_SHADOW(aligned_beg + aligned_size - ASAN_SHADOW_GRANULARITY) + 1;
+  __sanitizer_virtual_alloc((LPVOID)shadow_beg,
+                                     (size_t)(shadow_end - shadow_beg),
+                                     MEM_COMMIT, PAGE_READWRITE);
 #endif
 }
 
@@ -105,11 +105,13 @@ ALWAYS_INLINE void FastPoisonShadow(uptr aligned_beg, uptr aligned_size,
       ReserveShadowMemoryRange(page_beg, page_end - 1, nullptr);
     }
   }
-#endif // SANITIZER_FUCHSIA
+#endif  // SANITIZER_FUCHSIA
 }
 
-ALWAYS_INLINE void FastPoisonShadowPartialRightRedzone(
-    uptr aligned_addr, uptr size, uptr redzone_size, u8 value) {
+ALWAYS_INLINE void FastPoisonShadowPartialRightRedzone(uptr aligned_addr,
+                                                       uptr size,
+                                                       uptr redzone_size,
+                                                       u8 value) {
   DCHECK(CanPoisonMemory());
   bool poison_partial = flags()->poison_partial;
   u8 *shadow = (u8*)MEM_TO_SHADOW(aligned_addr);

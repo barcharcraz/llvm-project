@@ -32,6 +32,12 @@ struct CommonFlags {
   void CopyFrom(const CommonFlags &other);
 };
 
+#if SANITIZER_WINDOWS
+// Used to determine when flags are initialized to properly read
+// environment based flags
+extern bool common_flags_inited;
+#endif
+
 // Functions to get/set global CommonFlags shared by all sanitizer runtimes:
 extern CommonFlags common_flags_dont_use;
 inline const CommonFlags *common_flags() {

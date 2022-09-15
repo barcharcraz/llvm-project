@@ -54,6 +54,35 @@ int dllThunkInterceptWhenPossible(const char* main_function,
 #define INTERFACE_WEAK_FUNCTION(Name) INTERCEPT_SANITIZER_WEAK_FUNCTION(Name)
 #include "sanitizer_common_interface.inc"
 
+// Defined for thunk interception of memoryapi.h functions
+// to protect from IAT overwrites. These functions can be called
+// prior to and during __dll_thunk_init, meaning we cannot use
+// INTERFACE_FUNCTION here.
+extern "C" {
+void *__sanitizer_virtual_alloc(void *arg1, SIZE_T arg2, DWORD arg3, DWORD arg4) {
+  using fntype = void*(*)(void*,SIZE_T,DWORD,DWORD);
+  static fntype fn =
+      (fntype)__sanitizer::dllThunkGetRealAddrOrDie("__sanitizer_virtual_alloc");
+  return fn(arg1, arg2, arg3, arg4);
+}
+
+typedef struct _MEMORY_BASIC_INFORMATION* PMemory_Basic_Information;
+SIZE_T __sanitizer_virtual_query(const void *arg1, PMemory_Basic_Information arg2,
+                             SIZE_T arg3) {
+  using fntype = SIZE_T(*)(const void*, PMemory_Basic_Information, SIZE_T);
+  static fntype fn =
+      (fntype)__sanitizer::dllThunkGetRealAddrOrDie("__sanitizer_virtual_query");
+  return fn(arg1, arg2, arg3);
+}
+
+int __sanitizer_virtual_protect(void *arg1, SIZE_T arg2, DWORD arg3, DWORD *arg4) {
+  using fntype = int(*)(void*, SIZE_T, DWORD, DWORD*);
+  static fntype fn =
+      (fntype)__sanitizer::dllThunkGetRealAddrOrDie("__sanitizer_virtual_protect");
+  return fn(arg1, arg2, arg3, arg4);
+}
+}
+
 #pragma section(".DLLTH$A", read)
 #pragma section(".DLLTH$Z", read)
 

@@ -25,6 +25,7 @@
 #include "interception/interception.h"
 #include "sanitizer_common.h"
 #include "sanitizer_file.h"
+#include "sanitizer_flags.h"
 #include "sanitizer_libc.h"
 #include "sanitizer_mutex.h"
 #include "sanitizer_placement_new.h"
@@ -110,7 +111,7 @@ void GetThreadStackTopAndBottom(bool at_initialization, uptr *stack_top,
   CHECK(stack_top);
   CHECK(stack_bottom);
   MEMORY_BASIC_INFORMATION mbi;
-  CHECK_NE(VirtualQuery(&mbi /* on stack */, &mbi, sizeof(mbi)), 0);
+  CHECK_NE(__sanitizer_virtual_query(&mbi /* on stack */, &mbi, sizeof(mbi)), 0);
   // FIXME: is it possible for the stack to not be a single allocation?
   // Are these values what ASan expects to get (reserved, not committed;
   // including stack guard page) ?
@@ -120,7 +121,8 @@ void GetThreadStackTopAndBottom(bool at_initialization, uptr *stack_top,
 #endif  // #if !SANITIZER_GO
 
 void *MmapOrDie(uptr size, const char *mem_type, bool raw_report) {
-  void *rv = VirtualAlloc(0, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+  void *rv =
+      __sanitizer_virtual_alloc(0, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
   if (rv == 0)
     ReportMmapFailureAndDie(size, mem_type, "allocate", GetLastError(),
                             raw_report);
@@ -243,7 +245,8 @@ static void *ReturnNullptrOnOOMOrDie(uptr size, const char *mem_type,
 }
 
 void *MmapOrDieOnFatalError(uptr size, const char *mem_type) {
-  void *rv = VirtualAlloc(0, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+  void *rv =
+      __sanitizer_virtual_alloc(0, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
   if (rv == 0)
     return ReturnNullptrOnOOMOrDie(size, mem_type, "allocate");
   return rv;
@@ -258,8 +261,8 @@ void *MmapAlignedOrDieOnFatalError(uptr size, uptr alignment,
   // Windows will align our allocations to at least 64K.
   alignment = Max(alignment, GetMmapGranularity());
 
-  uptr mapped_addr =
-      (uptr)VirtualAlloc(0, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+  uptr mapped_addr = (uptr)__sanitizer_virtual_alloc(
+      0, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
   if (!mapped_addr)
     return ReturnNullptrOnOOMOrDie(size, mem_type, "allocate aligned");
 
@@ -278,8 +281,8 @@ void *MmapAlignedOrDieOnFatalError(uptr size, uptr alignment,
          (mapped_addr == 0 || !IsAligned(mapped_addr, alignment));
        retries++) {
     // Overallocate size + alignment bytes.
-    mapped_addr =
-        (uptr)VirtualAlloc(0, size + alignment, MEM_RESERVE, PAGE_NOACCESS);
+    mapped_addr = (uptr)__sanitizer_virtual_alloc(0, size + alignment, MEM_RESERVE,
+                                              PAGE_NOACCESS);
     if (!mapped_addr)
       return ReturnNullptrOnOOMOrDie(size, mem_type, "allocate aligned");
 
@@ -293,8 +296,8 @@ void *MmapAlignedOrDieOnFatalError(uptr size, uptr alignment,
     // Attempt to allocate exactly the number of bytes we need at the aligned
     // address. This may fail for a number of reasons, in which case we continue
     // the loop.
-    mapped_addr = (uptr)VirtualAlloc((void *)aligned_addr, size,
-                                     MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    mapped_addr = (uptr)__sanitizer_virtual_alloc(
+        (void *)aligned_addr, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
   }
 
   // Fail if we can't make this work quickly.
@@ -310,10 +313,11 @@ bool MmapFixedNoReserve(uptr fixed_addr, uptr size, const char *name) {
   // On asan/Windows64, using MEM_COMMIT would result in error
   // 1455:ERROR_COMMITMENT_LIMIT.
   // Asan uses exception handler to commit page on demand.
-  void *p = VirtualAlloc((LPVOID)fixed_addr, size, MEM_RESERVE, PAGE_READWRITE);
+  void *p = __sanitizer_virtual_alloc((LPVOID)fixed_addr, size, MEM_RESERVE,
+                                  PAGE_READWRITE);
 #else
-  void *p = VirtualAlloc((LPVOID)fixed_addr, size, MEM_RESERVE | MEM_COMMIT,
-                         PAGE_READWRITE);
+  void *p = __sanitizer_virtual_alloc((LPVOID)fixed_addr, size,
+                                  MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 #endif
   if (p == 0) {
     Report(
@@ -333,7 +337,8 @@ bool MmapFixedSuperNoReserve(uptr fixed_addr, uptr size, const char *name) {
 // Memory space mapped by 'MmapFixedOrDie' must have been reserved by
 // 'MmapFixedNoAccess'.
 void *MmapFixedOrDie(uptr fixed_addr, uptr size, const char *name) {
-  void *p = VirtualAlloc((LPVOID)fixed_addr, size, MEM_COMMIT, PAGE_READWRITE);
+  void *p = __sanitizer_virtual_alloc((LPVOID)fixed_addr, size, MEM_COMMIT,
+                                  PAGE_READWRITE);
   if (p == 0) {
     char mem_type[30];
     internal_snprintf(mem_type, sizeof(mem_type), "memory at address 0x%zx",
@@ -364,7 +369,8 @@ void ReservedAddressRange::Unmap(uptr addr, uptr size) {
 }
 
 void *MmapFixedOrDieOnFatalError(uptr fixed_addr, uptr size, const char *name) {
-  void *p = VirtualAlloc((LPVOID)fixed_addr, size, MEM_COMMIT, PAGE_READWRITE);
+  void *p = __sanitizer_virtual_alloc((LPVOID)fixed_addr, size, MEM_COMMIT,
+                                  PAGE_READWRITE);
   if (p == 0) {
     char mem_type[30];
     internal_snprintf(mem_type, sizeof(mem_type), "memory at address 0x%zx",
@@ -389,8 +395,8 @@ uptr ReservedAddressRange::Init(uptr size, const char *name, uptr fixed_addr) {
 
 void *MmapFixedNoAccess(uptr fixed_addr, uptr size, const char *name) {
   (void)name;  // unsupported
-  void *res =
-      VirtualAlloc((LPVOID)fixed_addr, size, MEM_RESERVE, PAGE_NOACCESS);
+  void *res = __sanitizer_virtual_alloc((LPVOID)fixed_addr, size, MEM_RESERVE,
+                                    PAGE_NOACCESS);
   if (res == 0)
     Report(
         "WARNING: %s failed to "
@@ -400,7 +406,7 @@ void *MmapFixedNoAccess(uptr fixed_addr, uptr size, const char *name) {
 }
 
 void *MmapNoAccess(uptr size) {
-  void *res = VirtualAlloc(nullptr, size, MEM_RESERVE, PAGE_NOACCESS);
+  void *res = __sanitizer_virtual_alloc(nullptr, size, MEM_RESERVE, PAGE_NOACCESS);
   if (res == 0)
     Report(
         "WARNING: %s failed to "
@@ -411,7 +417,8 @@ void *MmapNoAccess(uptr size) {
 
 bool MprotectNoAccess(uptr addr, uptr size) {
   DWORD old_protection;
-  return VirtualProtect((LPVOID)addr, size, PAGE_NOACCESS, &old_protection);
+  return __sanitizer_virtual_protect((LPVOID)addr, size, PAGE_NOACCESS,
+                                 &old_protection);
 }
 
 bool MprotectReadOnly(uptr addr, uptr size) {
@@ -460,7 +467,7 @@ uptr FindAvailableMemoryRange(uptr size, uptr alignment, uptr left_padding,
   uptr address = 0;
   while (true) {
     MEMORY_BASIC_INFORMATION info;
-    if (!::VirtualQuery((void *)address, &info, sizeof(info)))
+    if (!__sanitizer_virtual_query((void *)address, &info, sizeof(info)))
       return 0;
 
     if (info.State == MEM_FREE) {
@@ -484,7 +491,7 @@ uptr MapDynamicShadowAndAliases(uptr shadow_size, uptr alias_size,
 
 bool MemoryRangeIsAvailable(uptr range_start, uptr range_end) {
   MEMORY_BASIC_INFORMATION mbi;
-  CHECK(VirtualQuery((void *)range_start, &mbi, sizeof(mbi)));
+  CHECK(__sanitizer_virtual_query((void *)range_start, &mbi, sizeof(mbi)));
   return mbi.Protect == PAGE_NOACCESS &&
          (uptr)mbi.BaseAddress + mbi.RegionSize >= range_end;
 }
@@ -989,7 +996,8 @@ bool IsAccessibleMemoryRange(uptr beg, uptr size) {
   for (uptr page = beg & page_mask, end = (beg + size - 1) & page_mask;
        page <= end;) {
     MEMORY_BASIC_INFORMATION info;
-    if (VirtualQuery((LPCVOID)page, &info, sizeof(info)) != sizeof(info))
+    if (__sanitizer_virtual_query((LPCVOID)page, &info, sizeof(info)) !=
+        sizeof(info))
       return false;
 
     if (info.Protect == 0 || info.Protect == PAGE_NOACCESS ||

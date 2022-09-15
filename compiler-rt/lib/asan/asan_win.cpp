@@ -416,7 +416,8 @@ ShadowExceptionHandler(PEXCEPTION_POINTERS exception_pointers) {
   // the relevant page and let execution continue.
 
   // Commit the page.
-  if (!::VirtualAlloc((LPVOID)addr, 1, MEM_COMMIT, PAGE_READWRITE)) {
+  if (!__sanitizer_virtual_alloc((LPVOID)addr, 1, MEM_COMMIT,
+                                          PAGE_READWRITE)) {
     return EXCEPTION_CONTINUE_SEARCH;
   }
 

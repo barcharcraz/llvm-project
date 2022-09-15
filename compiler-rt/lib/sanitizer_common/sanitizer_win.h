@@ -14,6 +14,10 @@
 
 #include "sanitizer_platform.h"
 #if SANITIZER_WINDOWS
+#include "sanitizer_internal_defs.h"
+
+// Typedef for VirtualQuery to avoid including windows headers
+typedef struct _MEMORY_BASIC_INFORMATION* PMemory_Basic_Information;
 
 namespace __sanitizer {
 // Check based on flags if we should handle the exception.
@@ -26,6 +30,29 @@ bool IsHandledDeadlyException(DWORD exceptionCode);
 bool IsProcessTerminating();
 
 }  // namespace __sanitizer
+
+extern "C" {
+
+// If memoryapi.h functions are hooked by overwriting the Import Address Table
+// (IAT), Sanitizers need to be able to still call the original functions
+// located in kernel32.dll. The iat_overwrite runtime option specifies the
+// protection level to proceed with. 
+// error: default protect level, which means error when an overwrite is detected. 
+// protect: attempt to proceed by looking up the original address of the function
+//          that had its IAT entry overwritten and calling it rather than the
+//          replacement function.
+// ignore: attempt to proceed by ignoring IAT overwrites and calling the
+// function that is resolved on an invocation to func()
+//
+// VirtualAlloc, VirtualQuery, and VirtualProtect are currently protected from
+// this behavior if iat_overwrite=protect
+SANITIZER_INTERFACE_ATTRIBUTE void* __sanitizer_virtual_alloc(
+    void* lpAddress, SIZE_T dwSize, DWORD flAllocationType, DWORD flProtect);
+SANITIZER_INTERFACE_ATTRIBUTE SIZE_T __sanitizer_virtual_query(
+    const void* lpAddress, PMemory_Basic_Information lpBuffer, SIZE_T dwLength);
+SANITIZER_INTERFACE_ATTRIBUTE int __sanitizer_virtual_protect(
+    void* lpAddress, SIZE_T dwSize, DWORD flNewProtect, DWORD* lpflOldProtect);
+}
 
 #endif  // SANITIZER_WINDOWS
 #endif  // SANITIZER_WIN_H

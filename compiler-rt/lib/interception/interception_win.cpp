@@ -216,8 +216,10 @@ static int _strcmp(const char *s1, const char *s2) {
   while (true) {
     unsigned c1 = *s1;
     unsigned c2 = *s2;
-    if (c1 != c2) return (c1 < c2) ? -1 : 1;
-    if (c1 == 0) break;
+    if (c1 != c2)
+      return (c1 < c2) ? -1 : 1;
+    if (c1 == 0)
+      break;
     s1++;
     s2++;
   }
@@ -235,15 +237,16 @@ static void _memcpy(void *dst, void *src, size_t sz) {
 
 static bool ChangeMemoryProtection(uptr address, uptr size,
                                    DWORD *old_protection) {
-  return ::VirtualProtect((void *)address, size, PAGE_EXECUTE_READWRITE,
-                          old_protection) != FALSE;
+  return __sanitizer_virtual_protect((void *)address, size,
+                                              PAGE_EXECUTE_READWRITE,
+                                              old_protection) != FALSE;
 }
 
 static bool RestoreMemoryProtection(uptr address, uptr size,
                                     DWORD old_protection) {
   DWORD unused;
-  return ::VirtualProtect((void *)address, size, old_protection, &unused) !=
-         FALSE;
+  return __sanitizer_virtual_protect((void *)address, size,
+                                              old_protection, &unused) != FALSE;
 }
 
 static bool IsMemoryPadding(uptr address, uptr size) {
@@ -349,14 +352,15 @@ static void *AllocateTrampolineRegion(uptr image_address, size_t granularity) {
   uptr scanned = 0;
   while (scanned < kTrampolineScanLimitRange) {
     MEMORY_BASIC_INFORMATION info;
-    if (!::VirtualQuery((void *)address, &info, sizeof(info)))
+    if (!__sanitizer_virtual_query((void *)address, &info,
+                                            sizeof(info)))
       return nullptr;
 
     // Check whether a region can be allocated at |address|.
     if (info.State == MEM_FREE && info.RegionSize >= granularity) {
-      void *page =
-          ::VirtualAlloc((void *)RoundUpTo(address, granularity), granularity,
-                         MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+      void *page = __sanitizer_virtual_alloc(
+          (void *)RoundUpTo(address, granularity), granularity,
+          MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
       return page;
     }
 
@@ -366,8 +370,8 @@ static void *AllocateTrampolineRegion(uptr image_address, size_t granularity) {
   }
   return nullptr;
 #else
-  return ::VirtualAlloc(nullptr, granularity, MEM_RESERVE | MEM_COMMIT,
-                        PAGE_EXECUTE_READWRITE);
+  return __sanitizer_virtual_alloc(
+      nullptr, granularity, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
 #endif
 }
 
@@ -1373,11 +1377,12 @@ bool OverrideImportedFunction(const char *module_to_patch,
   if (orig_old_func)
     *orig_old_func = iat->u1.AddressOfData;
   DWORD old_prot, unused_prot;
-  if (!VirtualProtect(&iat->u1.AddressOfData, 4, PAGE_EXECUTE_READWRITE,
-                      &old_prot))
+  if (!__sanitizer_virtual_protect(&iat->u1.AddressOfData, 4,
+                                            PAGE_EXECUTE_READWRITE, &old_prot))
     return false;
   iat->u1.AddressOfData = new_function;
-  if (!VirtualProtect(&iat->u1.AddressOfData, 4, old_prot, &unused_prot))
+  if (!__sanitizer_virtual_protect(&iat->u1.AddressOfData, 4, old_prot,
+                                            &unused_prot))
     return false;  // Not clear if this failure bothers us.
   return true;
 }

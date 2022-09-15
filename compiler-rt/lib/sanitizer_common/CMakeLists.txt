@@ -40,6 +40,7 @@ set(SANITIZER_SOURCES_NOTERMINATION
   sanitizer_thread_registry.cpp
   sanitizer_type_traits.cpp
   sanitizer_win.cpp
+  sanitizer_win_iat_protection.cpp
   )
 
 set(SANITIZER_SOURCES

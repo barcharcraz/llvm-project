@@ -266,3 +266,9 @@ COMMON_FLAG(bool, detect_write_exec, false,
 COMMON_FLAG(bool, test_only_emulate_no_memorymap, false,
             "TEST ONLY fail to read memory mappings to emulate sanitized "
             "\"init\"")
+COMMON_FLAG(const char *, iat_overwrite, "error",
+            "Determines the level of protection provided for Import Address Table (IAT) overwrites."
+            "Values are: error, protect, ignore"
+            "The default value, \"error\", returns an error whenever an overwrite is detected."
+            "\"protect\" will attempt to protect from overwriting the IAT and proceed."
+            "\"ignore\" will not attempt to correct any IAT overwrite and proceed.")
