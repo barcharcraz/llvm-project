@@ -95,7 +95,7 @@ void *_aligned_recalloc(void *memblock, size_t num, size_t element_size,
 ALLOCATION_FUNCTION_ATTRIBUTE
 void *_aligned_offset_recalloc(void *memblock, size_t num, size_t element_size,
                                size_t alignment, size_t);
-#ifdef _DEBUG
+
 ALLOCATION_FUNCTION_ATTRIBUTE
 size_t _aligned_msize_dbg(void *memblock, size_t alignment, size_t offset);
 
@@ -154,7 +154,6 @@ void *_aligned_offset_recalloc_dbg(void *const block, size_t const count,
 
 ALLOCATION_FUNCTION_ATTRIBUTE
 void _aligned_free_dbg(void *const block);
-#endif  //_DEBUG
 }  // extern "C"
 
 namespace __asan {

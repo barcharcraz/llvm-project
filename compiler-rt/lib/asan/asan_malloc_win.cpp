@@ -252,7 +252,6 @@ void *_aligned_offset_recalloc(void *memblock, size_t num, size_t element_size,
   return _aligned_recalloc(memblock, num, element_size, alignment);
 }
 
-#ifdef _DEBUG
 ALLOCATION_FUNCTION_ATTRIBUTE
 size_t _aligned_msize_dbg(void *memblock, size_t alignment, size_t offset) {
   return _aligned_msize(memblock, alignment, offset);
@@ -441,7 +440,6 @@ long *__p__crtBreakAlloc() { return &_crtBreakAlloc; }
 //
 // int _CrtSetReportMode(int, int) { return 0; }
 
-#endif  //_DEBUG
 }  // extern "C"
 
 struct AsanHeapMemoryNode {
@@ -1219,6 +1217,9 @@ void *RtlReAllocateHeap(void *HeapHandle, DWORD Flags, void *BaseAddress,
 // This function is completely undocumented.
 size_t RtlSizeHeap(void *HeapHandle, DWORD Flags, void *BaseAddress);
 
+// This function is completely undocmented.
+bool RtlValidateHeap(void *HeapHandle, DWORD Flags, void *BaseAddress);
+
 INTERCEPTOR_WINAPI(void *, RtlDestroyHeap, void *HeapHandle) {
   if (UNLIKELY(HeapHandle == nullptr || HeapHandle == GetProcessHeap())) {
     // RtlDestroyHeap won't do anything in these cases, so we don't
@@ -1278,6 +1279,40 @@ INTERCEPTOR_WINAPI(size_t, RtlSizeHeap, HANDLE HeapHandle, DWORD Flags,
   (void)sp;
   DCHECK_ASSERT_LOCK_INVARIANT_CALL_ASAN(dbg);
   return asan_malloc_usable_size(BaseAddress, pc, bp);
+}
+
+INTERCEPTOR_WINAPI(bool, RtlValidateHeap, void *HeapHandle, DWORD Flags, void *BaseAddress) {
+    if (UNLIKELY(!asan_inited)) {
+        // DebugCheck omitted: Asan can't handle the call yet/invalid arguments.
+        return REAL(RtlValidateHeap)(HeapHandle, Flags, BaseAddress);
+    }
+
+    DebugChecksData dbg_data;
+    DebugChecks dbg{dbg_data};
+
+    AllocationOwnership owner(HeapHandle, BaseAddress, dbg);
+    if (UNLIKELY(owner != AllocationOwnership::ASAN) || BaseAddress == nullptr) {
+        // When BaseAddress is nullptr, the user wants to validate the heap object,
+        // not check whether the address is owned by that heap, so pass that on to the real function.
+        // DebugCheck omitted: RtlValidateHeap does not suffer from a potential
+        // reentrancy issue.
+        return REAL(RtlValidateHeap)(HeapHandle, Flags, BaseAddress);
+    }
+
+    if (!__sanitizer::IsProcessTerminating()) {
+        auto heap_handle = GetAsanHeap(HeapHandle, dbg);
+        auto access_locked = heap_handle.MemoryMapLockGuard();
+        AsanMemoryMap &memory_map = access_locked.MemoryMap();
+
+        // ASAN owns the memory, but double check heap handle is correct.
+        AsanMemoryMap::Handle h(&memory_map, reinterpret_cast<uptr>(BaseAddress), false, false);
+        if (!h.exists()) {
+            return false;
+        }
+    }
+
+    // Already confirmed __sanitizer_get_ownership(BaseAddress) == true in AllocationOwnership.
+    return true;
 }
 
 INTERCEPTOR_WINAPI(void *, RtlAllocateHeap, HANDLE HeapHandle, DWORD Flags,
@@ -2040,6 +2075,7 @@ void ReplaceSystemMalloc() {
   // Undocumented functions must be intercepted by name, not by symbol.
   __interception::OverrideFunction("RtlSizeHeap", (uptr)WRAP(RtlSizeHeap),
                                    (uptr *)&REAL(RtlSizeHeap));
+  __interception::OverrideFunction("RtlValidateHeap", (uptr)WRAP(RtlValidateHeap), (uptr *)&REAL(RtlValidateHeap));
   __interception::OverrideFunction("RtlFreeHeap", (uptr)WRAP(RtlFreeHeap),
                                    (uptr *)&REAL(RtlFreeHeap));
   __interception::OverrideFunction("RtlReAllocateHeap",

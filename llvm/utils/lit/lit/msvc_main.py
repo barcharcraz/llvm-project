@@ -339,7 +339,7 @@ litConfig.bashPath = ""
 
 litConfig.limit_to_features = False
 litConfig.unsupported = False
-default_flags = " /EHs  /DMSVC /D_WIN32 /Zi /GS- "
+default_flags = " /EHs /DMSVC /D_WIN32 /Zi /GS- /FI" + litConfig.compiler_rt_src_root + "\\test\\include\\msvc_force_include.h "
 selected_runtime = None
 test_target_arch = opts.testTargetArch
 
@@ -366,6 +366,12 @@ else:
     'asan-static-runtime','stable-runtime',
     'shadow-scale-3', 'msvc-host', 'win32', 'windows', 'windows-msvc' , 'win32-static-asan',
     'compiler-rt-optimized']
+
+if opts.debug_runtimes:
+    testConfig.available_features += ['asan-debug-runtime']
+else:
+    testConfig.available_features += ['asan-release-runtime']
+
 
 testConfig.available_features += arch_specific_features
 
@@ -395,17 +401,17 @@ else:
     fuzzer_no_main_static_lib = "clang_rt.fuzzer_MT_no_main-" + test_target_arch + ".lib"
     profile_lib = "clang_rt.profile-" + test_target_arch + ".lib"
 
+runtime_flags = ""
+testConfig.environment['_CL_'] = ""
 if opts.force_dynamic:
     testConfig.environment['_LINK_'] ="/debug /incremental:no "
-    testConfig.environment['_CL_'] = DYNAMIC_RT_FLAG + " /Od "
     selected_runtime = DYNAMIC_RT_FLAG
-    default_flags += " /Od "
-    default_flags += DYNAMIC_RT_FLAG
+    runtime_flags += " /Od "
+    runtime_flags += DYNAMIC_RT_FLAG
 else:
     testConfig.environment['_LINK_'] ="/debug  /incremental:no  "
-    testConfig.environment['_CL_'] = STATIC_RT_FLAG
     selected_runtime = STATIC_RT_FLAG
-    default_flags += STATIC_RT_FLAG
+    runtime_flags += STATIC_RT_FLAG
 
 out_to_exe_tuple = ("(?<! (-|/)c )-o %t( |)", lit.TestingConfig.SubstituteCaptures("/Fe:%t\g<2>"))
 out_to_obj_tuple = ("(-|/)c -o %t( |)", lit.TestingConfig.SubstituteCaptures("/c /Fo:%t\g<2>"))
@@ -437,15 +443,19 @@ if opts.disable_opt:
 testConfig.substitutions = {
                             ("FileCheck ", "FileCheck --dump-input=fail "),
                             ("-fsanitize-coverage=func ", lit.TestingConfig.SubstituteCaptures("/d2Sancov " )),
+                            ("%if_not_i386", 'if "' + opts.testTargetArch + '" neq "i386" '),
+                            ("%if_i386", 'if "' + opts.testTargetArch + '" == "i386" '),
                             ("%sancov", "sancov.exe"),
-                            ("%clangxx_asan", litConfig.clang +  default_flags + " /fsanitize=address /Oy- " ),
-                            ("%clang_cl_asan", litConfig.clang + default_flags + " /fsanitize=address " ),
-                            ("%clang_asan", litConfig.clang +  default_flags + " /fsanitize=address /Oy- "),
-                            ("%clang_cl ", litConfig.clang + default_flags),
-                            ("%clang ", litConfig.clang + default_flags),
-                            ("%cpp_compiler ", litConfig.clang + default_flags + " /fsanitize=address /fsanitize=fuzzer "),
-                            ("%no_fuzzer_cpp_compiler ", litConfig.clang + default_flags),
-                            ("%no_fuzzer_c_compiler ", litConfig.clang + default_flags),
+                            ("%clangxx_asan ", litConfig.clang +  default_flags + runtime_flags + " /fsanitize=address /Oy- " ),
+                            ("%clang_cl_asan ", litConfig.clang + default_flags + runtime_flags + " /fsanitize=address " ),
+                            ("%clang_asan ", litConfig.clang +  default_flags + runtime_flags + " /fsanitize=address /Oy- "),
+                            ("%clang_asan_no_rt ", litConfig.clang +  default_flags + " /fsanitize=address /Oy- "),
+                            ("%clang_cl ", litConfig.clang + default_flags + runtime_flags),
+                            ("%clang_cl_no_rt ", litConfig.clang + default_flags),
+                            ("%clang ", litConfig.clang + default_flags + runtime_flags),
+                            ("%cpp_compiler ", litConfig.clang + default_flags + runtime_flags + " /fsanitize=address /fsanitize=fuzzer "),
+                            ("%no_fuzzer_cpp_compiler ", litConfig.clang + default_flags + runtime_flags),
+                            ("%no_fuzzer_c_compiler ", litConfig.clang + default_flags + runtime_flags),
                             ("%libfuzzer_src", litConfig.compiler_rt_src_root + "\\lib\\fuzzer"),
                             ("%asan_dll_lib", litConfig.compiler_rt_libdir + "\\" + dynamic_import_lib + " "),
                             ("%asan_dll ", litConfig.compiler_rt_libdir + "\\" + dynamic_runtime_dll + " "),
@@ -492,6 +502,7 @@ if opts.force_dynamic:
     testConfig.substitutions |= {
         ("%asan_dll_thunk_lib", slashsan(litConfig.compiler_rt_libdir) + "\\" + dynamic_runtime_thunk + " " + slashsan(litConfig.compiler_rt_libdir)+ "\\" + dynamic_import_lib)
     }
+
 testConfig.substitutions |= optimization_subs
 testConfig.environment["INCLUDE"] = testConfig.environment["INCLUDE"] + litConfig.compiler_rt_src_root + "\\include" + ";" + litConfig.compiler_rt_src_root + "\\test\\asan\\TestCases" + ";" + litConfig.compiler_rt_src_root + "\\lib\\fuzzer" + ";"
 testConfig.environment["PATH"] += ";" + os.environ["ASAN_RT_BIN_DIR"] +";"+ os.environ["ASAN_RT_LIB_DIR"] + ";"
@@ -500,7 +511,6 @@ testConfig.environment["PATH"] += ";" + os.environ["ASAN_RT_BIN_DIR"] +";"+ os.e
 if opts.debug_runtimes:
     testConfig.substitutions |= {("[\/\-](MT|MD)(?!d)", lit.TestingConfig.SubstituteCaptures("/\g<1>d"))}
     testConfig.available_features.append("debug-crt")
-    testConfig.environment["_CL_"] += " /U_DEBUG /DNDEBUG=1 "
 else:
     testConfig.available_features.append("non-debug-crt")
 suite = lit.Test.TestSuite("msvc",sys.argv[1], os.environ['TEST_OUTPUT_DIR'], testConfig)
@@ -578,7 +588,7 @@ for cc_file in cc_files:
             __testConfig.substitutions.add(("-O1", "/Od"))
             __testConfig.substitutions.add(("-O1i-", "/Od"))
 
-        __testConfig.environment['_CL_'] += " /Fd" + cc_file + ".pdb " + selected_runtime + " "
+        __testConfig.environment['_CL_'] += " /Fd" + cc_file + ".pdb " + " "
         __testConfig.environment['_LINK_'] += " /force:multiple "
         __suite = lit.Test.TestSuite("msvc",sys.argv[1], os.path.join(__testConfig.environment['TEST_OUTPUT_DIR'],cc_file.replace(".","")+opts.testTargetArch), __testConfig)
         __test = lit.Test.Test(__suite,[ cc_file],__testConfig)
