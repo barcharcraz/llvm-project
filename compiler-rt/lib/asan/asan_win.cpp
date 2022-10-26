@@ -29,6 +29,7 @@
 #include "sanitizer_common/sanitizer_placement_new.h"
 #include "sanitizer_common/sanitizer_win.h"
 #include "sanitizer_common/sanitizer_win_defs.h"
+#include "sanitizer_common/sanitizer_win_immortalize.h"
 
 using namespace __asan;
 
@@ -159,6 +160,223 @@ INTERCEPTOR_WINAPI(HANDLE, CreateThread, LPSECURITY_ATTRIBUTES security,
 
 // }}}
 
+#ifdef SANITIZER_WINDOWS64
+
+// If you change these constants, make the same changes in vcasan.lib... and any
+// other future Windows, AddressSanitizer functionalities, which are closely
+// integrated with the Visual Studio IDE.
+
+// Two constants for vcasan.lib -> IDE
+static constexpr unsigned kVCAsanLibSanitzer =
+    ('san' | 0xE0000000);  // 0xe073616e
+static constexpr unsigned kVCAsanLibAddressSanitzer =
+    (kVCAsanLibSanitzer + 1);  // 0xe073616f
+
+// Next threee constants for Asan RT -> IDE
+
+// 0xe0736170 debugger IDE specific
+static constexpr unsigned kVSEnlighten = (kVCAsanLibSanitzer + 2);
+
+// 0xe0736171 – fake eh code used internally by the debugger to let users
+// possibly stop on the first chance exception
+static constexpr unsigned kVSRawThrown = (kVCAsanLibSanitzer + 3);
+
+// 0xe0736172 – AV was not handled by the address sanitizer runtime. The
+// debugger maps to STATUS_ACCESS_VIOLATION.
+static constexpr unsigned kVSRealExeAVThrown = (kVCAsanLibSanitzer + 4);
+
+__declspec(noinline) static void EnlightenVSDebugger() {
+  if (::IsDebuggerPresent()) {
+    // Must fire before shadow memory is boot strapped by throwing AV's
+    // This is called early from AsanInitInternal()
+    __try {
+      RaiseException(kVSEnlighten, 0, 0, nullptr);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    }
+  }
+}
+
+static LONG CALLBACK
+ShadowExceptionHandler(PEXCEPTION_POINTERS exception_pointers) {
+  // Only handle access violations.
+  if (exception_pointers->ExceptionRecord->ExceptionCode !=
+          EXCEPTION_ACCESS_VIOLATION ||
+      exception_pointers->ExceptionRecord->NumberParameters < 2) {
+    __asan_handle_no_return();
+    return EXCEPTION_CONTINUE_SEARCH;
+  }
+
+  // Only handle access violations that land within the shadow memory.
+  uptr addr =
+      (uptr)(exception_pointers->ExceptionRecord->ExceptionInformation[1]);
+
+  // Check valid shadow range.
+  if (!AddrIsInShadow(addr)) {
+    if (::IsDebuggerPresent()) {
+      __try {
+        ULONG_PTR args[] = {
+            reinterpret_cast<ULONG_PTR>(exception_pointers->ExceptionRecord),
+            reinterpret_cast<ULONG_PTR>(exception_pointers->ContextRecord)};
+
+        // Inform VS this is the AsanRuntime paging in shadow byte area.
+        // Effects only if VS was previously informed this was an ASan binary.
+        RaiseException(kVSRealExeAVThrown, 0, _countof(args), args);
+      } __except (EXCEPTION_EXECUTE_HANDLER) {
+      }
+    }
+
+    __asan_handle_no_return();
+    return EXCEPTION_CONTINUE_SEARCH;
+  }
+
+  // This is an access violation while trying to read from the shadow. Commit
+  // the relevant page and let execution continue.
+
+  // Commit the page.
+  if (!__sanitizer_virtual_alloc((LPVOID)addr, 1, MEM_COMMIT, PAGE_READWRITE)) {
+    return EXCEPTION_CONTINUE_SEARCH;
+  }
+
+  // The page mapping succeeded, so continue execution as usual.
+  return EXCEPTION_CONTINUE_EXECUTION;
+}
+
+// Manages custom exception handlers created by ASAN whenever users call
+// AddVectoredExceptionHandler.
+//
+// NOTE: If the implementation of the shadow memory is changed and no longer
+// requires ASAN to handle AVs in that region, this should be removed.
+class ASANVectoredExceptionHandler {
+ public:
+  // Combines a VectoredExceptionHandler with the ShadowExceptionHandler to
+  // always handle shadow memory access violations first.
+  //
+  // The NT internals will handle specifics behind exception handling execution
+  // and remove race conditions. To avoid maintaining any locks and state for
+  // exception handling internally, this function will call the
+  // ShadowExceptionHandler before any invocation of the user's exception
+  // handler. If the ShadowExceptionHandler returns a status code indicating it
+  // didn't handle the exception, then the user's exception handler will be
+  // called.
+  PVECTORED_EXCEPTION_HANDLER CreateVectoredExceptionHandler(
+      PVECTORED_EXCEPTION_HANDLER Handler) {
+    SpinMutexLock lock(&Mutex);
+
+    // If we will cross a page boundary, or there is no active page, create a
+    // new page and update position in memory for newly created functions
+    if (AtPageBoundary(lock) || UNLIKELY(!PagePtr)) {
+      AllocateNewPage(lock);
+    }
+
+    return CreateNewExceptionHandler(lock, Handler);
+  }
+
+ private:
+  struct CombinedFunctionStub {
+    CombinedFunctionStub(PVECTORED_EXCEPTION_HANDLER UserHandler) {
+      static_assert(sizeof(CombinedFunctionStub) % 16 == 0,
+                    "Must have 2 byte alignment");
+      static void *first = static_cast<void *>(&ShadowExceptionHandler);
+      auto userFunction = static_cast<void *>(UserHandler);
+      internal_memcpy(Instructions, &first, sizeof(void *));
+      internal_memcpy(Instructions + sizeof(void *), &userFunction,
+                      sizeof(void *));
+    }
+
+    // Instruction set for properly calling a combination of a custom
+    // VectoredExceptionHandler preceded by the ShadowExceptionHandler on amd64
+    // clang-format off
+    unsigned char Instructions[96] = {
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // first addr, will be ShadowExceptionHandler
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // second addr, will be user's VectoredExceptionHandler
+      // StartOfInstructions:
+      0x55, 0x53,                                     // push rbp, push rbx
+      0x48, 0x89, 0x4C, 0x24, 0x08,                   // mov         qword ptr [rsp+8],rcx
+      0x48, 0x83, 0xEC, 0x38,                         // sub         rsp,38h
+      0x48, 0x8B, 0x4C, 0x24, 0x40,                   // mov         rcx,qword ptr [rsp+40h]
+      0x48, 0x8b, 0x05,       0xd9, 0xff, 0xff, 0xff, // mov rax first (via offset) -41 (this is ShadowExceptionHandler addr)
+      0xff, 0xd0,                                     // call ShadowExceptionHandler
+      0x89, 0x44, 0x24, 0x20,                         // mov         dword ptr [rsp+20h],eax
+      0x83, 0x7C, 0x24, 0x20, 0x00,                   // cmp         dword ptr [rsp+20h],0
+      0x74, 0x06,                                     // je          rsp,38h (jump to CallUserCode)
+      0x8B, 0x44, 0x24, 0x20,                         // mov         eax,dword ptr [rsp+20h]
+      0xEB, 0x14,                                     // jmp         jump to Return
+      // CallUserCode:
+      0x48, 0x8B, 0x4C, 0x24, 0x40,                   // mov         rcx,qword ptr [rsp+40h]
+      0x48, 0x8b, 0x05,       0xC2, 0xff, 0xff, 0xff, // mov rax second (via offset) -64 (this is user's VectoredExceptionHandler addr)
+      0x48, 0x83, 0xC4, 0x38,                         // add         rsp,38h
+      0x5b, 0x5d,                                     // pop rbp, pop rbx
+      0xff, 0xe0,                                     // jmp rax     (compiler likes tail call better to maintain call stack)
+      // Return:
+      0x48, 0x83, 0xC4, 0x38,                         // add         rsp,38h
+      0x5b, 0x5d,                                     // pop rbp, pop rbx
+      0xc3,                                           // ret
+      0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc, // int 3
+      0xcc, 0xcc, 0xcc                                // int 3
+    };
+    // clang-format on
+  };
+
+  void AllocateNewPage(const SpinMutexLock &Lock) {
+    DWORD oldProtection;
+    PagePtr = static_cast<unsigned char *>(
+        MmapOrDie(GetPageSizeCached(), "ASANVectoredExceptionHandler"));
+    CHECK(__sanitizer_virtual_protect(PagePtr, GetPageSizeCached(),
+                                      PAGE_EXECUTE_READWRITE, &oldProtection));
+    NextHandlerPosition = 0;
+  }
+
+  bool AtPageBoundary(const SpinMutexLock &Lock) {
+    return NextHandlerPosition + FunctionSize > GetPageSizeCached();
+  }
+
+  PVECTORED_EXCEPTION_HANDLER CreateNewExceptionHandler(
+      const SpinMutexLock &Lock, PVECTORED_EXCEPTION_HANDLER Handler) {
+    unsigned char *newHandler;
+    auto combinedExceptionHandler = CombinedFunctionStub(Handler);
+
+    // Copy the newly created exception handler into executable memory
+    internal_memcpy(PagePtr + NextHandlerPosition,
+                    combinedExceptionHandler.Instructions, FunctionSize);
+    newHandler = PagePtr + NextHandlerPosition;
+    NextHandlerPosition += FunctionSize;
+
+    // Return the address of StartOfInstructions label from newly created
+    // exception handler to add
+    return reinterpret_cast<PVECTORED_EXCEPTION_HANDLER>(newHandler +
+                                                         (2 * sizeof(void *)));
+  }
+
+  StaticSpinMutex Mutex = {};
+  unsigned char *PagePtr = nullptr;  // Current page of memory being used
+  size_t NextHandlerPosition = 0;    // Position of next function allocation
+  static constexpr size_t FunctionSize = sizeof(CombinedFunctionStub);
+};
+
+ASANVectoredExceptionHandler *GetASANVectoredExceptionHandler() {
+  return &immortalize<ASANVectoredExceptionHandler>();
+}
+
+INTERCEPTOR_WINAPI(PVOID, AddVectoredExceptionHandler, ULONG First,
+                   PVECTORED_EXCEPTION_HANDLER Handler) {
+  CHECK(REAL(AddVectoredExceptionHandler));
+
+  auto exceptionHandler =
+      GetASANVectoredExceptionHandler()->CreateVectoredExceptionHandler(
+          Handler);
+
+  return REAL(AddVectoredExceptionHandler)(First, exceptionHandler);
+}
+
+INTERCEPTOR_WINAPI(ULONG, RemoveVectoredExceptionHandler, PVOID Handler) {
+  CHECK(REAL(RemoveVectoredExceptionHandler));
+  // TODO: Safely manage removal of combined exception handler functions here to
+  // avoid leaking memory.
+  return REAL(RemoveVectoredExceptionHandler)(Handler);
+}
+
+#endif
+
 namespace __asan {
 
 void InitializePlatformInterceptors() {
@@ -188,6 +406,17 @@ void InitializePlatformInterceptors() {
                                              (uptr)WRAP(RtlRaiseException),
                                              (uptr *)&REAL(RtlRaiseException)));
   }
+
+#ifdef SANITIZER_WINDOWS64
+  CHECK(::__interception::OverrideFunction(
+      "AddVectoredExceptionHandler", (uptr)WRAP(AddVectoredExceptionHandler),
+      (uptr *)&REAL(AddVectoredExceptionHandler)));
+
+  CHECK(::__interception::OverrideFunction(
+      "RemoveVectoredExceptionHandler",
+      (uptr)WRAP(RemoveVectoredExceptionHandler),
+      (uptr *)&REAL(RemoveVectoredExceptionHandler)));
+#endif
 }
 
 // This mocks an internal CRT data structure which is subject to change.
@@ -343,89 +572,6 @@ void AsanOnDeadlySignal(int, void *siginfo, void *context) { UNIMPLEMENTED(); }
 bool PlatformUnpoisonStacks() { return false; }
 
 #if SANITIZER_WINDOWS64
-
-// If you change these constants, make the same changes in vcasan.lib... and any
-// other future Windows, AddressSanitizer functionalities, which are closely
-// integrated with the Visual Studio IDE.
-
-// Two constants for vcasan.lib -> IDE
-static constexpr unsigned kVCAsanLibSanitzer =
-    ('san' | 0xE0000000);  // 0xe073616e
-static constexpr unsigned kVCAsanLibAddressSanitzer =
-    (kVCAsanLibSanitzer + 1);  // 0xe073616f
-
-// Next threee constants for Asan RT -> IDE
-
-// 0xe0736170 debugger IDE specific
-static constexpr unsigned kVSEnlighten = (kVCAsanLibSanitzer + 2);
-
-// 0xe0736171 – fake eh code used internally by the debugger to let users
-// possibly stop on the first chance exception
-static constexpr unsigned kVSRawThrown = (kVCAsanLibSanitzer + 3);
-
-// 0xe0736172 – AV was not handled by the address sanitizer runtime. The
-// debugger maps to STATUS_ACCESS_VIOLATION.
-static constexpr unsigned kVSRealExeAVThrown = (kVCAsanLibSanitzer + 4);
-
-__declspec(noinline) static void EnlightenVSDebugger() {
-#if SANITIZER_WINDOWS64
-
-  if (::IsDebuggerPresent()) {
-    // Must fire before shadow memory is boot strapped by throwing AV's
-    // This is called early from AsanInitInternal()
-    __try {
-      RaiseException(kVSEnlighten, 0, 0, nullptr);
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-    }
-  }
-#endif
-}
-
-static LONG CALLBACK
-ShadowExceptionHandler(PEXCEPTION_POINTERS exception_pointers) {
-  // Only handle access violations.
-  if (exception_pointers->ExceptionRecord->ExceptionCode !=
-          EXCEPTION_ACCESS_VIOLATION ||
-      exception_pointers->ExceptionRecord->NumberParameters < 2) {
-    __asan_handle_no_return();
-    return EXCEPTION_CONTINUE_SEARCH;
-  }
-
-  // Only handle access violations that land within the shadow memory.
-  uptr addr =
-      (uptr)(exception_pointers->ExceptionRecord->ExceptionInformation[1]);
-
-  // Check valid shadow range.
-  if (!AddrIsInShadow(addr)) {
-    if (::IsDebuggerPresent()) {
-      __try {
-        ULONG_PTR args[] = {
-            reinterpret_cast<ULONG_PTR>(exception_pointers->ExceptionRecord),
-            reinterpret_cast<ULONG_PTR>(exception_pointers->ContextRecord)};
-
-        // Inform VS this is the AsanRuntime paging in shadow byte area.
-        // Effects only if VS was previously informed this was an ASan binary.
-        RaiseException(kVSRealExeAVThrown, 0, _countof(args), args);
-      } __except (EXCEPTION_EXECUTE_HANDLER) {
-      }
-    }
-
-    __asan_handle_no_return();
-    return EXCEPTION_CONTINUE_SEARCH;
-  }
-
-  // This is an access violation while trying to read from the shadow. Commit
-  // the relevant page and let execution continue.
-
-  // Commit the page.
-  if (!__sanitizer_virtual_alloc((LPVOID)addr, 1, MEM_COMMIT,
-                                          PAGE_READWRITE)) {
-    return EXCEPTION_CONTINUE_SEARCH;
-  }
-
-  // The page mapping succeeded, so continue execution as usual.
-  return EXCEPTION_CONTINUE_EXECUTION;
-}
 
 #endif
 
