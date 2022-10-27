@@ -1,5 +1,7 @@
 // RUN: %clang_cl_asan -Od %s -Fe%t
 // RUN: %env_asan_opts=handle_sigfpe=1 not %run %t 2>&1 | FileCheck %s
+// TODO: Should this be supported in MSVC?
+// XFAIL: msvc-host
 
 // Test the error output from misaligned SSE2 memory access. This is a READ
 // memory access. Windows appears to always provide an address of -1 for these
