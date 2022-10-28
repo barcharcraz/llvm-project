@@ -160,7 +160,7 @@ INTERCEPTOR_WINAPI(HANDLE, CreateThread, LPSECURITY_ATTRIBUTES security,
 
 // }}}
 
-#ifdef SANITIZER_WINDOWS64
+#if SANITIZER_WINDOWS64
 
 // If you change these constants, make the same changes in vcasan.lib... and any
 // other future Windows, AddressSanitizer functionalities, which are closely
@@ -407,7 +407,7 @@ void InitializePlatformInterceptors() {
                                              (uptr *)&REAL(RtlRaiseException)));
   }
 
-#ifdef SANITIZER_WINDOWS64
+#if SANITIZER_WINDOWS64
   CHECK(::__interception::OverrideFunction(
       "AddVectoredExceptionHandler", (uptr)WRAP(AddVectoredExceptionHandler),
       (uptr *)&REAL(AddVectoredExceptionHandler)));
@@ -570,10 +570,6 @@ void ReadContextStack(void *context, uptr *stack, uptr *ssize) {
 void AsanOnDeadlySignal(int, void *siginfo, void *context) { UNIMPLEMENTED(); }
 
 bool PlatformUnpoisonStacks() { return false; }
-
-#if SANITIZER_WINDOWS64
-
-#endif
 
 void InitializePlatformExceptionHandlers() {
 #if SANITIZER_WINDOWS64

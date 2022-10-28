@@ -1,15 +1,13 @@
 // RUN: %clang_asan /std:c++17 /EHsc -Od %s -Fe%t && not %run %t AsanReportTest 2>&1 | FileCheck %s --check-prefix=CHECK1
 // RUN: %clang_asan /std:c++17 /EHsc -Od %s -Fe%t && not %run %t UserHandlerTest 2>&1 | FileCheck %s --check-prefix=CHECK2
-// RUN: %clang_asan /std:c++17 /EHsc -Od %s -Fe%t && not %run %t ManyHandlersTest 2>&1 | FileCheck %s --check-prefix=CHECK3
-// RUN: %clang_asan /std:c++17 /EHsc -Od %s -Fe%t && not %run %t MultipleExceptionTest 2>&1 | FileCheck %s --check-prefix=CHECK4
-// RUN: %clang_asan /std:c++17 /EHsc -Od %s -Fe%t && not %run %t NestedShadowExceptionTest 2>&1 | FileCheck %s --check-prefix=CHECK5
-// RUN: %clang_asan /std:c++17 /EHsc -Od %s -Fe%t && not %run %t RemovalTest 2>&1 | FileCheck %s --check-prefix=CHECK6
-// RUN: %clang_asan /std:c++17 /EHsc -Od %s -Fe%t && not %run %t RemoveOneTest 2>&1 | FileCheck %s --check-prefix=CHECK7
-// RUN: %clang_asan /std:c++17 /EHsc -Od %s -Fe%t && not %run %t RemoveAfterFirstExceptionTest 2>&1 | FileCheck %s --check-prefix=CHECK8
-// RUN: %clang_asan /std:c++17 /EHsc -Od %s -Fe%t && not %run %t VeryManyHandlers 2>&1 | FileCheck %s --check-prefix=CHECK9
+// RUN: %if_not_i386 ( %clang_asan /std:c++17 /EHsc -Od %s -Fe%t && not %run %t ManyHandlersTest 2>&1 | FileCheck %s --check-prefix=CHECK3 )
+// RUN: %if_not_i386 ( %clang_asan /std:c++17 /EHsc -Od %s -Fe%t && not %run %t MultipleExceptionTest 2>&1 | FileCheck %s --check-prefix=CHECK4 )
+// RUN: %if_not_i386 ( %clang_asan /std:c++17 /EHsc -Od %s -Fe%t && not %run %t NestedShadowExceptionTest 2>&1 | FileCheck %s --check-prefix=CHECK5 )
+// RUN: %if_not_i386 ( %clang_asan /std:c++17 /EHsc -Od %s -Fe%t && not %run %t RemovalTest 2>&1 | FileCheck %s --check-prefix=CHECK6 )
+// RUN: %if_not_i386 ( %clang_asan /std:c++17 /EHsc -Od %s -Fe%t && not %run %t RemoveOneTest 2>&1 | FileCheck %s --check-prefix=CHECK7 )
+// RUN: %if_not_i386 ( %clang_asan /std:c++17 /EHsc -Od %s -Fe%t && not %run %t RemoveAfterFirstExceptionTest 2>&1 | FileCheck %s --check-prefix=CHECK8 )
+// RUN: %if_not_i386 ( %clang_asan /std:c++17 /EHsc -Od %s -Fe%t && not %run %t VeryManyHandlers 2>&1 | FileCheck %s --check-prefix=CHECK9 )
 
-// ASAN only adds VEH on amd64
-// REQUIRES: asan-64-bits
 #include <algorithm>
 #include <iostream>
 #include <sanitizer/asan_interface.h>
@@ -95,14 +93,24 @@ void RecordStackTrace(EXCEPTION_POINTERS *ep) {
   RtlCaptureContext(context);
 
   STACKFRAME64 frame;
+#ifdef _M_IX86
+  auto imgType = IMAGE_FILE_MACHINE_I386;
+  frame.AddrPC.Offset = context->Eip;
+  frame.AddrPC.Mode = AddrModeFlat;
+  frame.AddrFrame.Offset = context->Ebp;
+  frame.AddrFrame.Mode = AddrModeFlat;
+  frame.AddrStack.Offset = context->Esp;
+  frame.AddrStack.Mode = AddrModeFlat;
+#else
+  auto imgType = IMAGE_FILE_MACHINE_AMD64;
   frame.AddrPC.Offset = context->Rip;
   frame.AddrPC.Mode = AddrModeFlat;
   frame.AddrStack.Offset = context->Rsp;
   frame.AddrStack.Mode = AddrModeFlat;
   frame.AddrFrame.Offset = context->Rbp;
   frame.AddrFrame.Mode = AddrModeFlat;
+#endif
 
-  auto imgType = IMAGE_FILE_MACHINE_AMD64;
   int frameNumber = 0;
 
   while (StackWalk64(imgType, process, hThread, &frame, context, NULL, SymFunctionTableAccess64, SymGetModuleBase64, NULL) && frameNumber++ < maxFrames) {
