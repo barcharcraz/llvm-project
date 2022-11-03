@@ -83,7 +83,11 @@ void ShowStatsAndAbort() {
   Die();
 }
 
+#ifdef _MSC_VER
+__forceinline
+#else
 NOINLINE
+#endif
 static void ReportGenericErrorWrapper(uptr addr, bool is_write, int size,
                                       int exp_arg, bool fatal) {
   GET_CALLER_PC_BP_SP;
