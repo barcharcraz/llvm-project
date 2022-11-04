@@ -153,6 +153,23 @@ static void CheckODRViolationViaIndicator(const Global *g) {
   }
 }
 
+static bool IsOdrViolation(const Global *globalToRegister,
+                           const Global *globalAlreadyRegistered) {
+  return (globalToRegister->beg == globalAlreadyRegistered->beg) &&
+         (flags()->detect_odr_violation >= 2 ||
+          globalToRegister->size != globalAlreadyRegistered->size) &&
+         !IsODRViolationSuppressed(globalToRegister->name)
+#ifdef SANITIZER_WINDOWS
+         // TODO: BUG #1643067 for implementing better ODR violation handling
+         // In certain cases, the address of globals are not being recorded
+         // properly. In that scenario, checking if the two globals differ by
+         // name should not result in an ODR violation.
+         && (internal_strcmp(globalToRegister->name,
+                             globalAlreadyRegistered->name) == 0)
+#endif
+      ;
+}
+
 // Check ODR violation for given global G by checking if it's already poisoned.
 // We use this method in case compiler doesn't use private aliases for global
 // variables.
@@ -161,11 +178,10 @@ static void CheckODRViolationViaPoisoning(const Global *g) {
     // This check may not be enough: if the first global is much larger
     // the entire redzone of the second global may be within the first global.
     for (ListOfGlobals *l = list_of_all_globals; l; l = l->next) {
-      if (g->beg == l->g->beg &&
-          (flags()->detect_odr_violation >= 2 || g->size != l->g->size) &&
-          !IsODRViolationSuppressed(g->name))
-        ReportODRViolation(g, FindRegistrationSite(g),
-                           l->g, FindRegistrationSite(l->g));
+      if (IsOdrViolation(g, l->g)) {
+        ReportODRViolation(g, FindRegistrationSite(g), l->g,
+                           FindRegistrationSite(l->g));
+      }
     }
   }
 }
