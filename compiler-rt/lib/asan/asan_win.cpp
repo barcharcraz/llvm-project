@@ -268,6 +268,8 @@ void FlushUnneededASanShadowMemory(uptr p, uptr size) {
     ::VirtualFree(reinterpret_cast<LPVOID>(shadow_beg),
                   static_cast<size_t>(shadow_end - shadow_beg), MEM_DECOMMIT);
   }
+#elif SANITIZER_WINDOWS
+// No-op on 32-bit windows since full shadow memory is always committed.
 #else
   ReleaseMemoryPagesToOS(MemToShadow(p), MemToShadow(p + size));
 #endif
