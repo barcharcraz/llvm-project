@@ -408,14 +408,14 @@ void InitializePlatformInterceptors() {
   }
 
 #if SANITIZER_WINDOWS64
-  CHECK(::__interception::OverrideFunction(
+  ::__interception::OverrideFunction(
       "AddVectoredExceptionHandler", (uptr)WRAP(AddVectoredExceptionHandler),
-      (uptr *)&REAL(AddVectoredExceptionHandler)));
+      (uptr *)&REAL(AddVectoredExceptionHandler));
 
-  CHECK(::__interception::OverrideFunction(
+  ::__interception::OverrideFunction(
       "RemoveVectoredExceptionHandler",
       (uptr)WRAP(RemoveVectoredExceptionHandler),
-      (uptr *)&REAL(RemoveVectoredExceptionHandler)));
+      (uptr *)&REAL(RemoveVectoredExceptionHandler));
 #endif
 }
 
