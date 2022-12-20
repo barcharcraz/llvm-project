@@ -49,9 +49,10 @@ static void unregister_dso_globals() {
 }
 
 // Register globals
-#pragma section(".CRT$XCU", long, read)
+#pragma section(".CRT$XCB", long, read)
 #pragma section(".CRT$XTX", long, read)
-extern "C" __declspec(allocate(".CRT$XCU"))
+// adding to XCB to be just slightly earlier than any dynamic initializers
+extern "C" __declspec(allocate(".CRT$XCB"))
 void (*const __asan_dso_reg_hook)() = &register_dso_globals;
 extern "C" __declspec(allocate(".CRT$XTX"))
 void (*const __asan_dso_unreg_hook)() = &unregister_dso_globals;
