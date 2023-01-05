@@ -14,6 +14,10 @@
 #include "sanitizer_platform.h"
 #if SANITIZER_WINDOWS
 
+#ifndef FAST_FAIL_ASAN_ERROR
+#define FAST_FAIL_ASAN_ERROR 71
+#endif
+
 #define WIN32_LEAN_AND_MEAN
 #define NOGDI
 #include <Windows.h>
@@ -22,6 +26,7 @@
 #include <psapi.h>
 #include <stdlib.h>
 
+#include "asan/asan_internal.h"
 #include "interception/interception.h"
 #include "sanitizer_common.h"
 #include "sanitizer_file.h"
@@ -883,8 +888,13 @@ void internal__exit(int exitcode) {
   // so add our own breakpoint here.
   if (::IsDebuggerPresent())
     __debugbreak();
-  TerminateProcess(GetCurrentProcess(), exitcode);
-  BUILTIN_UNREACHABLE();
+  if (common_flags()->windows_fast_fail_on_error) {
+    __fastfail(FAST_FAIL_ASAN_ERROR);
+  }
+  else {
+    TerminateProcess(GetCurrentProcess(), exitcode);
+    BUILTIN_UNREACHABLE();
+  }
 }
 
 uptr internal_ftruncate(fd_t fd, uptr size) { UNIMPLEMENTED(); }

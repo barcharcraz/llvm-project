@@ -272,3 +272,6 @@ COMMON_FLAG(const char *, iat_overwrite, "error",
             "The default value, \"error\", returns an error whenever an overwrite is detected."
             "\"protect\" will attempt to protect from overwriting the IAT and proceed."
             "\"ignore\" will not attempt to correct any IAT overwrite and proceed.")
+COMMON_FLAG(bool, windows_fast_fail_on_error, false,
+            "(Windows only) terminates the process with a __fastfail(71) after "
+            "printing the error report.")
