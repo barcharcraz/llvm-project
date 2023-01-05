@@ -29,6 +29,9 @@ bool IsHandledDeadlyException(DWORD exceptionCode);
 // relies on this function for preventing deadlocks on process termination.
 bool IsProcessTerminating();
 
+// Checks if the address is part of a memory mapping.
+bool IsMemoryMapped(void* Handle);
+
 }  // namespace __sanitizer
 
 extern "C" {

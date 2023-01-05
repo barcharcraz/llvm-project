@@ -1317,6 +1317,7 @@ INTERCEPTOR_WINAPI(bool, RtlValidateHeap, void *HeapHandle, DWORD Flags, void *B
 
 INTERCEPTOR_WINAPI(void *, RtlAllocateHeap, HANDLE HeapHandle, DWORD Flags,
                    size_t Size) {
+
   if (UNLIKELY(!asan_inited || __sanitizer::IsProcessTerminating())) {
     // DebugCheck omitted: Asan can't handle the call yet.
     return REAL(RtlAllocateHeap)(HeapHandle, Flags, Size);
@@ -1345,8 +1346,17 @@ INTERCEPTOR_WINAPI(void *, RtlAllocateHeap, HANDLE HeapHandle, DWORD Flags,
   const DWORD all_flags = heap_handle.GetFlags() | Flags;
   const DWORD unsupported_flags = all_flags & HEAP_ALLOCATE_UNSUPPORTED_FLAGS;
 
+  // NOTE:
+  //
+  // ASAN won't place this allocation inside of a heap from RtlCreateHeap like REAL(RtlAllocateHeap) would.
+  // When ASAN intercepts RtlAllocateHeap, the allocation instead will live inside the ASAN allocator.
+  // The HeapHandle parameter is used for tracking which heap the allocation is meant to
+  // belong to, but the allocation doesn't actually live there. This is problematic for
+  // applications that make use of mapped memory, specifically in the case of
+  // multiple actors passing around relative addresses and expecting allocations to be at a particular
+  // location. If memory is mapped, we delegate back to the real Rtl* functions.
   if (UNLIKELY(!heap_handle.IsSupported() || unsupported_flags ||
-               heap_handle.IsLfhInternal(Flags))) {
+               heap_handle.IsLfhInternal(Flags) || IsMemoryMapped(HeapHandle))) {
     auto rtlguard = heap_handle.RtlReentrancyLockGuard();
 
     DCHECK_ASSERT_LOCK_INVARIANT_CALL_RTL(dbg);
@@ -1450,7 +1460,8 @@ static void __asan_wrap_RtlFreeHeap_UpdateTracking(AsanHeapHandle &heap_handle,
 
 INTERCEPTOR_WINAPI(LOGICAL, RtlFreeHeap, void *HeapHandle, DWORD Flags,
                    void *BaseAddress) {
-  if (UNLIKELY(!asan_inited || !BaseAddress)) {
+  
+  if (UNLIKELY(!asan_inited || !BaseAddress || IsMemoryMapped(HeapHandle))) {
     // DebugCheck omitted: Asan can't handle the call yet/invalid arguments.
     return REAL(RtlFreeHeap)(HeapHandle, Flags, BaseAddress);
   }
@@ -1463,7 +1474,7 @@ INTERCEPTOR_WINAPI(LOGICAL, RtlFreeHeap, void *HeapHandle, DWORD Flags,
   if (LIKELY(!__sanitizer::IsProcessTerminating())) {
     auto heap_handle = GetAsanHeap(HeapHandle, dbg);
 
-    if (UNLIKELY(owner == AllocationOwnership::RTL)) {
+    if (UNLIKELY(owner == AllocationOwnership::RTL || IsMemoryMapped(HeapHandle))) {
       auto rtlguard = heap_handle.RtlReentrancyLockGuard();
 
       DCHECK_ASSERT_LOCK_INVARIANT_CALL_RTL(dbg);
@@ -1507,6 +1518,7 @@ INTERCEPTOR_WINAPI(LOGICAL, RtlFreeHeap, void *HeapHandle, DWORD Flags,
 
 INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
                    void *BaseAddress, size_t Size) {
+
   if (UNLIKELY(!asan_inited || __sanitizer::IsProcessTerminating())) {
     // DebugCheck omitted: Asan can't handle the call yet/invalid arguments.
     return REAL(RtlReAllocateHeap)(HeapHandle, Flags, BaseAddress, Size);
@@ -1524,7 +1536,7 @@ INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
   auto heap_handle = GetAsanHeap(HeapHandle, dbg);
 
   if (UNLIKELY(!heap_handle.IsSupported() ||
-               heap_handle.IsLfhInternal(Flags))) {
+               heap_handle.IsLfhInternal(Flags) || IsMemoryMapped(HeapHandle))) {
     auto rtlguard = heap_handle.RtlReentrancyLockGuard();
 
     DCHECK_ASSERT_LOCK_INVARIANT_CALL_RTL(dbg);

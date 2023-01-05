@@ -1295,6 +1295,14 @@ bool IsProcessTerminating() {
       .IsShutdownInProgress();
 }
 
+bool IsMemoryMapped(HANDLE Handle) {
+  MEMORY_BASIC_INFORMATION info;
+  if (!__sanitizer_virtual_query(Handle, &info, sizeof(info))) {
+    return false;
+  }
+  return info.Type == MEM_MAPPED;
+}
+
 }  // namespace __sanitizer
 
 #endif  // _WIN32
