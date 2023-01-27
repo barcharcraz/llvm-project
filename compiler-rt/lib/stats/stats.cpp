@@ -64,6 +64,10 @@ void WriteModuleReport(StatModule **smodp) {
     OpenStatsFile(path_env);
   const LoadedModule *mod = Symbolizer::GetOrInit()->FindModuleForAddress(
       reinterpret_cast<uptr>(smodp));
+  if (!mod) {
+    Report("stats: could not find module for address %p\n", smodp);
+    return;
+  }
   WriteToFile(stats_fd, mod->full_name(),
               internal_strlen(mod->full_name()) + 1);
   for (StatModule *smod = *smodp; smod; smod = smod->next) {
