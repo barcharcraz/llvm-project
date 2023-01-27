@@ -382,6 +382,10 @@ static bool IsInvalidPointerPair(uptr a1, uptr a2) {
     return __asan_region_is_poisoned(left, offset);
 
   AsanThread *t = GetCurrentThread();
+  if (!t) {
+    // ASan's thread context has not yet been initialized, so we can't know.
+    return false;
+  }
 
   // check whether left is a stack memory pointer
   if (uptr shadow_offset1 = t->GetStackVariableShadowStart(left)) {
