@@ -1,8 +1,8 @@
-// RUN: %clang_cl_asan /D_DISABLE_STRING_ANNOTATION -Od %s -Fe%t
-// RUN: %clang_cl_asan -Od %p/deadlock_on_process_shutdown_driver.cpp /D_DISABLE_STRING_ANNOTATION -Fe%t.exe
+// RUN: %clang_cl_asan /D_DISABLE_VECTOR_ANNOTATION /D_DISABLE_STRING_ANNOTATION -Od %s -Fe%t
+// RUN: %clang_cl_asan /D_DISABLE_VECTOR_ANNOTATION /D_DISABLE_STRING_ANNOTATION -Od %p/deadlock_on_process_shutdown_driver.cpp -Fe%t.exe
 // RUN: not %run %t.exe %t 2>&1 | FileCheck %s
 
-// TODO 06/28/2022: remove annotation compile option after Bug #1551295
+// Annotations disabled due to libconcrt.lib compilation mismatch
 
 #include <iostream>
 #include <ppl.h>
