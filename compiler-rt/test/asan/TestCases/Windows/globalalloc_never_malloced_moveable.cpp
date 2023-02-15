@@ -1,23 +1,23 @@
 // RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_GLOBAL -DTEST_FREE
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true not %run %t 2>&1 | FileCheck %s --check-prefixes CHECK,CHECK-FREE
+// RUN: not %run %t 2>&1 | FileCheck %s --check-prefixes CHECK,CHECK-FREE
 // RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_GLOBAL -DTEST_REALLOC
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true not %run %t 2>&1 | FileCheck %s --check-prefixes CHECK,CHECK-FREE
+// RUN: not %run %t 2>&1 | FileCheck %s --check-prefixes CHECK,CHECK-FREE
 // RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_GLOBAL -DTEST_SIZE
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true not %run %t 2>&1 | FileCheck %s --check-prefixes CHECK,CHECK-SIZE
+// RUN: not %run %t 2>&1 | FileCheck %s --check-prefixes CHECK,CHECK-SIZE
 // RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_GLOBAL -DTEST_HANDLE
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true not %run %t 2>&1 | FileCheck %s --check-prefixes CHECK,CHECK-GENERAL
+// RUN: not %run %t 2>&1 | FileCheck %s --check-prefixes CHECK,CHECK-GENERAL
 // RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_GLOBAL -DTEST_LOCK
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true not %run %t 2>&1 | FileCheck %s --check-prefixes CHECK,CHECK-GENERAL
+// RUN: not %run %t 2>&1 | FileCheck %s --check-prefixes CHECK,CHECK-GENERAL
 // RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_LOCAL -DTEST_FREE
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true not %run %t 2>&1 | FileCheck %s --check-prefixes CHECK,CHECK-FREE
+// RUN: not %run %t 2>&1 | FileCheck %s --check-prefixes CHECK,CHECK-FREE
 // RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_LOCAL -DTEST_REALLOC
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true not %run %t 2>&1 | FileCheck %s --check-prefixes CHECK,CHECK-FREE
+// RUN: not %run %t 2>&1 | FileCheck %s --check-prefixes CHECK,CHECK-FREE
 // RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_LOCAL -DTEST_SIZE
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true not %run %t 2>&1 | FileCheck %s --check-prefixes CHECK,CHECK-SIZE
+// RUN: not %run %t 2>&1 | FileCheck %s --check-prefixes CHECK,CHECK-SIZE
 // RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_LOCAL -DTEST_HANDLE
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true not %run %t 2>&1 | FileCheck %s --check-prefixes CHECK,CHECK-GENERAL
+// RUN: not %run %t 2>&1 | FileCheck %s --check-prefixes CHECK,CHECK-GENERAL
 // RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_LOCAL -DTEST_LOCK
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true not %run %t 2>&1 | FileCheck %s --check-prefixes CHECK,CHECK-GENERAL
+// RUN: not %run %t 2>&1 | FileCheck %s --check-prefixes CHECK,CHECK-GENERAL
 
 
 #include "globallocal_shared.h"
@@ -27,7 +27,7 @@
 #include <windows.h>
 
 int main() {
-  void *unallocated_handle = reinterpret_cast<void *>(reinterpret_cast<uintptr_t>(ALLOC(32, 0)) + 1);
+  void *unallocated_handle = reinterpret_cast<void *>(reinterpret_cast<uintptr_t>(ALLOC(0, 32)) + 1);
   print_addr("handle", unallocated_handle);
   // CHECK: handle: [[HANDLE:0x[0-9a-f]+]]
 

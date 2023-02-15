@@ -1,7 +1,7 @@
 // RUN: %clang_cl_asan /Od %s /std:c++17 -Fe%t -DTEST_LOCAL
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true %run %t 2>&1 | FileCheck %s
+// RUN: %run %t 2>&1 | FileCheck %s
 // RUN: %clang_cl_asan /Od %s /std:c++17 -Fe%t -DTEST_GLOBAL
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true %run %t 2>&1 | FileCheck %s
+// RUN: %run %t 2>&1 | FileCheck %s
 
 // Test all non-failing behavior cases to ensure it is the same as when ASAN is not attached.
 

@@ -65,6 +65,9 @@ constexpr unsigned long HEAP_REALLOC_SUPPORTED_FLAGS =
 constexpr unsigned long HEAP_REALLOC_UNSUPPORTED_FLAGS =
     (~HEAP_REALLOC_SUPPORTED_FLAGS);
 
+constexpr unsigned long HEAP_MAXIMUM_TAG = 0x0FFF;
+constexpr unsigned long HEAP_TAG_MASK = HEAP_MAXIMUM_TAG << 18;
+
 extern "C" {
 HANDLE WINAPI GetProcessHeap();
 DWORD WINAPI GetCurrentThreadId();
@@ -1139,6 +1142,43 @@ static auto GetAsanHeap(void *heap_handle, DebugChecks dbg) {
   return AsanHeapHandle(h_find_or_create, dbg);
 }
 
+struct HeapFlags {
+  // There are Win32 APIs which may rely on internal undocumented Rtl
+  // functions that intend to interop with the Rtl Heap. Since we cannot
+  // intercept these APIs, instead we detect which calls are coming from
+  // the OS and redirect them back to the real Win32 version via unsupported
+  // flags.
+
+  // OS internals also use 'tags' to mark their allocations. We cannot
+  // determine individual tags used by different components, since they
+  // are dynamically generated, but we can have a blanket policy to
+  // not hook the allocation if any tag is detected.
+
+  // For example, (when windows_hook_legacy_allocators=false), memory
+  // allocated via GlobalAlloc will be unable to be reallocated via
+  // GlobalReAlloc due to because it uses an internal API to verify
+  // whether the passed memory is owned by the current heap.
+
+  HeapFlags(DWORD heapFlags, DWORD userFlags, DWORD unsupportedFlags)
+      : AllFlags(heapFlags | userFlags) {
+    UnsupportedFlags = AllFlags & unsupportedFlags;
+    if (flags()->windows_hook_legacy_allocators) {
+      // Tagged heaps are not filtered out for performance considerations.
+      // If they are filtered out, in a multithreaded application where large
+      // quantities of threads are all attempting to read/write from the same
+      // heap concurrently, each thread will be contending for both the
+      // RtlReentrancyLock and HeapLock.
+      //
+      // Note that any allocation with a tag in the flags is unsupported if
+      // legacy allocators are not being used.
+      UnsupportedFlags &= ~HEAP_TAG_MASK;
+    }
+  }
+
+  DWORD AllFlags;
+  DWORD UnsupportedFlags;
+};
+
 struct AllocationOwnership : public DebugChecks {
   enum { NEITHER = 0, ASAN = 1, RTL = 2 };
   const int ownership;
@@ -1327,24 +1367,8 @@ INTERCEPTOR_WINAPI(void *, RtlAllocateHeap, HANDLE HeapHandle, DWORD Flags,
   DebugChecks dbg{dbg_data};
 
   auto heap_handle = GetAsanHeap(HeapHandle, dbg);
-
-  // There are Win32 APIs which may rely on internal undocumented Rtl
-  // functions that intend to interop with the Rtl Heap. Since we cannot
-  // intercept these APIs, instead we detect which calls are coming from
-  // the OS and redirect them back to the real Win32 version.
-
-  // OS internals also use 'tags' to mark their allocations. We cannot
-  // determine individual tags used by different components, since they
-  // are dynamically generated, but we can have a blanket policy to
-  // not hook the allocation if any tag is detected.
-
-  // For example, (when windows_hook_legacy_allocators=false), memory
-  // allocated via GlobalAlloc will be unable to be reallocated via
-  // GlobalReAlloc due to because it uses an internal API to verify
-  // whether the passed memory is owned by the current heap.
-
-  const DWORD all_flags = heap_handle.GetFlags() | Flags;
-  const DWORD unsupported_flags = all_flags & HEAP_ALLOCATE_UNSUPPORTED_FLAGS;
+  auto [all_flags, asan_unsupported_flags] =
+      HeapFlags(heap_handle.GetFlags(), Flags, HEAP_ALLOCATE_UNSUPPORTED_FLAGS);
 
   // NOTE:
   //
@@ -1355,7 +1379,7 @@ INTERCEPTOR_WINAPI(void *, RtlAllocateHeap, HANDLE HeapHandle, DWORD Flags,
   // applications that make use of mapped memory, specifically in the case of
   // multiple actors passing around relative addresses and expecting allocations to be at a particular
   // location. If memory is mapped, we delegate back to the real Rtl* functions.
-  if (UNLIKELY(!heap_handle.IsSupported() || unsupported_flags ||
+  if (UNLIKELY(!heap_handle.IsSupported() || asan_unsupported_flags ||
                heap_handle.IsLfhInternal(Flags) || IsMemoryMapped(HeapHandle))) {
     auto rtlguard = heap_handle.RtlReentrancyLockGuard();
 
@@ -1371,6 +1395,16 @@ INTERCEPTOR_WINAPI(void *, RtlAllocateHeap, HANDLE HeapHandle, DWORD Flags,
   // Reading MSDN suggests that the *entire* usable allocation is zeroed out.
   // Otherwise it is difficult to HeapReAlloc with HEAP_ZERO_MEMORY.
   // https://blogs.msdn.microsoft.com/oldnewthing/20120316-00/?p=8083
+  //
+  // NOTE:
+  //
+  // There is no guarantee nor good indicator of predicting whether memory
+  // will be zeroed out unless using the HEAP_ZERO_MEMORY flag. The noninstrumented
+  // calls to RtlAllocateHeap may return zeroed out memory, but those cases
+  // are from large allocations that go directly to VirtualAlloc for its memory,
+  // which is guaranteed by the OS to be zeroed. The malloc_fill_byte option=00
+  // can be used by the user to instruct the asan allocator to fill allocated memory
+  // with zeros up to max_malloc_fill_size option.
   if (p && (all_flags & HEAP_ZERO_MEMORY)) {
     GET_CURRENT_PC_BP_SP;
     (void)sp;
@@ -1543,11 +1577,8 @@ INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
     return REAL(RtlReAllocateHeap)(HeapHandle, Flags, BaseAddress, Size);
   }
 
-  // Note that any allocation with a tag in the flags is unsupported.
-  // See explanation in our RtlAllocateHeap implementation for details.
-  const DWORD all_flags = heap_handle.GetFlags() | Flags;
-  const DWORD asan_unsupported_flags =
-      all_flags & HEAP_REALLOC_UNSUPPORTED_FLAGS;
+  auto [all_flags, asan_unsupported_flags] =
+      HeapFlags(heap_handle.GetFlags(), Flags, HEAP_REALLOC_UNSUPPORTED_FLAGS);
 
   GET_STACK_TRACE_MALLOC;
   GET_CURRENT_PC_BP_SP;
@@ -1808,7 +1839,12 @@ INTERCEPTOR_WINAPI(HGLOBAL, GlobalFree, HGLOBAL hMem) {
 }
 
 INTERCEPTOR_WINAPI(HGLOBAL, GlobalHandle, HGLOBAL hMem) {
-  if (!asan_inited) {
+  // We need to check whether the ASAN allocator owns the pointer
+  // we're about to use. Allocations might occur before interception
+  // takes place, or if reallocation logic defers to REAL(*) functions.
+  // If it is not owned by RTL heap, then we can pass it to 
+  // ASAN heap for inspection.
+  if (!asan_inited || IsSystemHeapAddress(reinterpret_cast<uptr>(hMem), GetProcessHeap())) {
     return REAL(GlobalHandle)(hMem);
   }
   GET_STACK_TRACE_MALLOC;
@@ -1818,7 +1854,7 @@ INTERCEPTOR_WINAPI(HGLOBAL, GlobalHandle, HGLOBAL hMem) {
 INTERCEPTOR_WINAPI(SIZE_T, GlobalSize, HGLOBAL hMem) {
   // We need to check whether the ASAN allocator owns the pointer
   // we're about to use. Allocations might occur before interception
-  // takes place, so if it is not owned by RTL heap, the we can
+  // takes place, so if it is not owned by RTL heap, then we can
   // pass it to ASAN heap for inspection.
   if (!asan_inited || IsSystemHeapAddress(reinterpret_cast<uptr>(hMem), GetProcessHeap())) {
     return REAL(GlobalSize)(hMem);
@@ -1937,7 +1973,7 @@ void *ReAllocGlobalLocal(GlobalLocalRealloc reallocFunc,
   // keep it there, since it's a leftover from before asan_init was called.
   if (UNLIKELY(!asan_inited) ||
       ((ownershipState ==
-        AllocationOwnership::OWNED_BY_GLOBAL_OR_LOCAL_HANDLE) &&
+        AllocationOwnership::OWNED_BY_GLOBAL_OR_LOCAL_HANDLE) ||
        (ownershipState == AllocationOwnership::OWNED_BY_GLOBAL_OR_LOCAL))) {
     return reallocFunc(hMem, dwBytes, uFlags);
   }

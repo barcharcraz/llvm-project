@@ -1,7 +1,7 @@
 // RUN: %clang_cl_asan /Od -o %t %s -DTEST_GLOBAL
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true not %run %t 2>&1 | FileCheck %s
+// RUN: not %run %t 2>&1 | FileCheck %s
 // RUN: %clang_cl_asan /Od -o %t %s -DTEST_LOCAL
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true not %run %t 2>&1 | FileCheck %s
+// RUN: not %run %t 2>&1 | FileCheck %s
 
 #include "../defines.h"
 #include "globallocal_shared.h"

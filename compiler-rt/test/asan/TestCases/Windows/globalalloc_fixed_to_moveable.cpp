@@ -1,7 +1,7 @@
 // RUN: %clang_cl_asan /Od -o %t %s -DTEST_GLOBAL
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true %run %t 2>&1 | FileCheck %s --check-prefixes CHECK,CHECK-GLOBAL
+// RUN: %run %t 2>&1 | FileCheck %s --check-prefixes CHECK,CHECK-GLOBAL
 // RUN: %clang_cl_asan /Od -o %t %s -DTEST_LOCAL
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true %run %t 2>&1 | FileCheck %s --check-prefixes CHECK,CHECK-LOCAL
+// RUN: %run %t 2>&1 | FileCheck %s --check-prefixes CHECK,CHECK-LOCAL
 
 #include "../defines.h"
 #include "globallocal_shared.h"

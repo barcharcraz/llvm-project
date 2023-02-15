@@ -1,19 +1,19 @@
 // RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_LOCAL -DTEST_SIZE
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true not %run %t 2>&1 | FileCheck %s
+// RUN: not %run %t 2>&1 | FileCheck %s
 // RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_LOCAL -DTEST_HANDLE
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true not %run %t 2>&1 | FileCheck %s
+// RUN: not %run %t 2>&1 | FileCheck %s
 // RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_LOCAL -DTEST_LOCK
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true not %run %t 2>&1 | FileCheck %s
+// RUN: not %run %t 2>&1 | FileCheck %s
 // RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_LOCAL -DTEST_UNLOCK
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true not %run %t 2>&1 | FileCheck %s
+// RUN: not %run %t 2>&1 | FileCheck %s
 // RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_GLOBAL -DTEST_SIZE
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true not %run %t 2>&1 | FileCheck %s
+// RUN: not %run %t 2>&1 | FileCheck %s
 // RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_GLOBAL -DTEST_HANDLE
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true not %run %t 2>&1 | FileCheck %s
+// RUN: not %run %t 2>&1 | FileCheck %s
 // RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_GLOBAL -DTEST_LOCK
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true not %run %t 2>&1 | FileCheck %s
+// RUN: not %run %t 2>&1 | FileCheck %s
 // RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_GLOBAL -DTEST_UNLOCK
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true not %run %t 2>&1 | FileCheck %s
+// RUN: not %run %t 2>&1 | FileCheck %s
 
 #include "globallocal_shared.h"
 #include "test_helpers.h"

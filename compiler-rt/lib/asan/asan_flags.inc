@@ -163,5 +163,5 @@ ASAN_FLAG(bool, verify_asan_link_order, true,
           "Check position of ASan runtime in library list (needs to be disabled"
           " when other library has to be preloaded system-wide)")
 ASAN_FLAG(
-    bool, windows_hook_legacy_allocators, false,
+    bool, windows_hook_legacy_allocators, true,
     "(Windows only) enable hooking of (Global|Local)(Alloc|Free|Size|ReAlloc|Lock|Unlock) functions.")

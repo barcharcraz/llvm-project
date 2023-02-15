@@ -1,43 +1,43 @@
 // RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_LOCAL -DTEST_ALLOC1
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true not %run %t 2>&1 | FileCheck %s
+// RUN: not %run %t 2>&1 | FileCheck %s
 // RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_LOCAL -DTEST_ALLOC2
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true not %run %t 2>&1 | FileCheck %s
+// RUN: not %run %t 2>&1 | FileCheck %s
 // RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_LOCAL -DTEST_ALLOC3
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true not %run %t 2>&1 | FileCheck %s
+// RUN: not %run %t 2>&1 | FileCheck %s
 // RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_LOCAL -DTEST_ALLOC4
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true not %run %t 2>&1 | FileCheck %s
+// RUN: not %run %t 2>&1 | FileCheck %s
 // RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_LOCAL -DTEST_REALLOC1
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true not %run %t 2>&1 | FileCheck %s
+// RUN: not %run %t 2>&1 | FileCheck %s
 // RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_LOCAL -DTEST_REALLOC2
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true not %run %t 2>&1 | FileCheck %s
+// RUN: not %run %t 2>&1 | FileCheck %s
 // RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_LOCAL -DTEST_REALLOC3
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true not %run %t 2>&1 | FileCheck %s
+// RUN: not %run %t 2>&1 | FileCheck %s
 // RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_LOCAL -DTEST_REALLOC4
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true not %run %t 2>&1 | FileCheck %s
+// RUN: not %run %t 2>&1 | FileCheck %s
 // RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_LOCAL -DTEST_REALLOC5
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true not %run %t 2>&1 | FileCheck %s
+// RUN: not %run %t 2>&1 | FileCheck %s
 // RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_LOCAL -DTEST_REALLOC6
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true not %run %t 2>&1 | FileCheck %s
+// RUN: not %run %t 2>&1 | FileCheck %s
 // RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_GLOBAL -DTEST_ALLOC1
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true not %run %t 2>&1 | FileCheck %s
+// RUN: not %run %t 2>&1 | FileCheck %s
 // RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_GLOBAL -DTEST_ALLOC2
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true not %run %t 2>&1 | FileCheck %s
+// RUN: not %run %t 2>&1 | FileCheck %s
 // RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_GLOBAL -DTEST_ALLOC3
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true not %run %t 2>&1 | FileCheck %s
+// RUN: not %run %t 2>&1 | FileCheck %s
 // RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_GLOBAL -DTEST_ALLOC4
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true not %run %t 2>&1 | FileCheck %s
+// RUN: not %run %t 2>&1 | FileCheck %s
 // RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_GLOBAL -DTEST_REALLOC1
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true not %run %t 2>&1 | FileCheck %s
+// RUN: not %run %t 2>&1 | FileCheck %s
 // RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_GLOBAL -DTEST_REALLOC2
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true not %run %t 2>&1 | FileCheck %s
+// RUN: not %run %t 2>&1 | FileCheck %s
 // RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_GLOBAL -DTEST_REALLOC3
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true not %run %t 2>&1 | FileCheck %s
+// RUN: not %run %t 2>&1 | FileCheck %s
 // RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_GLOBAL -DTEST_REALLOC4
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true not %run %t 2>&1 | FileCheck %s
+// RUN: not %run %t 2>&1 | FileCheck %s
 // RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_GLOBAL -DTEST_REALLOC5
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true not %run %t 2>&1 | FileCheck %s
+// RUN: not %run %t 2>&1 | FileCheck %s
 // RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_GLOBAL -DTEST_REALLOC6
-// RUN: %env_asan_opts=windows_hook_legacy_allocators=true not %run %t 2>&1 | FileCheck %s
+// RUN: not %run %t 2>&1 | FileCheck %s
 
 #include "globallocal_shared.h"
 #include "test_helpers.h"
