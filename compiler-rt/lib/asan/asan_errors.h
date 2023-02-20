@@ -62,6 +62,7 @@ struct ErrorDeadlySignal : ErrorBase {
     }
   }
   void Print();
+  bool IsCached();
 };
 
 struct ErrorDoubleFree : ErrorBase {
@@ -76,6 +77,7 @@ struct ErrorDoubleFree : ErrorBase {
     GetHeapAddressInformation(addr, 1, &addr_description);
   }
   void Print();
+  bool IsCached();
 };
 
 struct ErrorNewDeleteTypeMismatch : ErrorBase {
@@ -94,6 +96,7 @@ struct ErrorNewDeleteTypeMismatch : ErrorBase {
     GetHeapAddressInformation(addr, 1, &addr_description);
   }
   void Print();
+  bool IsCached();
 };
 
 struct ErrorFreeNotMalloced : ErrorBase {
@@ -106,6 +109,7 @@ struct ErrorFreeNotMalloced : ErrorBase {
         free_stack(stack),
         addr_description(addr, /*shouldLockThreadRegistry=*/false) {}
   void Print();
+  bool IsCached();
 };
 
 struct ErrorAllocTypeMismatch : ErrorBase {
@@ -122,6 +126,7 @@ struct ErrorAllocTypeMismatch : ErrorBase {
         dealloc_type(dealloc_type_),
         addr_description(addr, 1, false) {}
   void Print();
+  bool IsCached();
 };
 
 struct ErrorMallocUsableSizeNotOwned : ErrorBase {
@@ -134,6 +139,7 @@ struct ErrorMallocUsableSizeNotOwned : ErrorBase {
         stack(stack_),
         addr_description(addr, /*shouldLockThreadRegistry=*/false) {}
   void Print();
+  bool IsCached();
 };
 
 struct ErrorSanitizerGetAllocatedSizeNotOwned : ErrorBase {
@@ -147,6 +153,7 @@ struct ErrorSanitizerGetAllocatedSizeNotOwned : ErrorBase {
         stack(stack_),
         addr_description(addr, /*shouldLockThreadRegistry=*/false) {}
   void Print();
+  bool IsCached();
 };
 
 struct ErrorCallocOverflow : ErrorBase {
@@ -162,6 +169,7 @@ struct ErrorCallocOverflow : ErrorBase {
         count(count_),
         size(size_) {}
   void Print();
+  bool IsCached();
 };
 
 struct ErrorReallocArrayOverflow : ErrorBase {
@@ -177,6 +185,7 @@ struct ErrorReallocArrayOverflow : ErrorBase {
         count(count_),
         size(size_) {}
   void Print();
+  bool IsCached();
 };
 
 struct ErrorPvallocOverflow : ErrorBase {
@@ -189,6 +198,7 @@ struct ErrorPvallocOverflow : ErrorBase {
         stack(stack_),
         size(size_) {}
   void Print();
+  bool IsCached();
 };
 
 struct ErrorInvalidAllocationAlignment : ErrorBase {
@@ -202,6 +212,7 @@ struct ErrorInvalidAllocationAlignment : ErrorBase {
         stack(stack_),
         alignment(alignment_) {}
   void Print();
+  bool IsCached();
 };
 
 struct ErrorInvalidAlignedAllocAlignment : ErrorBase {
@@ -217,6 +228,7 @@ struct ErrorInvalidAlignedAllocAlignment : ErrorBase {
         size(size_),
         alignment(alignment_) {}
   void Print();
+  bool IsCached();
 };
 
 struct ErrorInvalidPosixMemalignAlignment : ErrorBase {
@@ -230,6 +242,7 @@ struct ErrorInvalidPosixMemalignAlignment : ErrorBase {
         stack(stack_),
         alignment(alignment_) {}
   void Print();
+  bool IsCached();
 };
 
 struct ErrorAllocationSizeTooBig : ErrorBase {
@@ -247,6 +260,7 @@ struct ErrorAllocationSizeTooBig : ErrorBase {
         total_size(total_size_),
         max_size(max_size_) {}
   void Print();
+  bool IsCached();
 };
 
 struct ErrorRssLimitExceeded : ErrorBase {
@@ -257,6 +271,7 @@ struct ErrorRssLimitExceeded : ErrorBase {
       : ErrorBase(tid, 10, "rss-limit-exceeded"),
         stack(stack_) {}
   void Print();
+  bool IsCached();
 };
 
 struct ErrorOutOfMemory : ErrorBase {
@@ -269,6 +284,7 @@ struct ErrorOutOfMemory : ErrorBase {
         stack(stack_),
         requested_size(requested_size_) {}
   void Print();
+  bool IsCached();
 };
 
 struct ErrorStringFunctionMemoryRangesOverlap : ErrorBase {
@@ -295,6 +311,7 @@ struct ErrorStringFunctionMemoryRangesOverlap : ErrorBase {
     scariness.Scare(10, bug_type);
   }
   void Print();
+  bool IsCached();
 };
 
 struct ErrorStringFunctionSizeOverflow : ErrorBase {
@@ -310,6 +327,7 @@ struct ErrorStringFunctionSizeOverflow : ErrorBase {
         addr_description(addr, /*shouldLockThreadRegistry=*/false),
         size(size_) {}
   void Print();
+  bool IsCached();
 };
 
 struct ErrorBadParamsToAnnotateContiguousContainer : ErrorBase {
@@ -329,6 +347,7 @@ struct ErrorBadParamsToAnnotateContiguousContainer : ErrorBase {
         old_mid(old_mid_),
         new_mid(new_mid_) {}
   void Print();
+  bool IsCached();
 };
 
 struct ErrorODRViolation : ErrorBase {
@@ -344,6 +363,7 @@ struct ErrorODRViolation : ErrorBase {
         stack_id1(stack_id1_),
         stack_id2(stack_id2_) {}
   void Print();
+  bool IsCached();
 };
 
 struct ErrorInvalidPointerPair : ErrorBase {
@@ -361,6 +381,7 @@ struct ErrorInvalidPointerPair : ErrorBase {
         addr1_description(p1, 1, /*shouldLockThreadRegistry=*/false),
         addr2_description(p2, 1, /*shouldLockThreadRegistry=*/false) {}
   void Print();
+  bool IsCached();
 };
 
 struct ErrorGeneric : ErrorBase {
@@ -375,6 +396,7 @@ struct ErrorGeneric : ErrorBase {
   ErrorGeneric(u32 tid, uptr addr, uptr pc_, uptr bp_, uptr sp_, bool is_write_,
                uptr access_size_);
   void Print();
+  bool IsCached();
 };
 
 // clang-format off
@@ -412,6 +434,9 @@ struct ErrorGeneric : ErrorBase {
 #define ASAN_ERROR_DESCRIPTION_PRINT(name) \
   case kErrorKind##name:                   \
     return name.Print();
+#define ASAN_ERROR_DESCRIPTION_IS_CACHED(name) \
+  case kErrorKind##name:                       \
+    return name.IsCached();
 
 enum ErrorKind {
   kErrorKindInvalid = 0,
@@ -442,6 +467,15 @@ struct ErrorDescription {
         CHECK(0);
     }
     CHECK(0);
+  }
+  bool IsCached() {
+    switch (kind) {
+      ASAN_FOR_EACH_ERROR_KIND(ASAN_ERROR_DESCRIPTION_IS_CACHED)
+      case kErrorKindInvalid:
+        CHECK(0);
+    }
+    CHECK(0);
+    return false;
   }
 };
 

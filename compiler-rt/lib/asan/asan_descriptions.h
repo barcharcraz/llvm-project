@@ -95,6 +95,7 @@ struct ShadowAddressDescription {
   u8 shadow_byte;
 
   void Print() const;
+  void Cache() const;
 };
 
 bool GetShadowAddressInformation(uptr addr, ShadowAddressDescription *descr);
@@ -126,6 +127,7 @@ struct HeapAddressDescription {
   ChunkAccess chunk_access;
 
   void Print() const;
+  void Cache() const;
 };
 
 bool GetHeapAddressInformation(uptr addr, uptr access_size,
@@ -141,6 +143,7 @@ struct StackAddressDescription {
   const char *frame_descr;
 
   void Print() const;
+  void Cache() const;
 };
 
 bool GetStackAddressInformation(uptr addr, uptr access_size,
@@ -163,6 +166,7 @@ struct GlobalAddressDescription {
   u8 size;
 
   void Print(const char *bug_type = "") const;
+  void Cache(const char *bug_type = "") const;
 
   // Returns true when this descriptions points inside the same global variable
   // as other. Descriptions can have different address within the variable
@@ -246,6 +250,21 @@ class AddressDescription {
         return data.global.Print(bug_descr);
     }
     UNREACHABLE("AddressInformation kind is invalid");
+  }
+  void Cache(const char *bug_descr = nullptr) const {
+    switch (data.kind) {
+      case kAddressKindWild:
+        return;
+      case kAddressKindShadow:
+        return data.shadow.Cache();
+      case kAddressKindHeap:
+        return data.heap.Cache();
+      case kAddressKindStack:
+        return data.stack.Cache();
+      case kAddressKindGlobal:
+        // initialization-order-fiasco has a special Print()
+        return data.global.Cache(bug_descr);
+    }
   }
 
   void StoreTo(AddressDescriptionData *dst) const { *dst = data; }

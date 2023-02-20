@@ -15,6 +15,7 @@
 #include "sanitizer_stacktrace.h"
 #include "sanitizer_stacktrace_printer.h"
 #include "sanitizer_symbolizer.h"
+#include "asan\asan_continue_on_error.h"
 
 namespace __sanitizer {
 
@@ -158,6 +159,11 @@ uptr StackTrace::PrintTo(char *out_buf, uptr out_buf_size) const {
 }
 
 void StackTrace::Print() const {
+  if (coe.ContinueOnError()) {
+    // not using the out-of-proc symbolizer.exe
+    coe.PrintStack(this);
+    return;
+  }
   InternalScopedString output;
   PrintTo(&output);
   Printf("%s", output.data());

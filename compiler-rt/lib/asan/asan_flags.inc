@@ -162,6 +162,10 @@ ASAN_FLAG(bool, allocator_frees_and_returns_null_on_realloc_zero, true,
 ASAN_FLAG(bool, verify_asan_link_order, true,
           "Check position of ASan runtime in library list (needs to be disabled"
           " when other library has to be preloaded system-wide)")
+ASAN_FLAG(int, continue_on_error,0, 
+          "(Windows only for now) run to exit()"
+          "while printing unique memory safety issues and finally summary")
 ASAN_FLAG(
     bool, windows_hook_legacy_allocators, true,
     "(Windows only) enable hooking of (Global|Local)(Alloc|Free|Size|ReAlloc|Lock|Unlock) functions.")
+

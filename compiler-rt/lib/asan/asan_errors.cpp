@@ -17,6 +17,7 @@
 #include "asan_report.h"
 #include "asan_stack.h"
 #include "sanitizer_common/sanitizer_stackdepot.h"
+#include "asan_continue_on_error.h"
 
 namespace __asan {
 
@@ -43,6 +44,18 @@ void ErrorDeadlySignal::Print() {
   ReportDeadlySignal(signal, tid, &OnStackUnwind, &scariness);
 }
 
+bool ErrorDeadlySignal::IsCached() { return false; }
+
+static void PrintErrorSummary(const char *bug_descr, const StackTrace *stack) {
+  if (coe.ContinueOnError()) {
+    // part of COE eliminating the llvm-symbolizer.exe binary
+    // dependency (Windows), with inter-process-communication
+    coe.ReportErrorSummary(bug_descr, stack);
+  } else {
+    ReportErrorSummary(bug_descr, stack);
+  }
+}
+
 void ErrorDoubleFree::Print() {
   Decorator d;
   Printf("%s", d.Error());
@@ -55,7 +68,15 @@ void ErrorDoubleFree::Print() {
                         second_free_stack->top_frame_bp);
   stack.Print();
   addr_description.Print();
-  ReportErrorSummary(scariness.GetDescription(), &stack);
+  PrintErrorSummary(scariness.GetDescription(), &stack);
+}
+
+bool ErrorDoubleFree::IsCached() {
+  BufferedStackTrace stack;
+  stack.Unwind(second_free_stack->trace[0], second_free_stack->top_frame_bp,
+               nullptr, common_flags()->fast_unwind_on_fatal);
+  return coe.ErrorIsHashed(
+      (*((__asan::ErrorBase *)this)).scariness.GetDescription());
 }
 
 void ErrorNewDeleteTypeMismatch::Print() {
@@ -92,10 +113,23 @@ void ErrorNewDeleteTypeMismatch::Print() {
   GET_STACK_TRACE_FATAL(free_stack->trace[0], free_stack->top_frame_bp);
   stack.Print();
   addr_description.Print();
-  ReportErrorSummary(scariness.GetDescription(), &stack);
+  PrintErrorSummary(scariness.GetDescription(), &stack);
   Report(
       "HINT: if you don't care about these errors you may set "
       "ASAN_OPTIONS=new_delete_type_mismatch=0\n");
+}
+
+bool ErrorNewDeleteTypeMismatch::IsCached() {
+  BufferedStackTrace stack;
+  stack.Unwind(free_stack->trace[0], free_stack->top_frame_bp, nullptr,
+               common_flags()->fast_unwind_on_fatal);
+  const __sanitizer::StackTrace *stk_upon_detect =
+      (const __sanitizer::StackTrace *)&stack;
+
+  coe.StackInsert(stk_upon_detect);
+  addr_description.Cache();
+  return coe.ErrorIsHashed(
+      (*((__asan::ErrorBase *)this)).scariness.GetDescription());
 }
 
 void ErrorFreeNotMalloced::Print() {
@@ -111,8 +145,10 @@ void ErrorFreeNotMalloced::Print() {
   GET_STACK_TRACE_FATAL(free_stack->trace[0], free_stack->top_frame_bp);
   stack.Print();
   addr_description.Print();
-  ReportErrorSummary(scariness.GetDescription(), &stack);
+  PrintErrorSummary(scariness.GetDescription(), &stack);
 }
+
+bool ErrorFreeNotMalloced::IsCached() { return false; }
 
 void ErrorAllocTypeMismatch::Print() {
   static const char *alloc_names[] = {"INVALID", "malloc", "operator new",
@@ -131,11 +167,13 @@ void ErrorAllocTypeMismatch::Print() {
   GET_STACK_TRACE_FATAL(dealloc_stack->trace[0], dealloc_stack->top_frame_bp);
   stack.Print();
   addr_description.Print();
-  ReportErrorSummary(scariness.GetDescription(), &stack);
+  PrintErrorSummary(scariness.GetDescription(), &stack);
   Report(
       "HINT: if you don't care about these errors you may set "
       "ASAN_OPTIONS=alloc_dealloc_mismatch=0\n");
 }
+
+bool ErrorAllocTypeMismatch::IsCached() { return false; }
 
 void ErrorMallocUsableSizeNotOwned::Print() {
   Decorator d;
@@ -147,8 +185,10 @@ void ErrorMallocUsableSizeNotOwned::Print() {
   Printf("%s", d.Default());
   stack->Print();
   addr_description.Print();
-  ReportErrorSummary(scariness.GetDescription(), stack);
+  PrintErrorSummary(scariness.GetDescription(), stack);
 }
+
+bool ErrorMallocUsableSizeNotOwned::IsCached() { return false; }
 
 void ErrorSanitizerGetAllocatedSizeNotOwned::Print() {
   Decorator d;
@@ -160,8 +200,10 @@ void ErrorSanitizerGetAllocatedSizeNotOwned::Print() {
   Printf("%s", d.Default());
   stack->Print();
   addr_description.Print();
-  ReportErrorSummary(scariness.GetDescription(), stack);
+  PrintErrorSummary(scariness.GetDescription(), stack);
 }
+
+bool ErrorSanitizerGetAllocatedSizeNotOwned::IsCached() { return false; }
 
 void ErrorCallocOverflow::Print() {
   Decorator d;
@@ -173,7 +215,15 @@ void ErrorCallocOverflow::Print() {
   Printf("%s", d.Default());
   stack->Print();
   PrintHintAllocatorCannotReturnNull();
-  ReportErrorSummary(scariness.GetDescription(), stack);
+  PrintErrorSummary(scariness.GetDescription(), stack);
+}
+
+bool ErrorCallocOverflow::IsCached() {
+  const __sanitizer::StackTrace *stk_upon_error =
+      ((__sanitizer::StackTrace *)this->stack);
+  coe.StackInsert(stk_upon_error);
+  return coe.ErrorIsHashed(
+      (*((__asan::ErrorBase *)this)).scariness.GetDescription());
 }
 
 void ErrorReallocArrayOverflow::Print() {
@@ -186,8 +236,10 @@ void ErrorReallocArrayOverflow::Print() {
   Printf("%s", d.Default());
   stack->Print();
   PrintHintAllocatorCannotReturnNull();
-  ReportErrorSummary(scariness.GetDescription(), stack);
+  PrintErrorSummary(scariness.GetDescription(), stack);
 }
+
+bool ErrorReallocArrayOverflow::IsCached() { return false; }
 
 void ErrorPvallocOverflow::Print() {
   Decorator d;
@@ -200,8 +252,10 @@ void ErrorPvallocOverflow::Print() {
   Printf("%s", d.Default());
   stack->Print();
   PrintHintAllocatorCannotReturnNull();
-  ReportErrorSummary(scariness.GetDescription(), stack);
+  PrintErrorSummary(scariness.GetDescription(), stack);
 }
+
+bool ErrorPvallocOverflow::IsCached() { return false; }
 
 void ErrorInvalidAllocationAlignment::Print() {
   Decorator d;
@@ -215,6 +269,8 @@ void ErrorInvalidAllocationAlignment::Print() {
   PrintHintAllocatorCannotReturnNull();
   ReportErrorSummary(scariness.GetDescription(), stack);
 }
+
+bool ErrorInvalidAllocationAlignment::IsCached() { return false; }
 
 void ErrorInvalidAlignedAllocAlignment::Print() {
   Decorator d;
@@ -233,8 +289,10 @@ void ErrorInvalidAlignedAllocAlignment::Print() {
   Printf("%s", d.Default());
   stack->Print();
   PrintHintAllocatorCannotReturnNull();
-  ReportErrorSummary(scariness.GetDescription(), stack);
+  PrintErrorSummary(scariness.GetDescription(), stack);
 }
+
+bool ErrorInvalidAlignedAllocAlignment::IsCached() { return false; }
 
 void ErrorInvalidPosixMemalignAlignment::Print() {
   Decorator d;
@@ -247,8 +305,10 @@ void ErrorInvalidPosixMemalignAlignment::Print() {
   Printf("%s", d.Default());
   stack->Print();
   PrintHintAllocatorCannotReturnNull();
-  ReportErrorSummary(scariness.GetDescription(), stack);
+  PrintErrorSummary(scariness.GetDescription(), stack);
 }
+
+bool ErrorInvalidPosixMemalignAlignment::IsCached() { return false; }
 
 void ErrorAllocationSizeTooBig::Print() {
   Decorator d;
@@ -261,8 +321,10 @@ void ErrorAllocationSizeTooBig::Print() {
   Printf("%s", d.Default());
   stack->Print();
   PrintHintAllocatorCannotReturnNull();
-  ReportErrorSummary(scariness.GetDescription(), stack);
+  PrintErrorSummary(scariness.GetDescription(), stack);
 }
+
+bool ErrorAllocationSizeTooBig::IsCached() { return false; }
 
 void ErrorRssLimitExceeded::Print() {
   Decorator d;
@@ -273,8 +335,10 @@ void ErrorRssLimitExceeded::Print() {
   Printf("%s", d.Default());
   stack->Print();
   PrintHintAllocatorCannotReturnNull();
-  ReportErrorSummary(scariness.GetDescription(), stack);
+  PrintErrorSummary(scariness.GetDescription(), stack);
 }
+
+bool ErrorRssLimitExceeded::IsCached() { return false; }
 
 void ErrorOutOfMemory::Print() {
   Decorator d;
@@ -285,8 +349,10 @@ void ErrorOutOfMemory::Print() {
   Printf("%s", d.Default());
   stack->Print();
   PrintHintAllocatorCannotReturnNull();
-  ReportErrorSummary(scariness.GetDescription(), stack);
+  PrintErrorSummary(scariness.GetDescription(), stack);
 }
+
+bool ErrorOutOfMemory::IsCached() { return false; }
 
 void ErrorStringFunctionMemoryRangesOverlap::Print() {
   Decorator d;
@@ -305,8 +371,10 @@ void ErrorStringFunctionMemoryRangesOverlap::Print() {
   stack->Print();
   addr1_description.Print();
   addr2_description.Print();
-  ReportErrorSummary(bug_type, stack);
+  PrintErrorSummary(bug_type, stack);
 }
+
+bool ErrorStringFunctionMemoryRangesOverlap::IsCached() { return false; }
 
 void ErrorStringFunctionSizeOverflow::Print() {
   Decorator d;
@@ -317,8 +385,10 @@ void ErrorStringFunctionSizeOverflow::Print() {
   scariness.Print();
   stack->Print();
   addr_description.Print();
-  ReportErrorSummary(scariness.GetDescription(), stack);
+  PrintErrorSummary(scariness.GetDescription(), stack);
 }
+
+bool ErrorStringFunctionSizeOverflow::IsCached() { return false; }
 
 void ErrorBadParamsToAnnotateContiguousContainer::Print() {
   Report(
@@ -333,8 +403,10 @@ void ErrorBadParamsToAnnotateContiguousContainer::Print() {
   if (!IsAligned(beg, granularity))
     Report("ERROR: beg is not aligned by %zu\n", granularity);
   stack->Print();
-  ReportErrorSummary(scariness.GetDescription(), stack);
+  PrintErrorSummary(scariness.GetDescription(), stack);
 }
+
+bool ErrorBadParamsToAnnotateContiguousContainer::IsCached() { return false; }
 
 void ErrorODRViolation::Print() {
   Decorator d;
@@ -366,6 +438,8 @@ void ErrorODRViolation::Print() {
   ReportErrorSummary(error_msg.data());
 }
 
+bool ErrorODRViolation::IsCached() { return false; }
+
 void ErrorInvalidPointerPair::Print() {
   Decorator d;
   Printf("%s", d.Error());
@@ -377,8 +451,10 @@ void ErrorInvalidPointerPair::Print() {
   stack.Print();
   addr1_description.Print();
   addr2_description.Print();
-  ReportErrorSummary(scariness.GetDescription(), &stack);
+  PrintErrorSummary(scariness.GetDescription(), &stack);
 }
+
+bool ErrorInvalidPointerPair::IsCached() { return false; }
 
 static bool AdjacentShadowValuesAreFullyPoisoned(u8 *s) {
   return s[-1] > 127 && s[1] > 127;
@@ -594,8 +670,23 @@ void ErrorGeneric::Print() {
   addr_description.Print(bug_descr);
   if (shadow_val == kAsanContiguousContainerOOBMagic)
     PrintContainerOverflowHint();
-  ReportErrorSummary(bug_descr, &stack);
+  PrintErrorSummary(bug_descr, &stack);
   PrintShadowMemoryForAddress(addr);
+}
+
+bool ErrorGeneric::IsCached() {
+  BufferedStackTrace stack;
+  stack.Unwind(pc, bp, nullptr, common_flags()->fast_unwind_on_fatal);
+  const __sanitizer::StackTrace *stk_upon_detect =
+      (const __sanitizer::StackTrace *)&stack;
+
+  coe.StackInsert(stk_upon_detect);
+
+  // Capture specific alloc/dealloc stacks, if appropriate
+  addr_description.Cache(bug_descr);
+
+  return coe.ErrorIsHashed(
+      (*((__asan::ErrorBase *)this)).scariness.GetDescription());
 }
 
 }  // namespace __asan

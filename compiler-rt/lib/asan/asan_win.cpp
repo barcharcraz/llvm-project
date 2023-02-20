@@ -12,7 +12,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "sanitizer_common/sanitizer_platform.h"
-#if SANITIZER_WINDOWS
+
+#ifdef SANITIZER_WINDOWS
 #define WIN32_LEAN_AND_MEAN
 #include <stdlib.h>
 #include <windows.h>
@@ -27,6 +28,8 @@
 #include "sanitizer_common/sanitizer_libc.h"
 #include "sanitizer_common/sanitizer_mutex.h"
 #include "sanitizer_common/sanitizer_placement_new.h"
+
+#include "sanitizer_common/sanitizer_stacktrace.h"
 #include "sanitizer_common/sanitizer_win.h"
 #include "sanitizer_common/sanitizer_win_defs.h"
 #include "sanitizer_common/sanitizer_win_immortalize.h"
@@ -50,16 +53,26 @@ uptr __asan_get_shadow_memory_dynamic_address() {
 // ---------------------- Windows-specific interceptors ---------------- {{{
 static LPTOP_LEVEL_EXCEPTION_FILTER default_seh_handler;
 static LPTOP_LEVEL_EXCEPTION_FILTER user_seh_handler;
+extern bool crt_state_tearing_down;
 
 extern "C" SANITIZER_INTERFACE_ATTRIBUTE long __asan_unhandled_exception_filter(
     EXCEPTION_POINTERS *info) {
   EXCEPTION_RECORD *exception_record = info->ExceptionRecord;
   CONTEXT *context = info->ContextRecord;
+  if (crt_state_tearing_down) {
+    // We are unloading DLL's and freeing heaps
+    // during exit. Not using EXCEPTION_CONTINUE_SEARCH
+    return EXCEPTION_EXECUTE_HANDLER;
+  }
 
   // FIXME: Handle EXCEPTION_STACK_OVERFLOW here.
 
   SignalContext sig(exception_record, context);
   ReportDeadlySignal(sig);
+  if (flags()->continue_on_error) {
+    Report("CONTINUE CANCELLED - Deadly Signal. Shutting down.\n");
+    Die();
+  }
   UNREACHABLE("returned from reporting deadly signal");
 }
 

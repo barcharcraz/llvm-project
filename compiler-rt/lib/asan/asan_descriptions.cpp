@@ -16,6 +16,7 @@
 #include "asan_report.h"
 #include "asan_stack.h"
 #include "sanitizer_common/sanitizer_stackdepot.h"
+#include "asan_continue_on_error.h"
 
 namespace __asan {
 
@@ -203,7 +204,16 @@ bool GetStackAddressInformation(uptr addr, uptr access_size,
     descr->frame_descr = nullptr;
     return true;
   }
-
+  if (flags()->continue_on_error) {
+    descr->offset = access.offset;
+    descr->access_size = access_size;
+    // frame_pc and frame_descr can be hit by
+    // bad mutating writes during COE. These
+    // are code and data addresses we might check(?)
+    descr->frame_pc = 0;
+    descr->frame_descr = 0;
+    return true;
+  }
   descr->offset = access.offset;
   descr->access_size = access_size;
   descr->frame_pc = access.frame_pc;
@@ -322,6 +332,9 @@ void ShadowAddressDescription::Print() const {
          ShadowNames[kind]);
 }
 
+// Not used yet by COE, but there's one for Heap and Stack
+void ShadowAddressDescription::Cache() const { }
+
 void GlobalAddressDescription::Print(const char *bug_type) const {
   for (int i = 0; i < size; i++) {
     DescribeAddressRelativeToGlobal(addr, access_size, globals[i]);
@@ -333,6 +346,8 @@ void GlobalAddressDescription::Print(const char *bug_type) const {
     }
   }
 }
+
+void GlobalAddressDescription::Cache(const char *bug_type) const { }
 
 bool GlobalAddressDescription::PointsInsideTheSameVariable(
     const GlobalAddressDescription &other) const {
@@ -409,6 +424,14 @@ void StackAddressDescription::Print() const {
   DescribeThread(GetThreadContextByTidLocked(tid));
 }
 
+void StackAddressDescription::Cache() const {
+  if (!frame_descr) {
+    return;
+  }
+  const StackTrace alloca_stack(&frame_pc, 1);
+  coe.StackInsert(&alloca_stack);
+}
+
 void HeapAddressDescription::Print() const {
   PrintHeapChunkAccess(addr, chunk_access);
 
@@ -434,6 +457,19 @@ void HeapAddressDescription::Print() const {
   DescribeThread(GetCurrentThread());
   if (free_thread) DescribeThread(free_thread);
   DescribeThread(alloc_thread);
+}
+
+void HeapAddressDescription::Cache() const {
+  asanThreadRegistry().CheckLocked();
+  StackTrace alloc_stack = GetStackTraceFromId(alloc_stack_id);
+  coe.StackInsert(&alloc_stack);
+
+  AsanThreadContext *free_thread = nullptr;
+  if (free_tid != kInvalidTid) {
+    free_thread = GetThreadContextByTidLocked(free_tid);
+    StackTrace free_stack = GetStackTraceFromId(free_stack_id);
+    coe.StackInsert(&free_stack);
+  }
 }
 
 AddressDescription::AddressDescription(uptr addr, uptr access_size,

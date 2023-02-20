@@ -126,6 +126,12 @@ class CombinedAllocator {
     return secondary_.GetMetaData(p);
   }
 
+  void *GetMetaData(const void *p, u32 sizeof_safe_metadata) {
+    if (primary_.PointerIsMine(p))
+      return primary_.GetMetaData(p,sizeof_safe_metadata);
+    return secondary_.GetMetaData(p,sizeof_safe_metadata);
+  }
+
   void *GetBlockBegin(const void *p) {
     if (primary_.PointerIsMine(p))
       return primary_.GetBlockBegin(p);

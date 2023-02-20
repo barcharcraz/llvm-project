@@ -112,6 +112,44 @@ class Quarantine {
       Drain(c, cb);
   }
 
+  void NOINLINE Checkpoint(Cache *dest, Cache *src) {
+    // Check points the thread local quarantine cache.
+    dest->Transfer(src);
+
+    {
+      SpinMutexLock l(&cache_mutex_);
+      // Check points the quarantine cahce, on the quarantine object.
+      checkpoint_cache_.Transfer(&cache_);
+    }
+  }
+
+  // Recycle quarantine space created after a checkpoint
+  // back to the allocators. Then restore the checkpoints.
+  void NOINLINE Restore_Checkpoint(Cache *thread_quarantine_chkpt,
+                                   Cache *thread_quarantine_cache,
+                                   Callback cb) {
+    // Flush the thread quarantine cache to the quarantine object
+    {
+      SpinMutexLock l(&cache_mutex_);
+      cache_.Transfer(thread_quarantine_cache);
+    }
+
+    // Flush the object quarantine cache
+    // back to the threads allocator cache
+    if (recycle_mutex_.TryLock()) {
+      DoRecycle(&cache_, cb);
+      recycle_mutex_.Unlock();
+    }
+
+    // Checkpoint back to the thread quarantine cache
+    thread_quarantine_cache->Transfer(thread_quarantine_chkpt);
+    {
+      SpinMutexLock l(&cache_mutex_);
+      // Checkpoint back to the quarantine object cache.
+      cache_.Transfer(&checkpoint_cache_);
+    }
+  }
+
   void NOINLINE Drain(Cache *c, Callback cb) {
     {
       SpinMutexLock l(&cache_mutex_);
@@ -147,6 +185,7 @@ class Quarantine {
   StaticSpinMutex cache_mutex_;
   StaticSpinMutex recycle_mutex_;
   Cache cache_;
+  Cache checkpoint_cache_;
   char pad2_[kCacheLineSize];
 
   void NOINLINE Recycle(uptr min_size, Callback cb)

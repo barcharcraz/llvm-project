@@ -165,6 +165,18 @@ class SizeClassAllocator32 {
     return reinterpret_cast<void*>(meta);
   }
 
+   void *GetMetaData(const void *p, u32 sizeof_safe_metadata) {
+    //CHECK(kMetadataSize);
+    CHECK(PointerIsMine(p));
+    uptr mem = reinterpret_cast<uptr>(p);
+    uptr beg = ComputeRegionBeg(mem);
+    uptr size = ClassIdToSize(GetSizeClass(p));
+    u32 offset = mem - beg;
+    uptr n = offset / (u32)size;  // 32-bit division
+    uptr meta = (beg + kRegionSize) - (n + 1) * sizeof_safe_metadata; 
+    return reinterpret_cast<void *>(meta);
+  }
+
   NOINLINE TransferBatch *AllocateBatch(AllocatorStats *stat, AllocatorCache *c,
                                         uptr class_id) {
     DCHECK_LT(class_id, kNumClasses);

@@ -16,6 +16,7 @@
 #include "sanitizer_common.h"
 #include "sanitizer_flags.h"
 #include "sanitizer_libc.h"
+#include "asan\asan_continue_on_error.h"
 
 #include <stdio.h>
 #include <stdarg.h>
@@ -289,7 +290,11 @@ static void NOINLINE SharedPrintfCodeNoBuffer(bool append_pid,
     // If the message fit into the buffer, print it and exit.
     break;
   }
-  RawWrite(buffer);
+  if (coe.ContinueOnError()) {
+    coe.RawWrite(buffer);
+  } else {
+    RawWrite(buffer);
+  }
 
   // Remove color sequences from the message.
   RemoveANSIEscapeSequencesFromString(buffer);

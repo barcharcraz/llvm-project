@@ -158,7 +158,11 @@ template <typename AddressSpaceViewTy>
 struct AP64 {  // Allocator64 parameters. Deliberately using a short name.
   static const uptr kSpaceBeg = kAllocatorSpace;
   static const uptr kSpaceSize = kAllocatorSize;
+#if SANITIZER_WINDOWS
+  static const uptr kMetadataSize = 48; 
+#else
   static const uptr kMetadataSize = 0;
+#endif
   typedef __asan::SizeClassMap SizeClassMap;
   typedef AsanMapUnmapCallback MapUnmapCallback;
   static const uptr kFlags = 0;
@@ -174,7 +178,11 @@ template <typename AddressSpaceViewTy>
 struct AP32 {
   static const uptr kSpaceBeg = 0;
   static const u64 kSpaceSize = SANITIZER_MMAP_RANGE_SIZE;
-  static const uptr kMetadataSize = 0;
+#if SANITIZER_WINDOWS
+  static const uptr kMetadataSize = 32;  
+#else
+  static const uptr kMetadataSize = 0;  
+#endif
   typedef __asan::SizeClassMap SizeClassMap;
   static const uptr kRegionSizeLog = 20;
   using AddressSpaceView = AddressSpaceViewTy;
@@ -196,6 +204,7 @@ using AllocatorCache = AsanAllocator::AllocatorCache;
 
 struct AsanThreadLocalMallocStorage {
   uptr quarantine_cache[16];
+  uptr quarantine_checkpoint[16];
   AllocatorCache allocator_cache;
   void CommitBack();
  private:

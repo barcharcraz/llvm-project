@@ -16,6 +16,7 @@
 
 #include "sanitizer_dbghelp.h"
 #include "sanitizer_symbolizer_internal.h"
+#include "asan\asan_continue_on_error.h"
 
 namespace __sanitizer {
 
@@ -84,7 +85,7 @@ void InitializeDbgHelpIfNeeded() {
   DBGHELP_IMPORT(UnDecorateSymbolName);
 #undef DBGHELP_IMPORT
 
-  if (!TrySymInitialize()) {
+  if (!TrySymInitialize() && !coe.ContinueOnError()) {
     // OK, maybe the client app has called SymInitialize already.
     // That's a bit unfortunate for us as all the DbgHelp functions are
     // single-threaded and we can't coordinate with the app.

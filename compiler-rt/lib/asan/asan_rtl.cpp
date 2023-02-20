@@ -38,6 +38,8 @@ uptr *__asan_test_only_reported_buggy_pointer;    // Used only for testing asan.
 
 namespace __asan {
 
+void InitializeCOE();
+
 uptr AsanMappingProfile[kAsanMappingProfileSize];
 
 static void AsanDie() {
@@ -461,6 +463,7 @@ static void AsanInitInternal() {
 #ifdef SANITIZER_WINDOWS
   // Keep track of allocations that happened prior to asan init only on windows
   CaptureSystemHeapAllocations();
+  __asan::InitializeCOE();
 #endif
 
   if (flags()->atexit)
@@ -504,7 +507,9 @@ static void AsanInitInternal() {
     __lsan::ScopedInterceptorDisabler disabler;
     Symbolizer::LateInitialize();
   } else {
-    Symbolizer::LateInitialize();
+    if (!flags()->continue_on_error) {
+      Symbolizer::LateInitialize();
+    }
   }
 
   VReport(1, "AddressSanitizer Init done\n");

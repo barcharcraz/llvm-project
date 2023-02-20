@@ -17,6 +17,7 @@
 #include "sanitizer_flags.h"
 #include "sanitizer_libc.h"
 #include "sanitizer_placement_new.h"
+#include "asan\asan_continue_on_error.h"
 
 namespace __sanitizer {
 
@@ -44,12 +45,23 @@ void NORETURN ReportMmapFailureAndDie(uptr size, const char *mem_type,
     Die();
   }
   recursion_count++;
-  Report("ERROR: %s failed to "
-         "%s 0x%zx (%zd) bytes of %s (error code: %d)\n",
-         SanitizerToolName, mmap_type, size, size, mem_type, err);
+  Report(
+      "ERROR: %s failed to "
+      "%s 0x%zx (%zd) bytes of %s (error code: %d)\n",
+      SanitizerToolName, mmap_type, size, size, mem_type, err);
 #if !SANITIZER_GO
   DumpProcessMap();
 #endif
+  if (coe.ContinueOnError()) {
+    Report(
+        "CONTINUE CANCELLED: \n  Unpredictable or unrepeatable"
+        "behavior would follow from "
+        "failing to allocate 0x%zx bytes of memory.\n"
+        "Could be due to use of uninitialized data.",
+        size);
+    Die();
+  }
+
   UNREACHABLE("unable to mmap");
 }
 

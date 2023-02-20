@@ -3,6 +3,7 @@
 set(ASAN_SOURCES
   asan_allocator.cpp
   asan_activation.cpp
+  asan_coe_win.cpp
   asan_debugging.cpp
   asan_descriptions.cpp
   asan_errors.cpp
@@ -92,6 +93,9 @@ SET(ASAN_HEADERS
   asan_activation.h
   asan_activation_flags.inc
   asan_allocator.h
+  asan_coe_default.h
+  asan_coe_win.h
+  asan_continue_on_error.h
   asan_descriptions.h
   asan_errors.h
   asan_fake_stack.h

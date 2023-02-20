@@ -179,6 +179,18 @@ class LargeMmapAllocator {
     return GetHeader(p) + 1;
   }
 
+  void *GetMetaData(const void *p, u32 sizeof_safe_metadata) { 
+    if (!IsAligned(reinterpret_cast<uptr>(p), page_size_)) {
+      Printf("%s: bad pointer %p\n", SanitizerToolName, p);
+      CHECK(IsAligned(reinterpret_cast<uptr>(p), page_size_));
+    }
+    // offset = 32 * Sizeof(Header). It's Typed pointer arithmetic 
+    // putting ChunkSafeCopy at 512 bytes from block_beg which
+    // starts as a page-sized pad before user data. The AsanChunk
+    // and the Header can be outlined completly, but it's slower+. 
+    return GetHeader(p) + 0x20;
+  }
+
   void *GetBlockBegin(const void *ptr) const {
     uptr p = reinterpret_cast<uptr>(ptr);
     SpinMutexLock l(&mutex_);

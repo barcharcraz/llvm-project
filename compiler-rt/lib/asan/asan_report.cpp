@@ -25,6 +25,7 @@
 #include "sanitizer_common/sanitizer_report_decorator.h"
 #include "sanitizer_common/sanitizer_stackdepot.h"
 #include "sanitizer_common/sanitizer_symbolizer.h"
+#include "asan_continue_on_error.h"
 
 namespace __asan {
 
@@ -115,6 +116,7 @@ bool ParseFrameDescription(const char *frame_descr,
   return true;
 }
 
+
 // -------------------- Different kinds of reports ----------------- {{{1
 
 // Use ScopedInErrorReport to run common actions just before and
@@ -128,18 +130,40 @@ class ScopedInErrorReport {
     // We can lock them only here to avoid self-deadlock in case of
     // recursive reports.
     asanThreadRegistry().Lock();
-    Printf(
-        "=================================================================\n");
+    if (!coe.ContinueOnError()) {
+      Printf(
+          "================================================================="
+          "\n");
+    } else {
+      // See if it's a repeated call stack first
+       coe.OpenError();
+    }
   }
 
   ~ScopedInErrorReport() {
-    if (halt_on_error_ && !__sanitizer_acquire_crash_state()) {
+    if (halt_on_error_ && !__sanitizer_acquire_crash_state() &&
+        !coe.ContinueOnError()) {
       asanThreadRegistry().Unlock();
       return;
     }
+    if (coe.ContinueOnError() && coe.CrtTearingDown()) {
+      return;
+    }
     ASAN_ON_ERROR();
-    if (current_error_.IsValid()) current_error_.Print();
-
+    if (current_error_.IsValid()) {
+      if (!coe.ContinueOnError()) {
+        current_error_.Print();
+      } else {
+        if (!current_error_.IsCached()) {
+          coe.ReportError(current_error_);
+          Report("CONTINUE ON ERROR\n");
+        }
+        coe.CloseError(current_error_);
+        asanThreadRegistry().Unlock();
+        internal_memset(&current_error_, 0, sizeof(current_error_));
+        return;
+      }
+    }
     // Make sure the current thread is announced.
     DescribeThread(GetCurrentThread());
     // We may want to grab this lock again when printing stats.

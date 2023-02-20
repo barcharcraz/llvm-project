@@ -15,7 +15,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "asan_allocator.h"
-
 #include "asan_mapping.h"
 #include "asan_poisoning.h"
 #include "asan_report.h"
@@ -30,6 +29,7 @@
 #include "sanitizer_common/sanitizer_list.h"
 #include "sanitizer_common/sanitizer_quarantine.h"
 #include "sanitizer_common/sanitizer_stackdepot.h"
+#include "asan_continue_on_error.h"
 
 #if SANITIZER_WINDOWS
 #include "asan_malloc_win_moveable.h"
@@ -88,6 +88,7 @@ static void AtomicContextLoad(const volatile atomic_uint64_t *atomic_context,
 //   ---------------------|
 //   M -- magic value kAllocBegMagic
 //   B -- address of ChunkHeader pointing to the first 'H'
+uptr GetSafeSize(void *p);
 
 class ChunkHeader {
  public:
@@ -108,6 +109,18 @@ class ChunkHeader {
   uptr UsedSize() const {
     static_assert(sizeof(user_requested_size_lo) == 4,
                   "Expression below requires this");
+    if (flags()->continue_on_error && !coe.ModulesLoading()) {
+      // When reporting an error, we optimize and avoid use of 
+      // safe meta data for heap blocks that will immediately be freed.
+      return GetSafeSize((void *)this);
+    }
+    return FIRST_32_SECOND_64(0, ((uptr)user_requested_size_hi << 32)) +
+           user_requested_size_lo;
+  }
+
+  uptr UsedSizeDirect() const {
+    static_assert(sizeof(user_requested_size_lo) == 4,
+                  "Expression below requires this");
     return FIRST_32_SECOND_64(0, ((uptr)user_requested_size_hi << 32)) +
            user_requested_size_lo;
   }
@@ -117,7 +130,7 @@ class ChunkHeader {
     static_assert(sizeof(user_requested_size_lo) == 4,
                   "Expression below requires this");
     user_requested_size_hi = FIRST_32_SECOND_64(0, size >> 32);
-    CHECK_EQ(UsedSize(), size);
+    CHECK_EQ(UsedSizeDirect(), size);
   }
 
   void SetAllocContext(u32 tid, u32 stack) {
@@ -142,6 +155,25 @@ class ChunkBase : public ChunkHeader {
   }
 };
 
+// AsanChunk conveys positional information (beginning of user_data).
+// This safe copy node doe NOT encapsulate that semantic. In the 
+// real AsanChunk in a block the methods use the this pointer as an 
+// explicitly offset. That creates a pointer to real user data in a block. 
+// This copy contains a pointer to the real AsanChunk if positional
+// information is required. This is mainly used to restore the AsanChunk
+// in the minimal number of places.
+struct ChunkSafeCopy : ChunkBase {
+  ChunkBase *real_chunk;
+};
+
+uptr GetSafeSize(void *p) { 
+  CHECK(!coe.ModulesLoading());
+  AsanAllocator &a = get_allocator();
+  ChunkSafeCopy *sc = reinterpret_cast<ChunkSafeCopy *>(
+      a.GetMetaData(a.GetBlockBegin(p), sizeof(ChunkSafeCopy)));
+  return sc->UsedSizeDirect();
+}
+
 static const uptr kChunkHeaderSize = sizeof(ChunkHeader);
 static const uptr kChunkHeader2Size = sizeof(ChunkBase) - kChunkHeaderSize;
 COMPILER_CHECK(kChunkHeaderSize == 16);
@@ -163,6 +195,15 @@ class AsanChunk : public ChunkBase {
   uptr Beg() { return reinterpret_cast<uptr>(this) + kChunkHeaderSize; }
   bool AddrIsInside(uptr addr) {
     return (addr >= Beg()) && (addr < Beg() + UsedSize());
+  }
+  void Copy(ChunkSafeCopy* smd) { 
+    CHECK(REAL(memcpy));
+    REAL(memcpy)(smd, this, sizeof(ChunkSafeCopy));
+    smd->real_chunk = this;
+  }
+  void Restore(ChunkSafeCopy* smd) {
+    CHECK(REAL(memcpy));
+    REAL(memcpy)(this, smd, sizeof(AsanChunk));
   }
 };
 
@@ -218,9 +259,11 @@ struct QuarantineCallback {
                  kAsanHeapLeftRedzoneMagic);
 
     // Statistics.
-    AsanStats &thread_stats = GetCurrentThreadStats();
-    thread_stats.real_frees++;
-    thread_stats.really_freed += m->UsedSize();
+    if (!flags()->continue_on_error) {
+      AsanStats &thread_stats = GetCurrentThreadStats();
+      thread_stats.real_frees++;
+      thread_stats.really_freed += m->UsedSize();
+    }
 
     get_allocator().Deallocate(cache_, p);
   }
@@ -279,6 +322,13 @@ QuarantineCache *GetQuarantineCache(AsanThreadLocalMallocStorage *ms) {
   return reinterpret_cast<QuarantineCache *>(ms->quarantine_cache);
 }
 
+QuarantineCache *GetQuarantineCheckpointCache(
+    AsanThreadLocalMallocStorage *ms) {
+  CHECK(ms);
+  CHECK_LE(sizeof(QuarantineCache), sizeof(ms->quarantine_checkpoint));
+  return reinterpret_cast<QuarantineCache *>(ms->quarantine_checkpoint);
+}
+
 void AllocatorOptions::SetFrom(const Flags *f, const CommonFlags *cf) {
   quarantine_size_mb = f->quarantine_size_mb;
   thread_local_quarantine_size_kb = f->thread_local_quarantine_size_kb;
@@ -308,6 +358,7 @@ struct Allocator {
   StaticSpinMutex fallback_mutex;
   AllocatorCache fallback_allocator_cache;
   QuarantineCache fallback_quarantine_cache;
+  QuarantineCache fallback_quarantine_checkpoint;
 
   uptr max_user_defined_malloc_size;
 
@@ -475,9 +526,48 @@ struct Allocator {
     return true;
   }
 
+  void AsanChunkCOE_Allocate(uptr alloc_beg, AsanChunk* m) {
+    Flags &fl = *flags();
+    if (!fl.continue_on_error || coe.ModulesLoading()) {
+      return;
+    }
+    // safe meta data
+    void *smd = get_allocator().GetMetaData(
+        reinterpret_cast<void *>(alloc_beg), sizeof(ChunkSafeCopy));
+    m->Copy(reinterpret_cast<ChunkSafeCopy*>(smd));
+  }
+
+  ChunkSafeCopy* AsanChunkCOE_Get(AsanChunk* m) {
+    void *alloc_beg = get_allocator().GetBlockBegin((void *)m);
+    ChunkSafeCopy *smd = reinterpret_cast<ChunkSafeCopy *>(
+        get_allocator().GetMetaData(alloc_beg, sizeof(ChunkSafeCopy)));
+    return smd;
+  }
+
+  ChunkSafeCopy* AsanChunkCOE_Restore(AsanChunk* m) {
+    Flags &fl = *flags();
+    if (!fl.continue_on_error || coe.ModulesLoading()) {
+      return nullptr;
+    }
+    ChunkSafeCopy *smd = AsanChunkCOE_Get(m);
+    m->Restore(smd);
+    return smd;
+  }
+
+  void AsanChunkCOE_Quarantine(ChunkSafeCopy *smd,
+                                                   StackTrace *stack) {
+    if (!flags()->continue_on_error || coe.ModulesLoading()) {
+      return;
+    }
+    CHECK(smd);
+    AsanChunk* ac = reinterpret_cast<AsanChunk *>(smd);
+    AsanThread *t = GetCurrentThread();
+    ac->SetFreeContext((t ? t->tid() : 0), StackDepotPut(*stack));
+  }
+
   // -------------------- Allocation/Deallocation routines ---------------
   void *Allocate(uptr size, uptr alignment, BufferedStackTrace *stack,
-                 AllocType alloc_type, bool can_fill) {
+                 AllocType alloc_type,bool can_fill) {
     if (UNLIKELY(!asan_inited))
       AsanInitFromRtl();
     if (UNLIKELY(IsRssLimitExceeded())) {
@@ -523,6 +613,9 @@ struct Allocator {
       uptr malloc_limit =
           Min(kMaxAllowedMallocSize, max_user_defined_malloc_size);
       ReportAllocationSizeTooBig(size, needed_size, malloc_limit, stack);
+      if (flags()->continue_on_error) {
+        return nullptr;
+      }
     }
 
     AsanThread *t = GetCurrentThread();
@@ -580,16 +673,16 @@ struct Allocator {
           (u8 *)MemToShadow(user_beg + size_rounded_down_to_granularity);
       *shadow = fl.poison_partial ? (size & (ASAN_SHADOW_GRANULARITY - 1)) : 0;
     }
-
-    AsanStats &thread_stats = GetCurrentThreadStats();
-    thread_stats.mallocs++;
-    thread_stats.malloced += size;
-    thread_stats.malloced_redzones += needed_size - size;
-    if (needed_size > SizeClassMap::kMaxSize)
-      thread_stats.malloc_large++;
-    else
-      thread_stats.malloced_by_size[SizeClassMap::ClassID(needed_size)]++;
-
+    if (!fl.continue_on_error) {
+      AsanStats &thread_stats = GetCurrentThreadStats();
+      thread_stats.mallocs++;
+      thread_stats.malloced += size;
+      thread_stats.malloced_redzones += needed_size - size;
+      if (needed_size > SizeClassMap::kMaxSize)
+        thread_stats.malloc_large++;
+      else
+        thread_stats.malloced_by_size[SizeClassMap::ClassID(needed_size)]++;
+    }
     void *res = reinterpret_cast<void *>(user_beg);
     if (can_fill && fl.max_malloc_fill_size) {
       uptr fill_size = Min(size, (uptr)fl.max_malloc_fill_size);
@@ -605,6 +698,8 @@ struct Allocator {
       CHECK_LE(alloc_beg + sizeof(LargeChunkHeader), chunk_beg);
       reinterpret_cast<LargeChunkHeader *>(alloc_beg)->Set(m);
     }
+    // Read only
+    AsanChunkCOE_Allocate(alloc_beg, m); 
     ASAN_MALLOC_HOOK(res, size);
     return res;
   }
@@ -625,7 +720,53 @@ struct Allocator {
     CHECK_EQ(CHUNK_ALLOCATED, old_chunk_state);
     // It was a user data.
     m->SetFreeContext(kInvalidTid, 0);
+    if (flags()->continue_on_error && ! coe.ModulesLoading()) {
+      ChunkSafeCopy *smd = AsanChunkCOE_Get(m);
+      atomic_compare_exchange_strong(&(smd->chunk_state), &old_chunk_state,
+                                     CHUNK_QUARANTINE, memory_order_acquire);
+      smd->SetFreeContext(kInvalidTid, 0);
+    }
     return true;
+  }
+
+  void QuarantineCheckPoint() {
+    AsanThread *t = GetCurrentThread();
+    // Memoize current Quarantine stat.
+    if (t) {
+      AsanThreadLocalMallocStorage *ms = &t->malloc_storage();
+      // Normally we'd save all the batches from the thread local malloc
+      // quarantine cache to the quarantine object. If the _quarantine_ object
+      // exceeds a size then recycle some of it to the therad local _allocator_
+      // cache which will transfer these chunks to the SizeClassAllocator (or
+      // secondary allocator) if the allocator cache exceeds a threshold.
+
+      // Here we preserve the current thread and object quarantine states.
+      quarantine.Checkpoint(GetQuarantineCheckpointCache(ms),
+                            GetQuarantineCache(ms));
+    } else {
+      SpinMutexLock l(&fallback_mutex);
+      quarantine.Checkpoint(&fallback_quarantine_checkpoint,
+                            &fallback_quarantine_cache);
+    }
+  }
+
+  void QuarantineRestoreCheckPoint() {
+    AsanThread *t = GetCurrentThread();
+
+    if (t) {
+      AsanThreadLocalMallocStorage *ms = &t->malloc_storage();
+      AllocatorCache *ac = GetAllocatorCache(ms);
+
+      quarantine.Restore_Checkpoint(GetQuarantineCheckpointCache(ms),
+                                    GetQuarantineCache(ms),
+                                    QuarantineCallback(ac, nullptr));
+    } else {
+      SpinMutexLock l(&fallback_mutex);
+      AllocatorCache *ac = &fallback_allocator_cache;
+      quarantine.Restore_Checkpoint(&fallback_quarantine_checkpoint,
+                                    &fallback_quarantine_cache,
+                                    QuarantineCallback(ac, nullptr));
+    }
   }
 
   // Expects the chunk to already be marked as quarantined by using
@@ -653,10 +794,11 @@ struct Allocator {
     // Poison the region.
     PoisonShadow(m->Beg(), RoundUpTo(m->UsedSize(), ASAN_SHADOW_GRANULARITY),
                  kAsanHeapFreeMagic);
-
-    AsanStats &thread_stats = GetCurrentThreadStats();
-    thread_stats.frees++;
-    thread_stats.freed += m->UsedSize();
+    if (!flags()->continue_on_error) {
+      AsanStats &thread_stats = GetCurrentThreadStats();
+      thread_stats.frees++;
+      thread_stats.freed += m->UsedSize();
+    }
 
     // Push into quarantine.
     if (t) {
@@ -693,6 +835,9 @@ struct Allocator {
 
     ASAN_FREE_HOOK(ptr);
 
+    // Bad mutating writes during COE, can clobber the AsanChunk
+    ChunkSafeCopy *smd = AsanChunkCOE_Restore(m);
+
     // Must mark the chunk as quarantined before any changes to its metadata.
     // Do not quarantine given chunk if we failed to set CHUNK_QUARANTINE flag.
     if (!AtomicallySetQuarantineFlagIfAllocated(m, ptr, stack)) return;
@@ -712,6 +857,7 @@ struct Allocator {
       }
     }
 
+    AsanChunkCOE_Quarantine(smd, stack);
     QuarantineChunk(m, ptr, stack);
   }
 
@@ -727,6 +873,7 @@ struct Allocator {
 
     void *new_ptr = Allocate(new_size, 8, stack, FROM_MALLOC, true);
     if (new_ptr) {
+      AsanChunkCOE_Restore(m);      
       u8 chunk_state = atomic_load(&m->chunk_state, memory_order_acquire);
       if (chunk_state != CHUNK_ALLOCATED)
         ReportInvalidFree(old_ptr, chunk_state, stack);
@@ -745,6 +892,8 @@ struct Allocator {
       if (AllocatorMayReturnNull())
         return nullptr;
       ReportCallocOverflow(nmemb, size, stack);
+      if (flags()->continue_on_error)
+        return nullptr;
     }
     void *ptr = Allocate(nmemb * size, 8, stack, FROM_MALLOC, false);
     // If the memory comes from the secondary allocator no need to clear it
@@ -782,6 +931,7 @@ struct Allocator {
         return nullptr;
       p = reinterpret_cast<AsanChunk *>(alloc_beg);
     }
+    AsanChunkCOE_Restore(p);
     u8 state = atomic_load(&p->chunk_state, memory_order_relaxed);
     // It does not guaranty that Chunk is initialized, but it's
     // definitely not for any other value.
@@ -814,6 +964,10 @@ struct Allocator {
   AsanChunkView FindHeapChunkByAddress(uptr addr) {
     AsanChunk *m1 = GetAsanChunkByAddr(addr);
     sptr offset = 0;
+    if (flags()->continue_on_error) {
+      // The next brute force loop is super slow for coe
+      return AsanChunkView(m1);
+    }
     if (!m1 || AsanChunkView(m1).AddrIsAtLeft(addr, 1, &offset)) {
       // The address is in the chunk's left redzone, so maybe it is actually
       // a right buffer overflow from the other chunk to the left.
@@ -947,6 +1101,14 @@ AsanChunkView FindHeapChunkByAllocBeg(uptr addr) {
 void AsanThreadLocalMallocStorage::CommitBack() {
   GET_STACK_TRACE_MALLOC;
   instance.CommitBack(this, &stack);
+}
+
+void asan_quarantine_checkpoint() { 
+    instance.QuarantineCheckPoint(); 
+}
+
+void asan_quarantine_restore_checkpoint() {
+  instance.QuarantineRestoreCheckPoint();
 }
 
 void PrintInternalAllocatorStats() {
