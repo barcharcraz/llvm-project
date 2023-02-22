@@ -7,6 +7,8 @@
 // RUN: %if_not_i386 ( %clang_asan /std:c++17 /EHsc -Od %s -Fe%t && not %run %t RemoveOneTest 2>&1 | FileCheck %s --check-prefix=CHECK7 )
 // RUN: %if_not_i386 ( %clang_asan /std:c++17 /EHsc -Od %s -Fe%t && not %run %t RemoveAfterFirstExceptionTest 2>&1 | FileCheck %s --check-prefix=CHECK8 )
 // RUN: %if_not_i386 ( %clang_asan /std:c++17 /EHsc -Od %s -Fe%t && not %run %t VeryManyHandlers 2>&1 | FileCheck %s --check-prefix=CHECK9 )
+// RUN: %if_not_i386 ( %clang_asan /std:c++17 /EHsc -Od %s -Fe%t && not %run %t VCAsanExceptionsIgnored 2>&1 | FileCheck %s --check-prefix=CHECK10 )
+// RUN: %if_not_i386 ( %clang_asan /std:c++17 /EHsc -Od %s -Fe%t && not %run %t VCAsanExceptionsNotIgnoredOutsideRange 2>&1 | FileCheck %s --check-prefix=CHECK11 )
 
 #include <algorithm>
 #include <iostream>
@@ -188,6 +190,13 @@ UserExceptionHandler3(
   return EXCEPTION_CONTINUE_SEARCH;
 }
 
+static const char *userHandlerAllExceptions = "UserExceptionHandlerAllExceptions";
+LONG WINAPI
+UserExceptionHandlerAllExceptions(struct _EXCEPTION_POINTERS *) {
+  std::cerr << userHandlerAllExceptions << " called.\n";
+  return EXCEPTION_CONTINUE_SEARCH;
+}
+
 bool CheckOrder() {
   if (order <= 1) { // order doesn't matter for given test
     return true;
@@ -292,6 +301,9 @@ void VeryManyHandlers() {
 
 static const char *userHandlerTest = "UserHandlerTest";
 static const char *removeAfterFirstExceptionTest = "RemoveAfterFirstExceptionTest";
+
+static const char *vcasanExceptionsIgnored = "VCAsanExceptionsIgnored";
+static const char *vcasanExceptionsNotIgnoredOutsideRange = "VCAsanExceptionsNotIgnoredOutsideRange";
 
 void PrintRecordedStackTrace() {
   for (const auto &[symbol, frameNumber] : recordedStackTrace) {
@@ -406,6 +418,30 @@ int main(int argc, char **argv) {
     // CHECK9-COUNT-32: UserExceptionHandler2 called.
     // CHECK9-NEXT: UserExceptionHandler1 called.
     // CHECK9-COUNT-32: UserExceptionHandler3 called.
+  }
+
+  constexpr unsigned vcasanFirstExn = 0xE073616E;
+  constexpr unsigned vcasanLastExn = 0xE0736172;
+  if (!strcmp(argv[1], vcasanExceptionsIgnored)) {
+    std::cerr << "Avoid stderr being empty.\n"; // test framework issue
+    AddHandler(callFirst, UserExceptionHandlerAllExceptions);
+    for (unsigned exn = vcasanFirstExn; exn <= vcasanLastExn; ++exn) {
+      __try {
+        RaiseException(exn, 0, 0, nullptr);
+      } __except (EXCEPTION_EXECUTE_HANDLER) {
+      }
+    }
+    // CHECK10-NOT: UserExceptionHandlerAllExceptions called.
+  }
+  if (!strcmp(argv[1], vcasanExceptionsNotIgnoredOutsideRange)) {
+    AddHandler(callFirst, UserExceptionHandlerAllExceptions);
+    for (auto exn : {vcasanFirstExn - 1, vcasanLastExn + 1}) {
+      __try {
+        RaiseException(exn, 0, 0, nullptr);
+      } __except(EXCEPTION_EXECUTE_HANDLER) {
+      }
+    }
+    // CHECK11-COUNT-2: UserExceptionHandlerAllExceptions called.
   }
 
   // CHECK-NOT: {{Failed.*}}
