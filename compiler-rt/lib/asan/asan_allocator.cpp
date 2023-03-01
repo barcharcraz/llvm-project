@@ -198,12 +198,16 @@ class AsanChunk : public ChunkBase {
   }
   void Copy(ChunkSafeCopy* smd) { 
     CHECK(REAL(memcpy));
-    REAL(memcpy)(smd, this, sizeof(ChunkSafeCopy));
+    REAL(memcpy)(smd, this, sizeof(ChunkHeader));
     smd->real_chunk = this;
   }
   void Restore(ChunkSafeCopy* smd) {
     CHECK(REAL(memcpy));
-    REAL(memcpy)(this, smd, sizeof(AsanChunk));
+    // The ChunkHeader does not contain the additional
+    // 64-bit free_context_id which is packed into the
+    // user's data and used only when chunk_state is
+    // CHUNK_QUARANTINE. Same for Copy() above.
+    REAL(memcpy)(this, smd, sizeof(ChunkHeader));
   }
 };
 
@@ -873,7 +877,7 @@ struct Allocator {
 
     void *new_ptr = Allocate(new_size, 8, stack, FROM_MALLOC, true);
     if (new_ptr) {
-      AsanChunkCOE_Restore(m);      
+      AsanChunkCOE_Restore(m);
       u8 chunk_state = atomic_load(&m->chunk_state, memory_order_acquire);
       if (chunk_state != CHUNK_ALLOCATED)
         ReportInvalidFree(old_ptr, chunk_state, stack);

@@ -202,8 +202,7 @@
 // the proper 0 mod 8 packing directives themselves.
 #include <imagehlp.h>
 #pragma pack(pop, before_imagehlp)
-#pragma comment(lib, "psapi.lib")
-#pragma comment(lib, "dbghelp.lib")
+#include <windows.h>
 
 // Before we invoke the in process symbolizer we
 // make sure there's enough stack space remaining.
@@ -287,6 +286,8 @@ static void Write(const char* format, Args... args) {
 }
 
 namespace __asan {
+
+HMODULE hmDbgHelp;
 
 static SpinMutex fallback_mutex;
 
@@ -401,6 +402,17 @@ struct SourceErrors {
 };
 
 SourceErrors source_errors;
+
+decltype(::SymCleanup)* SymCleanup;
+decltype(::SymGetLineFromAddr64)* SymGetLineFromAddr64;
+decltype(::SymGetOptions)* SymGetOptions;
+decltype(::SymGetSearchPathW)* SymGetSearchPathW;
+decltype(::SymGetSymFromAddr64)* SymGetSymFromAddr64;
+decltype(::SymInitialize)* SymInitialize;
+decltype(::SymLoadModuleExW)* SymLoadModuleExW;;
+decltype(::SymSetOptions)* SymSetOptions;
+decltype(::SymSetScopeFromAddr)* SymSetScopeFromAddr;
+decltype(::SymSetSearchPathW)* SymSetSearchPathW;
 
 static const size_t kAsanWindowsSymMaxLen = 2 * 1024;
 
@@ -1129,6 +1141,31 @@ struct CoeShutDown {
     end = summary_strings + ((kErrorLines * kBytesPerLine) - 64);
     last_len = 0;
     line_cnt = 0;
+    if (flags()->continue_on_error) {
+      hmDbgHelp = LoadLibraryA("dbghelp.dll");
+      if (nullptr == hmDbgHelp) {
+        UNREACHABLE("Unable to load the DbgHelp DLL");
+      }
+
+#define DBGHELP_IMPORT(name)                        \
+      do {                                          \
+        name = reinterpret_cast<decltype(::name)*>( \
+            GetProcAddress(hmDbgHelp, #name));      \
+        CHECK(name != nullptr);                     \
+      } while (0)
+
+      DBGHELP_IMPORT(SymCleanup);
+      DBGHELP_IMPORT(SymGetLineFromAddr64);
+      DBGHELP_IMPORT(SymGetOptions);
+      DBGHELP_IMPORT(SymGetSearchPathW);
+      DBGHELP_IMPORT(SymGetSymFromAddr64);
+      DBGHELP_IMPORT(SymInitialize);
+      DBGHELP_IMPORT(SymLoadModuleExW);
+      DBGHELP_IMPORT(SymSetOptions);
+      DBGHELP_IMPORT(SymSetScopeFromAddr);
+      DBGHELP_IMPORT(SymSetSearchPathW);
+#undef DBGHELP_IMPORT
+    }
   }
 
   ~CoeShutDown() {
@@ -1438,7 +1475,7 @@ void CoeReportError(ErrorDescription& current_error) {
   // Allocate space in the table[hash], copy e and set hit count.
   ASanLiteCacheError(current_error);
 
-  // Prepare for in process symbolizer
+  // Prepare for in process symbolize and report
   HANDLE hProcess = ::GetCurrentProcess();
   SymHandler handler(hProcess);
   CoeInitializeDbgHelp();
@@ -1472,7 +1509,7 @@ static wchar_t* GetEnvironmentVariableValue(LPCWSTR wszName) {
   return logfile_name;
 }
 
-// Called from asan\asan_rtl.cpp 
+// Called from within static void AsanInitInternal() in asan\asan_rtl.cpp 
 void InitializeCOE() {
 
   const wchar_t* wszResultsFilePath =

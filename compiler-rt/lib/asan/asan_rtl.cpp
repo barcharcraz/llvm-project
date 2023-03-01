@@ -461,9 +461,9 @@ static void AsanInitInternal() {
 // Rtl call that is reentrant on start up, and frequently deadlocks on MTd
 // suites.
 #ifdef SANITIZER_WINDOWS
+  __asan::InitializeCOE();
   // Keep track of allocations that happened prior to asan init only on windows
   CaptureSystemHeapAllocations();
-  __asan::InitializeCOE();
 #endif
 
   if (flags()->atexit)
