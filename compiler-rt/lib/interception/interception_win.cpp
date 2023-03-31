@@ -154,7 +154,7 @@ static void InterceptionFailed() {
       GetEnvironmentVariableA("ASAN_WIN_CONTINUE_ON_INTERCEPTION_FAILURE",
                               dummy_buffer, 0) == 0 &&
       GetLastError() == ERROR_ENVVAR_NOT_FOUND;
-  bool debugger_is_present = IsDebuggerPresent();
+  bool debugger_is_present = __sanitizer::IsInDebugger();
   if (debugger_is_present) {
     OutputDebugStringA(
         "====================================================================\n"
@@ -967,7 +967,7 @@ struct ZwSetInformationVirtualMemory_immortal {
             handle, "ZwSetInformationVirtualMemory"));
 
     if (!fn) {
-      if (IsDebuggerPresent()) {
+      if (__sanitizer::IsInDebugger()) {
         OutputDebugStringA(
             "=================================================================="
             "==\n"

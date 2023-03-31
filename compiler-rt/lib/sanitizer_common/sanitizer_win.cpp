@@ -28,6 +28,7 @@
 
 #include "asan/asan_internal.h"
 #include "interception/interception.h"
+#include "sanitizer_atomic.h"
 #include "sanitizer_common.h"
 #include "sanitizer_file.h"
 #include "sanitizer_flags.h"
@@ -886,7 +887,7 @@ void internal__exit(int exitcode) {
   // ExitProcess runs some finalizers, so use TerminateProcess to avoid that.
   // The debugger doesn't stop on TerminateProcess like it does on ExitProcess,
   // so add our own breakpoint here.
-  if (::IsDebuggerPresent())
+  if (__sanitizer::IsInDebugger())
     __debugbreak();
   if (common_flags()->windows_fast_fail_on_error) {
     __fastfail(FAST_FAIL_ASAN_ERROR);
@@ -1293,6 +1294,48 @@ bool IsProcessTerminating() {
   return SanitizerProcessEnvironmentBlock(
              NtCurrentTeb()->ProcessEnvironmentBlock->Ldr)
       .IsShutdownInProgress();
+}
+
+static bool IsInDebuggerImpl() {
+  if (!::IsDebuggerPresent()) {
+    return false;
+  }
+
+  constexpr static wchar_t asanDebuggingVariable[] = L"ASAN_DEBUGGING";
+  // we're checking for 0, false, off, or no - the maximum size we care about is
+  // therefore 5, and with the terminating null, 6.
+  constexpr static size_t maximumValueSize = 6;
+  wchar_t debuggingValue[maximumValueSize];
+  if (auto size = GetEnvironmentVariableW(asanDebuggingVariable, debuggingValue,
+                                          maximumValueSize)) {
+    if (size >= maximumValueSize) {
+      return true;  // cannot compare equal to any of our values
+    }
+
+    return !(
+        internal_wcscmp(debuggingValue, L"0") || internal_wcscmp(debuggingValue, L"no") ||
+        internal_wcscmp(debuggingValue, L"false"));
+  }
+
+  return true;  // the environment variable isn't in the environment block
+}
+
+bool IsInDebugger() {
+  enum is_in_debugger_state : u32 {
+    no = 0,
+    yes = 1,
+    unknown = 2,
+  };
+
+  // implement semi-magic statics
+  static atomic_uint32_t state{unknown};
+  auto current_state = atomic_load_relaxed(&state);
+  if (current_state == unknown) {
+    bool result = IsInDebuggerImpl();
+    atomic_store_relaxed(&state, result);
+    return result;
+  }
+  return current_state == yes;
 }
 
 bool IsMemoryMapped(HANDLE Handle) {

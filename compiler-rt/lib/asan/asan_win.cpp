@@ -203,7 +203,7 @@ enum SanitizerSEHExceptions : unsigned {
 };
 
 __declspec(noinline) static void EnlightenVSDebugger() {
-  if (::IsDebuggerPresent()) {
+  if (__sanitizer::IsInDebugger()) {
     // Must fire before shadow memory is boot strapped by throwing AV's
     // This is called early from AsanInitInternal()
     __try {
@@ -254,7 +254,7 @@ static VEHShadowBehavior __cdecl ShadowExceptionHandler(
 
   // Check valid shadow range.
   if (!AddrIsInShadow(addr)) {
-    if (::IsDebuggerPresent()) {
+    if (__sanitizer::IsInDebugger()) {
       __try {
         ULONG_PTR args[] = {
             reinterpret_cast<ULONG_PTR>(exception_pointers->ExceptionRecord),

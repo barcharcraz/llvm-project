@@ -16,8 +16,9 @@
 #include "sanitizer_win_dll_thunk.h"
 #include "interception/interception.h"
 
+#include <windows.h>
+
 extern "C" {
-void *WINAPI GetModuleHandleA(const char *module_name);
 void abort();
 }
 
@@ -46,6 +47,10 @@ int dllThunkInterceptWhenPossible(const char* main_function,
   if (!__interception::OverrideFunction(dll_function, wrapper, 0))
     abort();
   return 0;
+}
+
+bool IsInDebugger() {
+  return ::IsDebuggerPresent();
 }
 } // namespace __sanitizer
 

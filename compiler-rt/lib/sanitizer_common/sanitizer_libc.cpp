@@ -258,6 +258,18 @@ s64 internal_simple_strtoll(const char *nptr, const char **endptr, int base) {
   }
 }
 
+int internal_wcscmp(const wchar_t *s1, const wchar_t *s2) {
+  while (true) {
+    const wchar_t c1 = *s1;
+    const wchar_t c2 = *s2;
+    if (c1 != c2) return (c1 < c2) ? -1 : 1;
+    if (c1 == 0) break;
+    s1++;
+    s2++;
+  }
+  return 0;
+}
+
 uptr internal_wcslen(const wchar_t *s) {
   uptr i = 0;
   while (s[i]) i++;

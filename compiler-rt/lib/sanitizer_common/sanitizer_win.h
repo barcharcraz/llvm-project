@@ -29,6 +29,11 @@ bool IsHandledDeadlyException(DWORD exceptionCode);
 // relies on this function for preventing deadlocks on process termination.
 bool IsProcessTerminating();
 
+// Checks whether a user-space debugger is present, and if so,
+// whether the user has not disabled special debugger behaviour by setting the
+// %ASAN_DEBUGGING% environment variable to 0, no, or false.
+bool IsInDebugger();
+
 // Checks if the address is part of a memory mapping.
 bool IsMemoryMapped(void* Handle);
 
