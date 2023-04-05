@@ -1302,7 +1302,7 @@ static bool IsInDebuggerImpl() {
   }
 
   constexpr static wchar_t asanDebuggingVariable[] = L"ASAN_DEBUGGING";
-  // we're checking for 0, false, off, or no - the maximum size we care about is
+  // we're checking for 0, no, or false - the maximum size we care about is
   // therefore 5, and with the terminating null, 6.
   constexpr static size_t maximumValueSize = 6;
   wchar_t debuggingValue[maximumValueSize];
@@ -1312,9 +1312,8 @@ static bool IsInDebuggerImpl() {
       return true;  // cannot compare equal to any of our values
     }
 
-    return !(
-        internal_wcscmp(debuggingValue, L"0") || internal_wcscmp(debuggingValue, L"no") ||
-        internal_wcscmp(debuggingValue, L"false"));
+    return internal_wcscmp(debuggingValue, L"0") == 0 || internal_wcscmp(debuggingValue, L"no") == 0 ||
+        internal_wcscmp(debuggingValue, L"false") == 0;
   }
 
   return true;  // the environment variable isn't in the environment block
