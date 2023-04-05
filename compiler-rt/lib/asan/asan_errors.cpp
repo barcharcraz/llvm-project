@@ -404,6 +404,8 @@ void ErrorBadParamsToAnnotateContiguousContainer::Print() {
   ReportErrorSummary(scariness.GetDescription(), stack);
 }
 
+bool ErrorBadParamsToAnnotateDoubleEndedContiguousContainer::IsCached() { return false; }
+
 void ErrorBadParamsToAnnotateDoubleEndedContiguousContainer::Print() {
   Report(
       "ERROR: AddressSanitizer: bad parameters to "

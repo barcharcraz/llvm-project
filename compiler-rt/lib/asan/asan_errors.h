@@ -370,6 +370,7 @@ struct ErrorBadParamsToAnnotateDoubleEndedContiguousContainer : ErrorBase {
         new_container_beg(new_container_beg_),
         new_container_end(new_container_end_) {}
   void Print();
+  bool IsCached();
 };
 
 struct ErrorODRViolation : ErrorBase {
