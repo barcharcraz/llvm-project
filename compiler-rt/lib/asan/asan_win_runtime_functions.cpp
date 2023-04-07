@@ -80,14 +80,13 @@ namespace __asan {
 // pointing to some block of memory.
 // If new memory is allocated, it will then be tracked by asan since
 // rtl functions are intercepted
-#define CHECK_AND_CALL(allocationCheck, functionPointer, asanFunction, ptr,   \
-                         ...)                                                 \
-  do {                                                                        \
-    if (UNLIKELY(!asan_inited) ||                                             \
-        !asan_mz_size(ptr) && allocationCheck(ptr)) {                         \
-      return functionPointer(ptr, __VA_ARGS__);                               \
-    } else                                                                    \
-      return asanFunction(ptr, __VA_ARGS__);                                  \
+#define CHECK_AND_CALL(allocationCheck, functionPointer, asanFunction, ptr, \
+                       ...)                                                 \
+  do {                                                                      \
+    if (!asan_mz_size(ptr) && allocationCheck(ptr)) {                                             \
+      return functionPointer(ptr, ##__VA_ARGS__);                             \
+    } else                                                                  \
+      return asanFunction(ptr, ##__VA_ARGS__);                                \
   } while (0)
 
 // If memory is freed, we need to remove system allocation map
@@ -96,13 +95,13 @@ namespace __asan {
                             ptr, ...)                                         \
   do {                                                                        \
     if (UNLIKELY(!asan_inited)) {                                             \
-      functionPointer(ptr, __VA_ARGS__);                                      \
+      functionPointer(ptr, ##__VA_ARGS__);                                      \
     }                                                                         \
     if (!asan_mz_size(ptr) && allocationCheck(ptr)) {                         \
-      functionPointer(ptr, __VA_ARGS__);                                      \
+      functionPointer(ptr, ##__VA_ARGS__);                                      \
       RemoveFromSystemHeapAllocationsMap(ptr);                                \
     } else                                                                    \
-      return asanFunction(ptr, __VA_ARGS__);                                  \
+      return asanFunction(ptr, ##__VA_ARGS__);                                  \
   } while (0)
 
 // In cases where the allocation took place prior to asan initialization
@@ -119,15 +118,15 @@ namespace __asan {
                                   sizeCheck, asanFunction, freeFn, ptr, ...)   \
   do {                                                                         \
     if (UNLIKELY(!asan_inited)) {                                              \
-      return functionPointer(ptr, __VA_ARGS__);                                \
+      return functionPointer(ptr, ##__VA_ARGS__);                                \
     }                                                                          \
     if (!asan_mz_size(ptr) && allocationCheck(ptr)) {                          \
-      auto __asanAllocation = asanFunction(nullptr, __VA_ARGS__);              \
+      auto __asanAllocation = asanFunction(nullptr, ##__VA_ARGS__);              \
       REAL(memcpy)(__asanAllocation, ptr, sizeCheck);                          \
       freeFn;                                                                  \
       return __asanAllocation;                                                 \
     } else                                                                     \
-      return asanFunction(ptr, __VA_ARGS__);                                   \
+      return asanFunction(ptr, ##__VA_ARGS__);                                   \
   } while (0)
 
 template <typename Runtime>
