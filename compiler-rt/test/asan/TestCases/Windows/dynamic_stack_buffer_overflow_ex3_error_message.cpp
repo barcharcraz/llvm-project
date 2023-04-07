@@ -16,7 +16,7 @@ int tmp;
 
 // Testing output for example in
 // https://docs.microsoft.com/en-us/cpp/sanitizers/error-dynamic-stack-buffer-overflow
-void main()
+int main()
 {
   int *cc;
   int i;
@@ -101,5 +101,6 @@ __try{
   }
   printf("pass\n");
   exit(0);
-  }
+  }  
+  return 0;  
 }
