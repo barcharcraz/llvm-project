@@ -21,7 +21,7 @@ void bad_function() {
   // CHECK: (longjmp, SEH and C++ exceptions *are* supported)
   // CHECK: Address [[ADDR2]] is located in stack of thread T0 at offset {{[0-9]+}} in frame
   // CHECK: This frame has {{[0-9]+}} object(s):
-  // CHECK: [{{[0-9]+}}, {{[0-9]+}}) 'buffer' <== Memory access at offset {{[0-9]+}} is inside this variable
+  // CHECK: [{{[0-9]+}}, {{[0-9]+}}) 'buffer' (line {{[0-9]+}}) <== Memory access at offset {{[0-9]+}} is inside this variable
   // CHECK: HINT: this may be a false positive if your program uses some custom stack unwind mechanism, swapcontext or vfork
   // CHECK: (longjmp, SEH and C++ exceptions *are* supported)
   // CHECK: SUMMARY: AddressSanitizer: strncat-param-overlap
