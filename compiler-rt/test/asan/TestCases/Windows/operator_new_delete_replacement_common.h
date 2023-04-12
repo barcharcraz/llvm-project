@@ -395,7 +395,7 @@ struct alignas(32) overaligned {
 extern "C" __declspec(dllexport) int test_function()
 #else
 int main()
-#endif{
+#endif
 {
   test_allocations<int>();
   test_allocations<overaligned>();
