@@ -1141,31 +1141,6 @@ struct CoeShutDown {
     end = summary_strings + ((kErrorLines * kBytesPerLine) - 64);
     last_len = 0;
     line_cnt = 0;
-    if (flags()->continue_on_error) {
-      hmDbgHelp = LoadLibraryA("dbghelp.dll");
-      if (nullptr == hmDbgHelp) {
-        UNREACHABLE("Unable to load the DbgHelp DLL");
-      }
-
-#define DBGHELP_IMPORT(name)                        \
-      do {                                          \
-        name = reinterpret_cast<decltype(::name)*>( \
-            GetProcAddress(hmDbgHelp, #name));      \
-        CHECK(name != nullptr);                     \
-      } while (0)
-
-      DBGHELP_IMPORT(SymCleanup);
-      DBGHELP_IMPORT(SymGetLineFromAddr64);
-      DBGHELP_IMPORT(SymGetOptions);
-      DBGHELP_IMPORT(SymGetSearchPathW);
-      DBGHELP_IMPORT(SymGetSymFromAddr64);
-      DBGHELP_IMPORT(SymInitialize);
-      DBGHELP_IMPORT(SymLoadModuleExW);
-      DBGHELP_IMPORT(SymSetOptions);
-      DBGHELP_IMPORT(SymSetScopeFromAddr);
-      DBGHELP_IMPORT(SymSetSearchPathW);
-#undef DBGHELP_IMPORT
-    }
   }
 
   ~CoeShutDown() {
@@ -1509,74 +1484,105 @@ static wchar_t* GetEnvironmentVariableValue(LPCWSTR wszName) {
   return logfile_name;
 }
 
-// Called from within static void AsanInitInternal() in asan\asan_rtl.cpp 
-void InitializeCOE() {
-
-  const wchar_t* wszResultsFilePath =
-      GetEnvironmentVariableValue(coe_wcs_log_file_name);
-
-  if (wszResultsFilePath) {
-    if (!flags()->continue_on_error) {
-      // Enable functionality - user requested a log file
-      flags()->continue_on_error = true;
+static void CoeDynamicallyLoadDbghelp() {
+  // Flags were parsed becuase of calls ordered
+  // previously in AsanInitInternal()
+  if (flags()->continue_on_error) {
+    hmDbgHelp = LoadLibraryA("dbghelp.dll");
+    if (nullptr == hmDbgHelp) {
+      UNREACHABLE("Unable to load the DbgHelp DLL");
     }
 
-    coe_res_file_handle =
-        ::CreateFileW(wszResultsFilePath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
-                      FILE_ATTRIBUTE_NORMAL, NULL);
+#define DBGHELP_IMPORT(name)                      \
+    do {                                          \
+      name = reinterpret_cast<decltype(::name)*>( \
+          GetProcAddress(hmDbgHelp, #name));      \
+      CHECK(name != nullptr);                     \
+    } while (0)
 
-    if (coe_res_file_handle == INVALID_HANDLE_VALUE) {
-      // ..otherwise, create a tmp file in the %TMP% then %TEMP% directories
-      LPWSTR coe_temp_file_path = (LPWSTR)wszResultsFilePath;
+    DBGHELP_IMPORT(SymCleanup);
+    DBGHELP_IMPORT(SymGetLineFromAddr64);
+    DBGHELP_IMPORT(SymGetOptions);
+    DBGHELP_IMPORT(SymGetSearchPathW);
+    DBGHELP_IMPORT(SymGetSymFromAddr64);
+    DBGHELP_IMPORT(SymInitialize);
+    DBGHELP_IMPORT(SymLoadModuleExW);
+    DBGHELP_IMPORT(SymSetOptions);
+    DBGHELP_IMPORT(SymSetScopeFromAddr);
+    DBGHELP_IMPORT(SymSetSearchPathW);
+#undef DBGHELP_IMPORT
+  }
+}
 
-      u32 dwError = GetLastError();
-      Write(
-          "\nFailed to open file %ws. Error %x.\n Trying to default to "
-          "temp file "
-          "name...\n",
-          wszResultsFilePath, dwError);
+HANDLE CoeCreateLogFile(const wchar_t* wszResultsFilePath) {
+  CHECK(wszResultsFilePath);
+  auto coe_res_file_handle =
+      ::CreateFileW(wszResultsFilePath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
+                    FILE_ATTRIBUTE_NORMAL, NULL);
 
-      // Cons up a tmp . Windwos specifies 14 on MSDN
-      auto tmp_path_wchar_cnt = GetTempPathW(MAX_PATH - 14, coe_temp_file_path);
-      if (0 == tmp_path_wchar_cnt) {
-        Write("\nFailed to get temp directory.No log file. Internal Error %x\n",
-              GetLastError());
-        return;
-      }
-      if (!GetTempFileNameW(coe_temp_file_path, L"Asan_COE", 0,
-                            &coe_temp_file_path[tmp_path_wchar_cnt])) {
-        Write("\nFailed to get temp file name.Error %x\n",
-              GetLastError());
-        return;
-      }
-
-      auto h_coe_tmp_file =
-          CreateFileW(coe_temp_file_path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
-                      FILE_ATTRIBUTE_NORMAL, NULL);
-
-      if (h_coe_tmp_file == INVALID_HANDLE_VALUE) {
-        Write("\nFailed to open temp file %ws with error %x\n",
-              coe_temp_file_path, GetLastError());
-        return;
-      }
-    }
-
-    if (wszResultsFilePath && coe_res_file_handle != INVALID_HANDLE_VALUE) {
-      // Log file only - don't interfere with any user's test output
-      return;
-    }
+  if (coe_res_file_handle != INVALID_HANDLE_VALUE) {
+    return coe_res_file_handle;
   }
 
-  // No log file - allow a choice of stdout or stderr.
+  LPWSTR coe_temp_file_path = (LPWSTR)wszResultsFilePath;
+  u32 dwError = GetLastError();
+  Write(
+      "\nFailed to open file %ws. Internal error %x.\nTrying to default to "
+      "a newly created temp file.",
+      wszResultsFilePath, dwError);
+  // ...otherwise, create a tmp file in the %TMP% then %TEMP% directories
+  // Windwos specifies 14 on MSDN
+  auto tmp_path_wchar_cnt = GetTempPathW(MAX_PATH - 14, coe_temp_file_path);
+  if (0 == tmp_path_wchar_cnt) {
+    Write("\nFailed to get temp directory. No log file. Internal error %x\n",
+          GetLastError());
+    return nullptr;
+  }
 
-  if (flags()->continue_on_error != 0) {
+  if (!GetTempFileNameW(coe_temp_file_path, L"Asan_COE", 0,
+                        &coe_temp_file_path[tmp_path_wchar_cnt])) {
+    Write("\nFailed to get temp file name. Internal error %x\n", GetLastError());
+    return nullptr;
+  }
+
+  auto h_coe_tmp_file = CreateFileW(coe_temp_file_path, GENERIC_WRITE, 0, NULL,
+                                    CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+
+  if (h_coe_tmp_file == INVALID_HANDLE_VALUE) {
+    Write("\nFailed to open temp file %ws with error %x\n", coe_temp_file_path,
+          GetLastError());
+    // failed...but not from a lack of effort
+    return nullptr;
+  }
+
+  return h_coe_tmp_file;
+}
+
+
+void InitializeCOE() {
+  // Called from AsanInitInternal() in asan\asan_rtl.cpp 
+  const wchar_t* wszResultsFilePath =
+      GetEnvironmentVariableValue(coe_wcs_log_file_name);
+  if (wszResultsFilePath) {
+    if (!(coe_res_file_handle = CoeCreateLogFile(wszResultsFilePath))) {
+      RAW_CHECK_MSG(
+          false,
+          "Internal error duing continue on error: Failed log file creation.\n");
+    }
+    // Ensure down stream functionaly if user only specified a log file name
+    flags()->continue_on_error = true;
+  }
+  else if (0 != flags()->continue_on_error) {
+    // No log file specified. Provide a choice of stdout or stderr.
     coe_res_file_handle = GetStdHandle(
         flags()->continue_on_error == 1 ? STD_OUTPUT_HANDLE : STD_ERROR_HANDLE);
   }
-
-  internal_memset(coe_accumulated_errors_backing, 0,
-                  kHashTablePrimeSize * sizeof(CoeError));
+  // This must take place after InitializeFlags() in AsanInitInteral()
+  // Global constructor ordering is link line dependent.
+  // Calling what follows, in a construcor, caused race conditions with parsing flags.
+  CoeDynamicallyLoadDbghelp();
 }
+
 }  // namespace __asan
 
 // Windows platform dependant implementation of a COE Class interface
