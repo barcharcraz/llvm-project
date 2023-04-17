@@ -1,4 +1,4 @@
-// RUN: %clang_cl_asan %s -Fe%t
+// RUN: %clang_cl_asan %s -Fe%t -Xclang -O1
 // RUN: not %run %t 2>&1 | FileCheck %s
 
 // RUN: %clang_cl_asan %s -Fe%t /link /INFERASANLIBS:DEBUG
@@ -10,7 +10,9 @@
 // https://docs.microsoft.com/en-us/cpp/sanitizers/error-stack-use-after-scope
 // the documentation uses /O1 to compile the code (and fails without optimization).
 // If /O1 is passed at RUN, sometimes it gets overwritten by /Od and the test fails in some pipelines
+#ifndef __clang__
 #pragma optimize("gsy", on )
+#endif
 struct IntHolder {
   explicit IntHolder(int *val = 0) : val_(val) { }
   ~IntHolder() {
