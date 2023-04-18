@@ -58,7 +58,8 @@ void temp_from_conversion() {
     a.print();
 }
 
-void main() {
+int main() {
     explicit_temp();
-    temp_from_conversion();
+    temp_from_conversion(); 
+    return 0;
 }
