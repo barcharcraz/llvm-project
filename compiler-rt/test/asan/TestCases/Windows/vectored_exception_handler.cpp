@@ -1,14 +1,14 @@
-// RUN: %clang_asan /std:c++17 /EHsc -Od %s -Fe%t && not %run %t AsanReportTest 2>&1 | FileCheck %s --check-prefix=CHECK1
-// RUN: %clang_asan /std:c++17 /EHsc -Od %s -Fe%t && not %run %t UserHandlerTest 2>&1 | FileCheck %s --check-prefix=CHECK2
-// RUN: %if_not_i386 ( %clang_asan /std:c++17 /EHsc -Od %s -Fe%t && not %run %t ManyHandlersTest 2>&1 | FileCheck %s --check-prefix=CHECK3 )
-// RUN: %if_not_i386 ( %clang_asan /std:c++17 /EHsc -Od %s -Fe%t && not %run %t MultipleExceptionTest 2>&1 | FileCheck %s --check-prefix=CHECK4 )
-// RUN: %if_not_i386 ( %clang_asan /std:c++17 /EHsc -Od %s -Fe%t && not %run %t NestedShadowExceptionTest 2>&1 | FileCheck %s --check-prefix=CHECK5 )
-// RUN: %if_not_i386 ( %clang_asan /std:c++17 /EHsc -Od %s -Fe%t && not %run %t RemovalTest 2>&1 | FileCheck %s --check-prefix=CHECK6 )
-// RUN: %if_not_i386 ( %clang_asan /std:c++17 /EHsc -Od %s -Fe%t && not %run %t RemoveOneTest 2>&1 | FileCheck %s --check-prefix=CHECK7 )
-// RUN: %if_not_i386 ( %clang_asan /std:c++17 /EHsc -Od %s -Fe%t && not %run %t RemoveAfterFirstExceptionTest 2>&1 | FileCheck %s --check-prefix=CHECK8 )
-// RUN: %if_not_i386 ( %clang_asan /std:c++17 /EHsc -Od %s -Fe%t && not %run %t VeryManyHandlers 2>&1 | FileCheck %s --check-prefix=CHECK9 )
-// RUN: %if_not_i386 ( %clang_asan /std:c++17 /EHsc -Od %s -Fe%t && not %run %t VCAsanExceptionsIgnored 2>&1 | FileCheck %s --check-prefix=CHECK10 )
-// RUN: %if_not_i386 ( %clang_asan /std:c++17 /EHsc -Od %s -Fe%t && not %run %t VCAsanExceptionsNotIgnoredOutsideRange 2>&1 | FileCheck %s --check-prefix=CHECK11 )
+// RUN: %clang_cl_asan /std:c++17 /EHsc -Od %s -Fe%t && not %run %t AsanReportTest 2>&1 | FileCheck %s --check-prefix=CHECK1
+// RUN: %clang_cl_asan /std:c++17 /EHsc -Od %s -Fe%t && not %run %t UserHandlerTest 2>&1 | FileCheck %s --check-prefix=CHECK2
+// RUN: %if_not_i386 ( %clang_cl_asan /std:c++17 /EHsc -Od %s -Fe%t && not %run %t ManyHandlersTest 2>&1 | FileCheck %s --check-prefix=CHECK3 )
+// RUN: %if_not_i386 ( %clang_cl_asan /std:c++17 /EHsc -Od %s -Fe%t && not %run %t MultipleExceptionTest 2>&1 | FileCheck %s --check-prefix=CHECK4 )
+// RUN: %if_not_i386 ( %clang_cl_asan /std:c++17 /EHsc -Od %s -Fe%t && not %run %t NestedShadowExceptionTest 2>&1 | FileCheck %s --check-prefix=CHECK5 )
+// RUN: %if_not_i386 ( %clang_cl_asan /std:c++17 /EHsc -Od %s -Fe%t && not %run %t RemovalTest 2>&1 | FileCheck %s --check-prefix=CHECK6 )
+// RUN: %if_not_i386 ( %clang_cl_asan /std:c++17 /EHsc -Od %s -Fe%t && not %run %t RemoveOneTest 2>&1 | FileCheck %s --check-prefix=CHECK7 )
+// RUN: %if_not_i386 ( %clang_cl_asan /std:c++17 /EHsc -Od %s -Fe%t && not %run %t RemoveAfterFirstExceptionTest 2>&1 | FileCheck %s --check-prefix=CHECK8 )
+// RUN: %if_not_i386 ( %clang_cl_asan /std:c++17 /EHsc -Od %s -Fe%t && not %run %t VeryManyHandlers 2>&1 | FileCheck %s --check-prefix=CHECK9 )
+// RUN: %if_not_i386 ( %clang_cl_asan /std:c++17 /EHsc -Od %s -Fe%t && not %run %t VCAsanExceptionsIgnored 2>&1 | FileCheck %s --check-prefix=CHECK10 )
+// RUN: %if_not_i386 ( %clang_cl_asan /std:c++17 /EHsc -Od %s -Fe%t && not %run %t VCAsanExceptionsNotIgnoredOutsideRange 2>&1 | FileCheck %s --check-prefix=CHECK11 )
 
 #include <algorithm>
 #include <iostream>

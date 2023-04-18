@@ -1,4 +1,4 @@
-// RUN: %clang -Od /std:c++17 %s -Fe%t
+// RUN: %clang_cl_asan -Od /std:c++17 %s -Fe%t
 // RUN: %clang_cl_asan -LD -Od %p/memory_with_asan_dll.cpp -Fe%t.dll
 // RUN: %run %t %t.dll 2>&1 | FileCheck %s
 // UNSUPPORTED: clang-static-runtime
