@@ -1,12 +1,12 @@
-// RUN: %clang_asan /std:c++17 /EHsc -Od %s -Fe%t /link imagehlp.lib && not %run %t test1 2>&1 | FileCheck %s --check-prefix=CHECK1
-// RUN: %clang_asan /std:c++17 /EHsc -Od %s -Fe%t /link imagehlp.lib && not %run %t test2 2>&1 | FileCheck %s --check-prefix=CHECK2
-// RUN: %clang_asan /std:c++17 /EHsc -Od %s -Fe%t /link imagehlp.lib && not %run %t test3 2>&1 | FileCheck %s --check-prefix=CHECK3
-// RUN: %clang_asan /std:c++17 /EHsc -Od %s -Fe%t /link imagehlp.lib && %env_asan_opts=iat_overwrite=ignore %run %t test1 2>&1 | FileCheck %s --check-prefix=CHECK4  --allow-empty
-// RUN: %clang_asan /std:c++17 /EHsc -Od %s -Fe%t /link imagehlp.lib && %env_asan_opts=iat_overwrite=ignore %run %t test2 2>&1 | FileCheck %s --check-prefix=CHECK5
-// RUN: %clang_asan /std:c++17 /EHsc -Od %s -Fe%t /link imagehlp.lib && %env_asan_opts=iat_overwrite=ignore %run %t test3 2>&1 | FileCheck %s --check-prefix=CHECK6
-// RUN: %clang_asan /std:c++17 /EHsc -Od %s -Fe%t /link imagehlp.lib && %env_asan_opts=iat_overwrite=protect %run %t test1 2>&1 | FileCheck %s --check-prefix=CHECK7
-// RUN: %clang_asan /std:c++17 /EHsc -Od %s -Fe%t /link imagehlp.lib && %env_asan_opts=iat_overwrite=protect %run %t test2 2>&1 | FileCheck %s --check-prefix=CHECK7
-// RUN: %clang_asan /std:c++17 /EHsc -Od %s -Fe%t /link imagehlp.lib && %env_asan_opts=iat_overwrite=protect %run %t test3 2>&1 | FileCheck %s --check-prefix=CHECK7
+// RUN: %clang_cl_asan /std:c++17 /EHsc -Od %s -Fe%t /link imagehlp.lib && not %run %t test1 2>&1 | FileCheck %s --check-prefix=CHECK1
+// RUN: %clang_cl_asan /std:c++17 /EHsc -Od %s -Fe%t /link imagehlp.lib && not %run %t test2 2>&1 | FileCheck %s --check-prefix=CHECK2
+// RUN: %clang_cl_asan /std:c++17 /EHsc -Od %s -Fe%t /link imagehlp.lib && not %run %t test3 2>&1 | FileCheck %s --check-prefix=CHECK3
+// RUN: %clang_cl_asan /std:c++17 /EHsc -Od %s -Fe%t /link imagehlp.lib && %env_asan_opts=iat_overwrite=ignore %run %t test1 2>&1 | FileCheck %s --check-prefix=CHECK4  --allow-empty
+// RUN: %clang_cl_asan /std:c++17 /EHsc -Od %s -Fe%t /link imagehlp.lib && %env_asan_opts=iat_overwrite=ignore %run %t test2 2>&1 | FileCheck %s --check-prefix=CHECK5
+// RUN: %clang_cl_asan /std:c++17 /EHsc -Od %s -Fe%t /link imagehlp.lib && %env_asan_opts=iat_overwrite=ignore %run %t test3 2>&1 | FileCheck %s --check-prefix=CHECK6
+// RUN: %clang_cl_asan /std:c++17 /EHsc -Od %s -Fe%t /link imagehlp.lib && %env_asan_opts=iat_overwrite=protect %run %t test1 2>&1 | FileCheck %s --check-prefix=CHECK7
+// RUN: %clang_cl_asan /std:c++17 /EHsc -Od %s -Fe%t /link imagehlp.lib && %env_asan_opts=iat_overwrite=protect %run %t test2 2>&1 | FileCheck %s --check-prefix=CHECK7
+// RUN: %clang_cl_asan /std:c++17 /EHsc -Od %s -Fe%t /link imagehlp.lib && %env_asan_opts=iat_overwrite=protect %run %t test3 2>&1 | FileCheck %s --check-prefix=CHECK7
 
 // Execute all tests when kernel32 isn't present
 // RUN: %clang_cl_asan /std:c++17 /DAPISET /EHsc -Od %s -Fe%t /link imagehlp.lib /NODEFAULTLIB:kernel32 /DEFAULTLIB:onecore_apiset.lib && %run %t test1 2>&1 | FileCheck %s --check-prefix=CHECK1
@@ -83,14 +83,14 @@ SIZE_T MyVirtualQuery(const void *, PMEMORY_BASIC_INFORMATION, SIZE_T) {
 }
 
 void VirtualAllocTest(const char *module, const char *importModule) {
-  OverwriteIATOrFail(module, importModule, "VirtualAlloc", &MyVirtualAlloc,
+  OverwriteIATOrFail(module, importModule, "VirtualAlloc", reinterpret_cast<void*>(&MyVirtualAlloc),
                      __sanitizer_virtual_protect);
   __sanitizer_virtual_alloc(0, 128, MEM_RESERVE, PAGE_NOACCESS);
   // CHECK1: ERROR: IAT overwrite detected: VirtualAlloc IAT entry overwritten.
 }
 
 void VirtualProtectTest(const char *module, const char *importModule) {
-  OverwriteIATOrFail(module, importModule, "VirtualProtect", &MyVirtualProtect,
+  OverwriteIATOrFail(module, importModule, "VirtualProtect", reinterpret_cast<void*>(&MyVirtualProtect),
                      __sanitizer_virtual_protect);
   DWORD old_protection;
   __sanitizer_virtual_protect(nullptr, 0, PAGE_NOACCESS, &old_protection);
@@ -98,7 +98,7 @@ void VirtualProtectTest(const char *module, const char *importModule) {
 }
 
 void VirtualQueryTest(const char *module, const char *importModule) {
-  OverwriteIATOrFail(module, importModule, "VirtualQuery", &MyVirtualQuery,
+  OverwriteIATOrFail(module, importModule, "VirtualQuery", reinterpret_cast<void*>(&MyVirtualQuery),
                      __sanitizer_virtual_protect);
   MEMORY_BASIC_INFORMATION mbi;
   __sanitizer_virtual_query(&mbi, &mbi, sizeof(mbi));
