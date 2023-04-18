@@ -1,5 +1,5 @@
-// RUN: %clang -Od %s -Fe%t
-// RUN: %clang_cl_asan -LD -Od %p/memory_with_asan_dll.cpp -Fe%t.dll
+// RUN: %clang_cl /EHsc -Od %s -Fe%t
+// RUN: %clang_cl_asan /EHsc -LD -Od %p/memory_with_asan_dll.cpp -Fe%t.dll
 // RUN: %run %t %t.dll
 // UNSUPPORTED: clang-static-runtime
 
