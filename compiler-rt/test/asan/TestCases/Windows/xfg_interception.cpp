@@ -1,6 +1,7 @@
 // RUN: %clang_cl_asan %s -Fe%t /EHsc /guard:xfg
 // RUN: %run %t 2>&1 | FileCheck %s
 // REQUIRES: asan-64-bits
+// REQUIRES:  msvc-host
 
 #include <cwchar>
 #include <iostream>
