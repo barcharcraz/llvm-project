@@ -149,7 +149,7 @@ template <typename T> struct bounds_info_internalXX_template {
           big_span_t;
 
   // typedef typename big_span_t span_t;
-  typedef typename T span_t;
+  typedef T span_t;
 
   bounds_infoXX_template<T> b; // possibly adjusted bounds
 
