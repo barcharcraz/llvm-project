@@ -494,6 +494,7 @@ void CaptureSystemHeapAllocations() {
 
   HANDLE heap = ::GetProcessHeap();
   lpEntry.lpData = NULL;
+  ::HeapLock(heap);
   while (::HeapWalk(heap, &lpEntry)) {
     if (lpEntry.wFlags & PROCESS_HEAP_ENTRY_BUSY) {
       // Allocations are stored agnostic of debug/release information and based

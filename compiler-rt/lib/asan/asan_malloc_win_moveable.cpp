@@ -29,6 +29,7 @@
 
 #define ERROR_NOT_ENOUGH_MEMORY 8L
 extern "C" void WINAPI SetLastError(DWORD);
+extern "C" DWORD WINAPI GetLastError();
 
 namespace __asan_win_moveable {
     using namespace __asan;
@@ -691,39 +692,61 @@ size_t GetAllocationSize(void *const item, BufferedStackTrace &stack) {
 }
 
 template <typename MemoryMap>
-static void *IncrementLockCountImpl(MemoryMap &memory_map, void *const item, BufferedStackTrace &stack) {
-    const auto [result, error_code] = memory_map.IncrementLockCount(item);
+static void *IncrementLockCountImpl(MemoryMap &memory_map, GlobalLocalLock func, void *const item, BufferedStackTrace &stack) {
+    auto [result, error_code] = memory_map.IncrementLockCount(item);
 
     if (error_code == Error::InvalidHandle || error_code == Error::InactiveHandle) {
-        SetLastError(ERROR_INVALID_HANDLE);
-        ReportInvalidHandle(result, stack);
-        return nullptr;
+         // As a last resort, try to use real functions to determine if this was allocated prior
+         // to ASAN initialization
+         // If the function fails it returns nullptr and report invalid handle.
+         // If the function succeeds but returns the same address, report invalid handle
+        void* tempResult = func(item);
+        if(tempResult == nullptr || tempResult == item)
+        {
+            SetLastError(ERROR_INVALID_HANDLE);
+            ReportInvalidHandle(result, stack);
+            return nullptr;
+        }
+        result = tempResult;
+        error_code = Error::None;
     }
 
     CHECK(error_code == Error::None);
     return result;
 }
 
-void *IncrementLockCount(void *const item, BufferedStackTrace &stack) {
+void *IncrementLockCount(void *const item, GlobalLocalLock func, BufferedStackTrace &stack) {
     if (item == nullptr) {
         SetLastError(ERROR_INVALID_HANDLE);
         ReportInvalidHandle(item, stack);
         return nullptr;
     }
 
-    return Visit(item, [=, &stack](auto& memory_map){ return IncrementLockCountImpl(memory_map, item, stack); });
+    return Visit(item, [=, &stack](auto& memory_map){ return IncrementLockCountImpl(memory_map, func, item, stack); });
 }
 
 template <typename MemoryMap>
-static bool DecrementLockCountImpl(MemoryMap &memory_map, void *const item, BufferedStackTrace &stack) {
-    const auto [result, error_code] = memory_map.DecrementLockCount(item);
+static bool DecrementLockCountImpl(MemoryMap &memory_map, GlobalLocalUnlock func, void *const item, BufferedStackTrace &stack) {
+    auto [result, error_code] = memory_map.DecrementLockCount(item);
 
     switch (error_code) {
         case Error::InvalidHandle:
         case Error::InactiveHandle:
-            SetLastError(ERROR_INVALID_HANDLE);
-            ReportInvalidHandle(result, stack);
-            return false;
+        {
+             // As a last resort, try to use real functions to determine if this was allocated prior
+             // to ASAN initialization. If the memory object is still locked after decrementing the lock count,
+             // the return value is a nonzero value. If the memory object is unlocked after decrementing the lock count,
+             // the function returns zero and GetLastError returns NO_ERROR. If the function fails, the return value is
+             // zero and GetLastError returns a value other than NO_ERROR
+            bool tempResult = func(item);
+            if(tempResult == false && GetLastError() != NO_ERROR)
+            {
+                SetLastError(ERROR_INVALID_HANDLE);
+                ReportInvalidHandle(result, stack);
+                return false;
+            }
+            return tempResult;
+        }
         case Error::NotLocked:
             SetLastError(ERROR_NOT_LOCKED);
             break;
@@ -734,17 +757,16 @@ static bool DecrementLockCountImpl(MemoryMap &memory_map, void *const item, Buff
             CHECK(error_code == Error::None);
             break;
     }
-
     return result;
 }
 
-bool DecrementLockCount(void *const item, BufferedStackTrace &stack) {
+bool DecrementLockCount(void *const item, GlobalLocalUnlock func, BufferedStackTrace &stack) {
     if (item == nullptr) {
         ReportInvalidHandle(item, stack);
         return true;
     }
 
-    return Visit(item, [=, &stack](auto& memory_map){ return DecrementLockCountImpl(memory_map, item, stack); });
+    return Visit(item, [=, &stack](auto& memory_map){ return DecrementLockCountImpl(memory_map, func, item, stack); });
 }
 
 template <typename MemoryMap>

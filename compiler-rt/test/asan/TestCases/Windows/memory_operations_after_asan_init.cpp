@@ -15,6 +15,8 @@ typedef void(reallocFn)(int *, size_t);
 typedef void(recallocFn)(int *, size_t, size_t);
 typedef void(alignedReallocFn)(int *, size_t, size_t);
 typedef void(alignedRecallocFn)(int *, size_t, size_t, size_t);
+typedef LPVOID(lockFn)(HLOCAL);
+typedef BOOL(unlockFn)(HLOCAL);
 
 template <typename Fn, typename... Args>
 void CallFn(HINSTANCE dll, const char *functionName, Args... args) {
@@ -33,6 +35,16 @@ static void FreeMemoryInAnotherDll(const char *dllName) {
   auto heapAllocPriorToAsan = (int *)HeapAlloc(heap, 0, 16);
   auto globalAllocPriorToAsan = (int *)GlobalAlloc(GMEM_FIXED, 16);
   auto localAllocPriorToAsan = (int *)LocalAlloc(LMEM_FIXED, 16);
+  auto globalAllocPriorToAsanLock = (int *)GlobalAlloc(GMEM_FIXED, 16);
+  auto globalAllocPriorToAsanLockPtr = GlobalLock(globalAllocPriorToAsanLock);
+  auto localAllocPriorToAsanLock = (int *)LocalAlloc(LMEM_FIXED, 16);
+  auto localAllocPriorToAsanLockPtr = LocalLock(localAllocPriorToAsanLock);
+  auto globalAllocPriorToAsanLockMoveable = (int *)GlobalAlloc(GMEM_MOVEABLE, 16);
+  auto globalAllocPriorToAsanLockMoveablePtr = GlobalLock(globalAllocPriorToAsanLockMoveable);
+  auto localAllocPriorToAsanLockMoveable = (int *)LocalAlloc(LMEM_FIXED, 16);
+  auto localAllocPriorToAsanLockMoveablePtr = LocalLock(localAllocPriorToAsanLockMoveable);
+  auto globalMoveableAllocPriorToAsan = (int *)GlobalAlloc(GMEM_MOVEABLE, 16);
+  auto localMoveableAllocPriorToAsan = (int *)LocalAlloc(LMEM_MOVEABLE, 16);
   auto pointer = (int *)malloc(16);
   auto pointerToRealloc = (int *)malloc(16);
   auto pointerToRecalloc = (int *)malloc(16);
@@ -61,12 +73,20 @@ static void FreeMemoryInAnotherDll(const char *dllName) {
   }
 
   // normal memory operations
+  CallFn<lockFn>(getProc, "MyGlobalLock", globalAllocPriorToAsan);
+  CallFn<lockFn>(getProc, "MyLocalLock", localAllocPriorToAsan);
   CallFn<freeMemoryFn>(getProc, "FreeMemory", heapAllocPriorToAsan);
   CallFn<freeMemoryFn>(getProc, "FreeMemory", globalAllocPriorToAsan);
   CallFn<freeMemoryFn>(getProc, "FreeMemory", localAllocPriorToAsan);
   CallFn<freeMemoryFn>(getProc, "FreeMemory", pointer);
   CallFn<reallocFn>(getProc, "Realloc", pointerToRealloc, 100);
   CallFn<recallocFn>(getProc, "Recalloc", pointerToRecalloc, 8, 16);
+  CallFn<lockFn>(getProc, "MyGlobalLock", globalMoveableAllocPriorToAsan);
+  CallFn<lockFn>(getProc, "MyLocalLock", localMoveableAllocPriorToAsan);
+  CallFn<unlockFn>(getProc, "MyGlobalUnlock", globalAllocPriorToAsanLockPtr);
+  CallFn<unlockFn>(getProc, "MyGlobalUnlock", globalAllocPriorToAsanLockMoveablePtr);
+  CallFn<unlockFn>(getProc, "MyLocalUnlock", localAllocPriorToAsanLockPtr);
+  CallFn<unlockFn>(getProc, "MyLocalUnlock", localAllocPriorToAsanLockMoveablePtr);
 
   // aligned memory operations
   CallFn<freeMemoryFn>(getProc, "FreeAlignedMemory", alignedPtr);

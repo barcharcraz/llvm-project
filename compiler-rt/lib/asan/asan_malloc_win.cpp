@@ -1722,24 +1722,50 @@ INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
     }
   } else if (UNLIKELY(asan_unsupported_flags &&
                       owner == AllocationOwnership::ASAN)) {
-    // Conversion to unsupported flags allocation,
-    // transfer this allocation to the original allocator.
-    {
-      auto rtlguard = heap_handle.RtlReentrancyLockGuard();
-
-      DCHECK_ASSERT_LOCK_INVARIANT_CALL_RTL(dbg);
-      replacement_alloc = REAL(RtlAllocateHeap)(HeapHandle, Flags, Size);
-    }
-
-    if (replacement_alloc) {
+    // For cases with HEAP_REALLOC_IN_PLACE_ONLY, we need to maintain
+    // parity with RtlReAllocateHeap and not move the allocation
+    // if the size is larger than the previously allocated size. If it
+    // is larger, fail (i.e. return nullptr). Otherwise, return the same
+    // base address.
+    //
+    // TODO: BUG #1802790
+    // This isn't exactly correct behavior. If ASAN owns the heap, and a user calls
+    // RtlReAllocateHeap with a size smaller than what is currently allocated, ASAN
+    // should be shrinking the heap in place and adjusting poisoning. This
+    // requires changes to SizeClassAllocator to not move memory while shrinking.
+    if (all_flags & HEAP_REALLOC_IN_PLACE_ONLY) {
       DCHECK_ASSERT_LOCK_INVARIANT_CALL_ASAN(dbg);
       old_size = asan_malloc_usable_size(BaseAddress, pc, bp);
+      if(old_size < Size)
+      {
+        return nullptr;
+      }
+      else
+      {
+        replacement_alloc = BaseAddress;
+      }
+    }
+    else
+    {
+      // Conversion to unsupported flags allocation,
+      // transfer this allocation to the original allocator.
+      {
+        auto rtlguard = heap_handle.RtlReentrancyLockGuard();
 
-      // DebugChecks omitted: memcpy does not allocate.
-      REAL(memcpy)(replacement_alloc, BaseAddress, Min<size_t>(Size, old_size));
+        DCHECK_ASSERT_LOCK_INVARIANT_CALL_RTL(dbg);
+        replacement_alloc = REAL(RtlAllocateHeap)(HeapHandle, Flags, Size);
+      }
 
-      DCHECK_ASSERT_LOCK_INVARIANT_CALL_ASAN(dbg);
-      WRAP(RtlFreeHeap)(HeapHandle, Flags, BaseAddress);
+      if (replacement_alloc) {
+        DCHECK_ASSERT_LOCK_INVARIANT_CALL_ASAN(dbg);
+        old_size = asan_malloc_usable_size(BaseAddress, pc, bp);
+
+        // DebugChecks omitted: memcpy does not allocate.
+        REAL(memcpy)(replacement_alloc, BaseAddress, Min<size_t>(Size, old_size));
+
+        DCHECK_ASSERT_LOCK_INVARIANT_CALL_ASAN(dbg);
+        WRAP(RtlFreeHeap)(HeapHandle, Flags, BaseAddress);
+      }
     }
   } else if (UNLIKELY(asan_unsupported_flags &&
                       owner == AllocationOwnership::RTL)) {
@@ -1786,8 +1812,6 @@ using GlobalLocalAlloc = HANDLE(WINAPI *)(UINT, SIZE_T);
 using GlobalLocalRealloc = HANDLE(WINAPI *)(HANDLE, SIZE_T, UINT);
 using GlobalLocalSize = SIZE_T(WINAPI *)(HANDLE);
 using GlobalLocalFree = HANDLE(WINAPI *)(HANDLE);
-using GlobalLocalLock = LPVOID(WINAPI *)(HANDLE);
-using GlobalLocalUnlock = BOOL(WINAPI *)(HANDLE);
 HANDLE GlobalLocalGenericFree(GlobalLocalLock lockFunction,
                               GlobalLocalUnlock unlockFunction,
                               GlobalLocalFree freeFunction, HANDLE hMem, BufferedStackTrace &stack);
@@ -1797,7 +1821,7 @@ HANDLE SharedLock(HANDLE hMem, GlobalLocalLock lockFunc, BufferedStackTrace &sta
   DCHECK(lockFunc != nullptr);
   if (asan_inited && !__sanitizer::IsProcessTerminating() &&
       !IsSystemHeapAddress(reinterpret_cast<uptr>(hMem), GetProcessHeap())) {
-    return __asan_win_moveable::IncrementLockCount(hMem, stack);
+    return __asan_win_moveable::IncrementLockCount(hMem, lockFunc, stack);
   }
   // The memory belongs to an RtlHeap or asan is not yet initialized:
   return lockFunc(hMem);
@@ -1807,7 +1831,7 @@ BOOL SharedUnlock(HANDLE hMem, GlobalLocalUnlock unlockFunc, BufferedStackTrace 
   DCHECK(unlockFunc != nullptr);
   if (asan_inited && !__sanitizer::IsProcessTerminating() &&
       !IsSystemHeapAddress(reinterpret_cast<uptr>(hMem), GetProcessHeap())) {
-    return __asan_win_moveable::DecrementLockCount(hMem, stack);
+    return __asan_win_moveable::DecrementLockCount(hMem, unlockFunc, stack);
   }
   // The memory belongs to an RtlHeap or asan is not yet initialized:
   return unlockFunc(hMem);

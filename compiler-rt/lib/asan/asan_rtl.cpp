@@ -72,8 +72,8 @@ static void CheckUnwind() {
 }
 
 // -------------------------- Globals --------------------- {{{1
-int asan_inited;
-bool asan_init_is_running;
+int asan_inited = 0;
+bool asan_init_is_running = false;
 
 #if !ASAN_FIXED_MAPPING
 uptr kHighMemEnd, kMidMemBeg, kMidMemEnd;
@@ -427,6 +427,8 @@ static void AsanInitInternal() {
   SetLowLevelAllocateMinAlignment(ASAN_SHADOW_GRANULARITY);
   SetLowLevelAllocateCallback(OnLowLevelAllocate);
 
+  // Windows CreateThread interceptors rely TSD, so must initialize them first
+  AsanTSDInit(PlatformTSDDtor);
   InitializeAsanInterceptors();
   CheckASLR();
 
@@ -435,35 +437,35 @@ static void AsanInitInternal() {
   // AsanInitInternal -> android_log_write -> __interceptor_strcmp
   AndroidLogInit();
 
-  ReplaceSystemMalloc();
-
   DisableCoreDumperIfNecessary();
 
   InitializeShadowMemory();
 
-  AsanTSDInit(PlatformTSDDtor);
   InstallDeadlySignalHandlers(AsanOnDeadlySignal);
 
   AllocatorOptions allocator_options;
   allocator_options.SetFrom(flags(), common_flags());
   InitializeAllocator(allocator_options);
 
+  // Placed after allocator initialization so no intercepted functions can be called
+  // before allocators are finished initializing
+  ReplaceSystemMalloc();
+
   if (SANITIZER_START_BACKGROUND_THREAD_IN_ASAN_INTERNAL)
     MaybeStartBackgroudThread();
+
+#if SANITIZER_WINDOWS
+  // Keep track of allocations that happened prior to asan init only on windows
+  CaptureSystemHeapAllocations();
+#endif
 
   // On Linux AsanThread::ThreadStart() calls malloc() that's why asan_inited
   // should be set to 1 prior to initializing the threads.
   asan_inited = 1;
   asan_init_is_running = false;
 
-// Moving CaptureSystemHeapAllocations anywhere prior to asan_inited=1 exposes a
-// race condition with the rtl reentrancy lock. Asan_inited can be set during an
-// Rtl call that is reentrant on start up, and frequently deadlocks on MTd
-// suites.
-#ifdef SANITIZER_WINDOWS
+#if SANITIZER_WINDOWS
   __asan::InitializeCOE();
-  // Keep track of allocations that happened prior to asan init only on windows
-  CaptureSystemHeapAllocations();
 #endif
 
   if (flags()->atexit)

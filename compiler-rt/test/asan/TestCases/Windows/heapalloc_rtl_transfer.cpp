@@ -91,6 +91,46 @@ int main() {
     assert(((char *)alloc)[i] == 0);
   }
 
+  // HEAP_REALLOC_IN_PLACE_ONLY
+  // convert back to ASAN owned
+  realloc = RtlReAllocateHeap_ptr(GetProcessHeap(),
+                                        HEAP_ZERO_MEMORY, alloc, 600);
+  auto SizeNeeded = 10000; // Just way larger than before
+
+  // This should return nullptr, similar to RtlReAllocateHeap
+  auto ReallocResult = RtlReAllocateHeap_ptr(GetProcessHeap(),
+                                      HEAP_REALLOC_IN_PLACE_ONLY,
+                                      realloc,
+                                      SizeNeeded);
+  assert(!ReallocResult && !__sanitizer_get_ownership(ReallocResult));
+
+  // Allocate a new buffer, which ASAN will own
+  ReallocResult = RtlAllocateHeap_ptr(GetProcessHeap(), 0, SizeNeeded);
+
+  auto sizeBeforeCalls = __sanitizer_get_allocated_size(ReallocResult);
+
+  // TODO: BUG #1802790
+  // This isn't exactly correct behavior. If ASAN owns the heap, and a user calls
+  // RtlReAllocateHeap with a size smaller than what is currently allocated, ASAN
+  // should be shrinking the heap in place and adjusting poisoning. However, currently
+  // no change should happen if we pass in same size
+  auto ReallocResultNoChange = RtlReAllocateHeap_ptr(GetProcessHeap(),
+                                      HEAP_REALLOC_IN_PLACE_ONLY,
+                                      ReallocResult,
+                                      SizeNeeded);
+  assert(ReallocResultNoChange && __sanitizer_get_ownership(ReallocResultNoChange));
+  assert(ReallocResultNoChange == ReallocResult);
+  assert(sizeBeforeCalls == __sanitizer_get_allocated_size(ReallocResult));
+
+  // Same as above, no change should happen if we pass in smaller size
+  ReallocResultNoChange = RtlReAllocateHeap_ptr(GetProcessHeap(),
+                                      HEAP_REALLOC_IN_PLACE_ONLY,
+                                      ReallocResult,
+                                      SizeNeeded - (SizeNeeded / 2));
+  assert(ReallocResultNoChange && __sanitizer_get_ownership(ReallocResultNoChange));
+  assert(ReallocResultNoChange == ReallocResult);
+  assert(sizeBeforeCalls == __sanitizer_get_allocated_size(ReallocResult));
+
   printf("Success\n");
 }
 

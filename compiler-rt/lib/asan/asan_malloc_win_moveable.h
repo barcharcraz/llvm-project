@@ -12,6 +12,8 @@
 //===----------------------------------------------------------------------===//
 #pragma once
 
+#include "sanitizer_common/sanitizer_win_defs.h"
+
 #define FIXED 0x0000
 #define ZEROINIT 0x0040
 #define MOVEABLE 0x0002
@@ -38,14 +40,17 @@ namespace __sanitizer {
     struct BufferedStackTrace;
 }
 
+using GlobalLocalLock = void*(WINAPI *)(void*);
+using GlobalLocalUnlock = int(WINAPI *)(void*);
+
 namespace __asan_win_moveable {
 enum class HeapCaller { GLOBAL, LOCAL };
 
 bool IsOwned(void *item);
 void *ResolvePointerToHandle(void *item, __sanitizer::BufferedStackTrace&);
 size_t GetAllocationSize(void *item, __sanitizer::BufferedStackTrace&);
-void *IncrementLockCount(void *item, __sanitizer::BufferedStackTrace&);
-bool DecrementLockCount(void *item, __sanitizer::BufferedStackTrace&);
+void *IncrementLockCount(void *item, GlobalLocalLock, __sanitizer::BufferedStackTrace&);
+bool DecrementLockCount(void *item, GlobalLocalUnlock, __sanitizer::BufferedStackTrace&);
 void *Free(void *item, __sanitizer::BufferedStackTrace&);
 void *Alloc(unsigned long flags, size_t size, __sanitizer::BufferedStackTrace&);
 void *ReAllocate(void *item, unsigned long flags, size_t size, HeapCaller caller, __sanitizer::BufferedStackTrace&);
