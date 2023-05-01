@@ -271,7 +271,7 @@ bool kmp_ivs_eq(loop_type_t loop_iv_type, kmp_uint64 original_iv1,
 // false otherwise
 template <typename T>
 bool kmp_iv_is_in_upper_bound_XX(const bounds_infoXX_template<T> *bounds,
-                                 const kmp_point_t &original_ivs,
+                                 const kmp_point_t original_ivs,
                                  kmp_index_t ind) {
 
   T iv = static_cast<T>(original_ivs[ind]);
@@ -296,8 +296,8 @@ bool kmp_iv_is_in_upper_bound_XX(const bounds_infoXX_template<T> *bounds,
 // (if not, we need to re-calculate)
 template <typename T>
 bool kmp_calc_one_iv_XX(const bounds_infoXX_template<T> *bounds,
-                        /*in/out*/ kmp_point_t &original_ivs,
-                        const kmp_iterations_t &iterations, kmp_index_t ind,
+                        /*in/out*/ kmp_point_t original_ivs,
+                        const kmp_iterations_t iterations, kmp_index_t ind,
                         bool start_with_lower_bound, bool checkBounds) {
 
   typedef typename traits_t<T>::unsigned_t UT;
@@ -327,8 +327,8 @@ bool kmp_calc_one_iv_XX(const bounds_infoXX_template<T> *bounds,
 }
 
 bool kmp_calc_one_iv(const bounds_info_t *bounds,
-                     /*in/out*/ kmp_point_t &original_ivs,
-                     const kmp_iterations_t &iterations, kmp_index_t ind,
+                     /*in/out*/ kmp_point_t original_ivs,
+                     const kmp_iterations_t iterations, kmp_index_t ind,
                      bool start_with_lower_bound, bool checkBounds) {
 
   switch (bounds->loop_type) {
@@ -363,8 +363,6 @@ bool kmp_calc_one_iv(const bounds_info_t *bounds,
 }
 
 //----------Calculate original iv on one level for rectangular loop nest------
-// Main difference with the common case: original_ivs is an array supplied by
-// user
 
 // Calculate one iv corresponding to iteration on the level ind.
 // Return true if it fits into lower-upper bounds on this level
@@ -372,7 +370,7 @@ bool kmp_calc_one_iv(const bounds_info_t *bounds,
 template <typename T>
 void kmp_calc_one_iv_rectang_XX(const bounds_infoXX_template<T> *bounds,
                                 /*in/out*/ kmp_uint64 *original_ivs,
-                                const kmp_iterations_t &iterations,
+                                const kmp_iterations_t iterations,
                                 kmp_index_t ind) {
 
   typedef typename traits_t<T>::unsigned_t UT;
@@ -391,7 +389,7 @@ void kmp_calc_one_iv_rectang_XX(const bounds_infoXX_template<T> *bounds,
 
 void kmp_calc_one_iv_rectang(const bounds_info_t *bounds,
                              /*in/out*/ kmp_uint64 *original_ivs,
-                             const kmp_iterations_t &iterations,
+                             const kmp_iterations_t iterations,
                              kmp_index_t ind) {
 
   switch (bounds->loop_type) {
@@ -467,7 +465,8 @@ __kmpc_calc_original_ivs_rectang(ident_t *loc, kmp_loop_nest_iv_t new_iv,
                                  /*out*/ kmp_uint64 *original_ivs,
                                  kmp_index_t n) {
 
-  kmp_iterations_t iterations(n);
+  kmp_iterations_t iterations =
+      (kmp_iterations_t)alloca(sizeof(kmp_loop_nest_iv_t) * n);
 
   // First, calc corresponding iteration in every original loop:
   for (kmp_index_t ind = n; ind > 0;) {
@@ -504,7 +503,7 @@ __kmpc_calc_original_ivs_rectang(ident_t *loc, kmp_loop_nest_iv_t new_iv,
 template <typename T>
 void kmp_calc_span_lessoreq_XX(
     /* in/out*/ bounds_info_internalXX_template<T> *bounds,
-    /* in/out*/ std::vector<bounds_info_internal_t> &bounds_nest) {
+    /* in/out*/ bounds_info_internal_t* bounds_nest) {
 
   typedef typename traits_t<T>::unsigned_t UT;
   typedef typename traits_t<T>::signed_t ST;
@@ -568,7 +567,7 @@ void kmp_calc_span_lessoreq_XX(
 template <typename T>
 void kmp_calc_span_greateroreq_XX(
     /* in/out*/ bounds_info_internalXX_template<T> *bounds,
-    /* in/out*/ std::vector<bounds_info_internal_t> &bounds_nest) {
+    /* in/out*/ bounds_info_internal_t* bounds_nest) {
 
   typedef typename traits_t<T>::unsigned_t UT;
   typedef typename traits_t<T>::signed_t ST;
@@ -633,7 +632,7 @@ void kmp_calc_span_greateroreq_XX(
 template <typename T>
 void kmp_calc_span_XX(
     /* in/out*/ bounds_info_internalXX_template<T> *bounds,
-    /* in/out*/ std::vector<bounds_info_internal_t> &bounds_nest) {
+    /* in/out*/ bounds_info_internal_t *bounds_nest) {
 
   if (bounds->b.comparison == comparison_t::comp_less_or_eq) {
     kmp_calc_span_lessoreq_XX(/* in/out*/ bounds, /* in/out*/ bounds_nest);
@@ -652,7 +651,7 @@ void kmp_calc_span_XX(
 template <typename T>
 void kmp_calc_new_bounds_XX(
     /* in/out*/ bounds_info_internalXX_template<T> *bounds,
-    /* in/out*/ std::vector<bounds_info_internal_t> &bounds_nest) {
+    /* in/out*/ bounds_info_internal_t *bounds_nest) {
 
   auto &bbounds = bounds->b;
 
@@ -743,7 +742,7 @@ void kmp_calc_new_bounds_XX(
 template <typename T>
 kmp_loop_nest_iv_t kmp_process_one_loop_XX(
     /* in/out*/ bounds_info_internalXX_template<T> *bounds,
-    /*in/out*/ std::vector<bounds_info_internal_t> &bounds_nest) {
+    /*in/out*/ bounds_info_internal_t *bounds_nest) {
 
   kmp_calc_new_bounds_XX(/* in/out*/ bounds, /* in/out*/ bounds_nest);
   kmp_calc_span_XX(/* in/out*/ bounds, /* in/out*/ bounds_nest);
@@ -756,11 +755,11 @@ kmp_loop_nest_iv_t kmp_process_one_loop_XX(
 // count. "bounds_nest" has to be allocated per thread.
 // Returns overall trip count (for adjusted space).
 kmp_loop_nest_iv_t kmp_process_loop_nest(
-    /*in/out*/ std::vector<bounds_info_internal_t> &bounds_nest) {
+    /*in/out*/ bounds_info_internal_t *bounds_nest, kmp_index_t n) {
 
   kmp_loop_nest_iv_t total = 1;
 
-  for (kmp_index_t ind = 0; ind < bounds_nest.size(); ++ind) {
+  for (kmp_index_t ind = 0; ind < n; ++ind) {
     auto bounds = &(bounds_nest[ind]);
     kmp_loop_nest_iv_t trip_count = 0;
 
@@ -802,7 +801,7 @@ kmp_loop_nest_iv_t kmp_process_loop_nest(
 template <typename T>
 kmp_loop_nest_iv_t
 kmp_calc_number_of_iterations_XX(const bounds_infoXX_template<T> *bounds,
-                                 const kmp_point_t &original_ivs,
+                                 const kmp_point_t original_ivs,
                                  kmp_index_t ind) {
 
   kmp_loop_nest_iv_t iterations = 0;
@@ -827,7 +826,7 @@ kmp_calc_number_of_iterations_XX(const bounds_infoXX_template<T> *bounds,
 // original_ivs[ind] (only on this level, non-negative)
 kmp_loop_nest_iv_t
 kmp_calc_number_of_iterations(const bounds_info_t *bounds,
-                              const kmp_point_t &original_ivs,
+                              const kmp_point_t original_ivs,
                               kmp_index_t ind) {
 
   switch (bounds->loop_type) {
@@ -861,12 +860,12 @@ kmp_calc_number_of_iterations(const bounds_info_t *bounds,
 // original loops bounds. Getting new_iv for the adjusted original IVs will help
 // with making more chunks non-empty.
 kmp_loop_nest_iv_t kmp_calc_new_iv_from_original_ivs(
-    const std::vector<bounds_info_internal_t> &bounds_nest,
-    const kmp_point_t &original_ivs) {
+    const bounds_info_internal_t *bounds_nest,
+    const kmp_point_t original_ivs, kmp_index_t n) {
 
   kmp_loop_nest_iv_t new_iv = 0;
 
-  for (kmp_index_t ind = 0; ind < bounds_nest.size(); ++ind) {
+  for (kmp_index_t ind = 0; ind < n; ++ind) {
     auto bounds = &(bounds_nest[ind].b);
 
     new_iv = new_iv * bounds->trip_count +
@@ -883,8 +882,8 @@ kmp_loop_nest_iv_t kmp_calc_new_iv_from_original_ivs(
 // Loop nest is in canonical form (with <= / >=).
 bool kmp_calc_original_ivs_from_iterations(
     const bounds_info_t *original_bounds_nest, kmp_index_t n,
-    /*in/out*/ kmp_point_t &original_ivs,
-    /*in/out*/ kmp_iterations_t &iterations, kmp_index_t ind) {
+    /*in/out*/ kmp_point_t original_ivs,
+    /*in/out*/ kmp_iterations_t iterations, kmp_index_t ind) {
 
   kmp_index_t lengthened_ind = n;
 
@@ -923,10 +922,11 @@ bool kmp_calc_original_ivs_from_iterations(
 // Loop nest is in canonical form (with <= / >=).
 bool kmp_calc_original_ivs_for_start(const bounds_info_t *original_bounds_nest,
                                      kmp_index_t n,
-                                     /*out*/ kmp_point_t &original_ivs) {
+                                     /*out*/ kmp_point_t original_ivs) {
 
   // Iterations in the original space, multiplied by step:
-  kmp_iterations_t iterations(n);
+  kmp_iterations_t iterations =
+      (kmp_iterations_t)alloca(sizeof(kmp_loop_nest_iv_t) * n);
 
   for (kmp_index_t ind = n; ind > 0;) {
     --ind;
@@ -944,10 +944,11 @@ bool kmp_calc_original_ivs_for_start(const bounds_info_t *original_bounds_nest,
 // From current set of original IVs calculate next point.
 // Return false if there is no next point in the loop bounds.
 bool kmp_calc_next_original_ivs(const bounds_info_t *original_bounds_nest,
-                                kmp_index_t n, const kmp_point_t &original_ivs,
-                                /*out*/ kmp_point_t &next_original_ivs) {
+                                kmp_index_t n, const kmp_point_t original_ivs,
+                                /*out*/ kmp_point_t next_original_ivs) {
   // Iterations in the original space, multiplied by step (so can be negative):
-  kmp_iterations_t iterations(n);
+  kmp_iterations_t iterations =
+      (kmp_iterations_t)alloca(sizeof(kmp_loop_nest_iv_t) * n);
 
   // First, calc corresponding iteration in every original loop:
   for (kmp_index_t ind = 0; ind < n; ++ind) {
@@ -955,7 +956,9 @@ bool kmp_calc_next_original_ivs(const bounds_info_t *original_bounds_nest,
     iterations[ind] = kmp_calc_number_of_iterations(bounds, original_ivs, ind);
   }
 
-  next_original_ivs = original_ivs;
+  for (kmp_index_t ind = 0; ind < n; ++ind) {
+    next_original_ivs[ind] = original_ivs[ind];
+  }
 
   // Next add one step to the iterations on the inner-most level, and see if we
   // need to move up the nest:
@@ -976,9 +979,9 @@ template <typename T>
 bool kmp_calc_one_iv_for_chunk_end_XX(
     const bounds_infoXX_template<T> *bounds,
     const bounds_infoXX_template<T> *updated_bounds,
-    /*in/out*/ kmp_point_t &original_ivs, const kmp_iterations_t &iterations,
+    /*in/out*/ kmp_point_t original_ivs, const kmp_iterations_t iterations,
     kmp_index_t ind, bool start_with_lower_bound, bool compare_with_start,
-    const kmp_point_t &original_ivs_start) {
+    const kmp_point_t original_ivs_start) {
 
   typedef typename traits_t<T>::unsigned_t UT;
   typedef typename traits_t<T>::signed_t ST;
@@ -1064,11 +1067,11 @@ bool kmp_calc_one_iv_for_chunk_end_XX(
 // new_iv for the chunk end.
 bool kmp_calc_one_iv_for_chunk_end(const bounds_info_t *bounds,
                                    const bounds_info_t *updated_bounds,
-                                   /*in/out*/ kmp_point_t &original_ivs,
-                                   const kmp_iterations_t &iterations,
+                                   /*in/out*/ kmp_point_t original_ivs,
+                                   const kmp_iterations_t iterations,
                                    kmp_index_t ind, bool start_with_lower_bound,
                                    bool compare_with_start,
-                                   const kmp_point_t &original_ivs_start) {
+                                   const kmp_point_t original_ivs_start) {
 
   switch (bounds->loop_type) {
   case loop_type_t::loop_type_int32:
@@ -1125,14 +1128,13 @@ bool kmp_calc_one_iv_for_chunk_end(const bounds_info_t *bounds,
 // original space.
 bool kmp_calc_original_ivs_for_chunk_end(
     const bounds_info_t *original_bounds_nest, kmp_index_t n,
-    const std::vector<bounds_info_internal_t> &updated_bounds_nest,
-    const kmp_point_t &original_ivs_start, kmp_loop_nest_iv_t new_iv,
-    /*out*/ kmp_point_t &original_ivs) {
+    const bounds_info_internal_t *updated_bounds_nest,
+    const kmp_point_t original_ivs_start, kmp_loop_nest_iv_t new_iv,
+    /*out*/ kmp_point_t original_ivs) {
 
   // Iterations in the expanded space:
-  kmp_iterations_t iterations(n);
-
-  KMP_DEBUG_ASSERT(updated_bounds_nest.size() == n);
+  kmp_iterations_t iterations =
+      (kmp_iterations_t)alloca(sizeof(kmp_loop_nest_iv_t) * n);
 
 #if defined(KMP_DEBUG)
   auto new_iv_saved = new_iv;
@@ -1207,7 +1209,7 @@ bool kmp_calc_original_ivs_for_chunk_end(
 // Calculate one upper bound for the end.
 template <typename T>
 void kmp_calc_one_iv_end_XX(const bounds_infoXX_template<T> *bounds,
-                            /*in/out*/ kmp_point_t &original_ivs,
+                            /*in/out*/ kmp_point_t original_ivs,
                             kmp_index_t ind) {
 
   typedef typename traits_t<T>::unsigned_t UT;
@@ -1220,7 +1222,7 @@ void kmp_calc_one_iv_end_XX(const bounds_infoXX_template<T> *bounds,
 }
 
 void kmp_calc_one_iv_end(const bounds_info_t *bounds,
-                         /*in/out*/ kmp_point_t &original_ivs,
+                         /*in/out*/ kmp_point_t original_ivs,
                          kmp_index_t ind) {
 
   switch (bounds->loop_type) {
@@ -1255,7 +1257,7 @@ void kmp_calc_one_iv_end(const bounds_info_t *bounds,
 // point is in the original space (it's likely not)
 void kmp_calc_original_ivs_for_end(
     const bounds_info_t *const original_bounds_nest, kmp_index_t n,
-    /*out*/ kmp_point_t &original_ivs) {
+    /*out*/ kmp_point_t original_ivs) {
   for (kmp_index_t ind = 0; ind < n; ++ind) {
     auto bounds = &(original_bounds_nest[ind]);
     kmp_calc_one_iv_end(bounds, /*in/out*/ original_ivs, ind);
@@ -1296,14 +1298,15 @@ __kmpc_for_collapsed_init(ident_t *loc, kmp_int32 gtid,
 
   kmp_canonicalize_loop_nest(loc, /*in/out*/ original_bounds_nest, n);
 
-  std::vector<bounds_info_internal_t> updated_bounds_nest(n);
+  bounds_info_internal_t* updated_bounds_nest =
+      (bounds_info_internal_t*)alloca(sizeof(bounds_info_internal_t) * n);
 
   for (kmp_index_t i = 0; i < n; ++i) {
     updated_bounds_nest[i].b = original_bounds_nest[i];
   }
 
   kmp_loop_nest_iv_t total =
-      kmp_process_loop_nest(/*in/out*/ updated_bounds_nest);
+      kmp_process_loop_nest(/*in/out*/ updated_bounds_nest, n);
 
   if (plastiter != NULL) {
     *plastiter = FALSE;
@@ -1324,7 +1327,10 @@ __kmpc_for_collapsed_init(ident_t *loc, kmp_int32 gtid,
 
   KMP_DEBUG_ASSERT(tid < nth);
 
-  kmp_point_t original_ivs_start(n);
+  kmp_point_t original_ivs_start = (kmp_point_t)alloca(sizeof(kmp_uint64) * n);
+  kmp_point_t original_ivs_end = (kmp_point_t)alloca(sizeof(kmp_uint64) * n);
+  kmp_point_t original_ivs_next_start =
+      (kmp_point_t)alloca(sizeof(kmp_uint64) * n);
 
   if (!kmp_calc_original_ivs_for_start(original_bounds_nest, n,
                                        /*out*/ original_ivs_start)) {
@@ -1351,7 +1357,7 @@ __kmpc_for_collapsed_init(ident_t *loc, kmp_int32 gtid,
   //}
 
   kmp_loop_nest_iv_t new_iv = kmp_calc_new_iv_from_original_ivs(
-      updated_bounds_nest, original_ivs_start);
+      updated_bounds_nest, original_ivs_start, n);
 
   bool last_iter = false;
 
@@ -1380,7 +1386,6 @@ __kmpc_for_collapsed_init(ident_t *loc, kmp_int32 gtid,
       new_iv += curr_chunk_size - 1;
     }
 
-    kmp_point_t original_ivs_end(n);
     if ((nth == 1) || (new_iv >= total - 1)) {
       // Do this one till the end - just in case we miscalculated
       // and either too much is left to process or new_iv is a bit too big:
@@ -1404,7 +1409,7 @@ __kmpc_for_collapsed_init(ident_t *loc, kmp_int32 gtid,
 
 #if defined(KMP_DEBUG)
     auto new_iv_for_end = kmp_calc_new_iv_from_original_ivs(updated_bounds_nest,
-                                                            original_ivs_end);
+                                                            original_ivs_end, n);
     KMP_DEBUG_ASSERT(new_iv_for_end >= new_iv_for_start);
 #endif
 
@@ -1417,8 +1422,6 @@ __kmpc_for_collapsed_init(ident_t *loc, kmp_int32 gtid,
     if (tid == 0) {
       // We found the chunk for this thread, now we need to check if it's the
       // last chunk or not:
-
-      kmp_point_t original_ivs_next_start(n);
 
       if (last_iter ||
           !kmp_calc_next_original_ivs(original_bounds_nest, n, original_ivs_end,
@@ -1459,7 +1462,7 @@ __kmpc_for_collapsed_init(ident_t *loc, kmp_int32 gtid,
     // we need to start new chunk here, so chunks will be one after another
     // without any gap or overlap:
     new_iv = kmp_calc_new_iv_from_original_ivs(updated_bounds_nest,
-                                               original_ivs_start);
+                                               original_ivs_start, n);
   }
 
   return FALSE;
