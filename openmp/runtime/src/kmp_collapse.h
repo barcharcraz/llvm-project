@@ -52,7 +52,7 @@ enum loop_type_t : kmp_int32 {
  */
 template <typename T> struct bounds_infoXX_template {
 
-  typedef typename traits_t<T>::unsigned_t UT;
+  // typedef typename traits_t<T>::unsigned_t UT;
   typedef typename traits_t<T>::signed_t ST;
 
   loop_type_t loop_type; // The differentiator
@@ -136,9 +136,6 @@ typedef kmp_loop_nest_iv_t* kmp_iterations_t;
 
 // Internal struct with additional info:
 template <typename T> struct bounds_info_internalXX_template {
-
-  typedef typename traits_t<T>::unsigned_t UT;
-  typedef typename traits_t<T>::signed_t ST;
 
   // OMPTODO: should span have type T or should it better be
   // kmp_uint64/kmp_int64 depending on T sign? (if kmp_uint64/kmp_int64 than

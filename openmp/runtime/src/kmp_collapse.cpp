@@ -300,9 +300,6 @@ bool kmp_calc_one_iv_XX(const bounds_infoXX_template<T> *bounds,
                         const kmp_iterations_t iterations, kmp_index_t ind,
                         bool start_with_lower_bound, bool checkBounds) {
 
-  typedef typename traits_t<T>::unsigned_t UT;
-  typedef typename traits_t<T>::signed_t ST;
-
   kmp_uint64 temp = 0;
   T outer_iv = static_cast<T>(original_ivs[bounds->outer_iv]);
 
@@ -372,9 +369,6 @@ void kmp_calc_one_iv_rectang_XX(const bounds_infoXX_template<T> *bounds,
                                 /*in/out*/ kmp_uint64 *original_ivs,
                                 const kmp_iterations_t iterations,
                                 kmp_index_t ind) {
-
-  typedef typename traits_t<T>::unsigned_t UT;
-  typedef typename traits_t<T>::signed_t ST;
 
   auto iteration = iterations[ind];
 
@@ -506,7 +500,7 @@ void kmp_calc_span_lessoreq_XX(
     /* in/out*/ bounds_info_internal_t* bounds_nest) {
 
   typedef typename traits_t<T>::unsigned_t UT;
-  typedef typename traits_t<T>::signed_t ST;
+  // typedef typename traits_t<T>::signed_t ST;
 
   // typedef typename big_span_t span_t;
   typedef T span_t;
@@ -570,7 +564,7 @@ void kmp_calc_span_greateroreq_XX(
     /* in/out*/ bounds_info_internal_t* bounds_nest) {
 
   typedef typename traits_t<T>::unsigned_t UT;
-  typedef typename traits_t<T>::signed_t ST;
+  // typedef typename traits_t<T>::signed_t ST;
 
   // typedef typename big_span_t span_t;
   typedef T span_t;
@@ -983,9 +977,6 @@ bool kmp_calc_one_iv_for_chunk_end_XX(
     kmp_index_t ind, bool start_with_lower_bound, bool compare_with_start,
     const kmp_point_t original_ivs_start) {
 
-  typedef typename traits_t<T>::unsigned_t UT;
-  typedef typename traits_t<T>::signed_t ST;
-
     typedef
       typename std::conditional<std::is_signed<T>::value, kmp_int64, kmp_uint64>
           big_span_t;
@@ -1211,9 +1202,6 @@ template <typename T>
 void kmp_calc_one_iv_end_XX(const bounds_infoXX_template<T> *bounds,
                             /*in/out*/ kmp_point_t original_ivs,
                             kmp_index_t ind) {
-
-  typedef typename traits_t<T>::unsigned_t UT;
-  typedef typename traits_t<T>::signed_t ST;
 
   T temp = bounds->ub0 +
            bounds->ub1 * static_cast<T>(original_ivs[bounds->outer_iv]);
