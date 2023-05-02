@@ -509,7 +509,7 @@ void kmp_calc_span_lessoreq_XX(
   typedef typename traits_t<T>::signed_t ST;
 
   // typedef typename big_span_t span_t;
-  typedef typename T span_t;
+  typedef T span_t;
 
   auto &bbounds = bounds->b;
 
@@ -573,7 +573,7 @@ void kmp_calc_span_greateroreq_XX(
   typedef typename traits_t<T>::signed_t ST;
 
   // typedef typename big_span_t span_t;
-  typedef typename T span_t;
+  typedef T span_t;
 
   auto &bbounds = bounds->b;
 
