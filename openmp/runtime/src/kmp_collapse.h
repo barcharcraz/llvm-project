@@ -13,7 +13,6 @@
 #ifndef KMP_COLLAPSE_H
 #define KMP_COLLAPSE_H
 
-#include <vector>
 #include <type_traits>
 
 // Type of the index into the loop nest structures
