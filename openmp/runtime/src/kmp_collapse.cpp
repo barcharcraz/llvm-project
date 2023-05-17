@@ -22,7 +22,22 @@
 #include "ompt-specific.h"
 #endif
 
-// OMPTODO: different style of comments (see kmp_sched)
+// Do not use std::abs
+
+template <typename T> T abs(const T _X) { 
+  if (_X < 0) {
+    return - _X;
+  }
+  return _X;
+}
+
+kmp_uint32 abs(const kmp_uint32 _X) {
+  return _X;
+}
+
+kmp_uint64 abs(const kmp_uint64 _X) { return _X; }
+
+  // OMPTODO: different style of comments (see kmp_sched)
 // OMPTODO: OMPT/OMPD
 
 //----------------------------------------------------------------------------
@@ -128,7 +143,7 @@ kmp_loop_nest_iv_t kmp_calculate_trip_count_XX(
       // kmp_loop_nest_iv_t anyway
       bounds->trip_count =
           static_cast<kmp_loop_nest_iv_t>(bounds->ub0 - bounds->lb0) /
-              std::abs(bounds->step) +
+              abs(bounds->step) +
           1;
     }
   } else if (bounds->comparison == comparison_t::comp_greater_or_eq) {
@@ -141,7 +156,7 @@ kmp_loop_nest_iv_t kmp_calculate_trip_count_XX(
       // kmp_loop_nest_iv_t anyway
       bounds->trip_count =
           static_cast<kmp_loop_nest_iv_t>(bounds->lb0 - bounds->ub0) /
-              std::abs(bounds->step) +
+              abs(bounds->step) +
           1;
     }
   } else {
@@ -666,9 +681,8 @@ void kmp_calc_new_bounds_XX(
     } else {
       // get upper and lower bounds to be parallel
       // with values in the old range.
-      // Note: std::abs didn't work here.
-      if (((sign(old_lb1) == -1) && (old_lb1 < old_ub1)) ||
-          ((sign(old_lb1) == 1) && (old_lb1 > old_ub1))) {
+      if (((old_lb1 < 0) && (old_lb1 < old_ub1)) ||
+          ((old_lb1 > 0) && (old_lb1 > old_ub1))) {
         bbounds.lb1 = old_ub1;
       } else {
         bbounds.ub1 = old_lb1;
@@ -805,13 +819,13 @@ kmp_calc_number_of_iterations_XX(const bounds_infoXX_template<T> *bounds,
     iterations =
         (static_cast<T>(original_ivs[ind]) - bounds->lb0 -
          bounds->lb1 * static_cast<T>(original_ivs[bounds->outer_iv])) /
-        std::abs(bounds->step);
+        abs(bounds->step);
   } else {
     KMP_DEBUG_ASSERT(bounds->comparison == comparison_t::comp_greater_or_eq);
     iterations = (bounds->lb0 +
                   bounds->lb1 * static_cast<T>(original_ivs[bounds->outer_iv]) -
                   static_cast<T>(original_ivs[ind])) /
-                 std::abs(bounds->step);
+                 abs(bounds->step);
   }
 
   return iterations;
