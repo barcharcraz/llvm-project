@@ -9,10 +9,6 @@
 // Unwind problem on arm: "main" is missing from the allocation stack trace.
 // REQUIRES: (arm-target-arch || armhf-target-arch), fast-unwinder-works
 
-// FIXME: We fail to intercept strdup with the dynamic WinASan RTL, so it's not
-// in the stack trace.
-// XFAIL: win32-dynamic-asan
-
 #include <string.h>
 
 char kString[] = "foo";

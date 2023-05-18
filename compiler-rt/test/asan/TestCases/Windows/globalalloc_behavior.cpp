@@ -2,6 +2,10 @@
 // RUN: %run %t 2>&1 | FileCheck %s
 // RUN: %clang_cl_asan /Od %s /std:c++17 -Fe%t -DTEST_GLOBAL
 // RUN: %run %t 2>&1 | FileCheck %s
+// RUN: %clang_cl_asan /Od %s /std:c++17 -Fe%t_dbg -DTEST_LOCAL /link /INFERASANLIBS:DEBUG
+// RUN: %run %t_dbg 2>&1 | FileCheck %s
+// RUN: %clang_cl_asan /Od %s /std:c++17 -Fe%t_dbg -DTEST_GLOBAL /link /INFERASANLIBS:DEBUG
+// RUN: %run %t_dbg 2>&1 | FileCheck %s
 
 // Test all non-failing behavior cases to ensure it is the same as when ASAN is not attached.
 

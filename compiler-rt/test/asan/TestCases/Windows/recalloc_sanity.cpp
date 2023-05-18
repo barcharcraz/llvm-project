@@ -3,6 +3,11 @@
 // RUN: %clang_cl %s -o %t.exe
 // RUN: %run %t.exe 2>&1 | FileCheck %s
 
+// RUN: %clang_cl_asan %s -o %t_dbg.exe /link /INFERASANLIBS:DEBUG
+// RUN: %run %t_dbg.exe 2>&1 | FileCheck %s
+// RUN: %clang_cl %s -o %t_dbg.exe /link /INFERASANLIBS:DEBUG
+// RUN: %run %t_dbg.exe 2>&1 | FileCheck %s
+
 #include <cassert>
 #include <stdio.h>
 #include <windows.h>

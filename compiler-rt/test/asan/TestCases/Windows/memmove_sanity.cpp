@@ -7,6 +7,15 @@
 // RUN: not %run %t.icf.noref 2>&1 | FileCheck %s
 // RUN: not %run %t.noicf.noref 2>&1 | FileCheck %s
 
+// RUN: %clang_cl_asan %s -Fe%t_dbg.icf.ref /link /OPT:ICF /OPT:REF /INFERASANLIBS:DEBUG
+// RUN: %clang_cl_asan %s -Fe%t_dbg.noicf.ref /link /OPT:NOICF /OPT:REF /INFERASANLIBS:DEBUG
+// RUN: %clang_cl_asan %s -Fe%t_dbg.icf.noref /link /OPT:ICF /OPT:NOREF /INFERASANLIBS:DEBUG
+// RUN: %clang_cl_asan %s -Fe%t_dbg.noicf.noref /link /OPT:NOICF /OPT:NOREF /INFERASANLIBS:DEBUG
+// RUN: not %run %t_dbg.icf.ref 2>&1 | FileCheck %s
+// RUN: not %run %t_dbg.noicf.ref 2>&1 | FileCheck %s
+// RUN: not %run %t_dbg.icf.noref 2>&1 | FileCheck %s
+// RUN: not %run %t_dbg.noicf.noref 2>&1 | FileCheck %s
+
 #include <string.h>
 
 int main() {

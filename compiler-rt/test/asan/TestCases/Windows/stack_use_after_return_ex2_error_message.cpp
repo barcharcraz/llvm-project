@@ -1,6 +1,10 @@
 // RUN: %clang_cl_asan -Od /fsanitize-address-use-after-return %s -Fe%t
 // RUN: %env_asan_opts=detect_stack_use_after_return=1 not %run %t 1 2>&1 | FileCheck %s
 
+// RUN: %clang_cl_asan -Od /fsanitize-address-use-after-return %s -Fe%t /link /INFERASANLIBS:DEBUG
+// RUN: %env_asan_opts=detect_stack_use_after_return=1 not %run %t 1 2>&1 | FileCheck %s
+
+
 #include <stdlib.h>
 
 enum ReadOrWrite { Read = 0, Write = 1 };
@@ -49,7 +53,7 @@ int main (int argc, char* argv[]) {
   // CHECK: Shadow bytes around the buggy address:
   // CHECK: Shadow byte legend (one shadow byte represents 8 application bytes):
   // CHECK-NEXT: Addressable:           00
-  // CHECK-NEXT: Partially addressable: 01 02 03 04 05 06 07 
+  // CHECK-NEXT: Partially addressable: 01 02 03 04 05 06 07
   // CHECK-NEXT: Heap left redzone:       fa
   // CHECK-NEXT: Freed heap region:       fd
   // CHECK-NEXT: Stack left redzone:      f1

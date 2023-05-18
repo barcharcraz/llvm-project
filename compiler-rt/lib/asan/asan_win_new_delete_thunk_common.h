@@ -1,4 +1,4 @@
-//===-- asan_win_new_delete_thunk_common.h --------------------------------===//
+//===-- asan_win_new_delete_thunk_common.h ----------------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -23,6 +23,7 @@
 // initializer to those TUs to mark whether that overload is included.
 //===----------------------------------------------------------------------===//
 
+#include "asan_win_thunk_common.h"
 // Fake std::nothrow_t and std::align_val_t to avoid including <new>.
 namespace std {
 struct nothrow_t {};
@@ -34,43 +35,7 @@ void* operator new[](size_t, std::align_val_t);
 void operator delete(void* ptr, std::align_val_t align);
 void operator delete[](void* ptr, std::align_val_t align);
 
-namespace __sanitizer {
-#if defined(_WIN64)
-typedef unsigned long long uptr;
-#else
-typedef unsigned long uptr;
-#endif
-}  // namespace __sanitizer
-
-extern "C" void* _ReturnAddress(void);
-extern "C" void* _AddressOfReturnAddress(void);
-#pragma intrinsic(_ReturnAddress)
-#pragma intrinsic(_AddressOfReturnAddress)
-
-#define GET_CALLER_PC() (__sanitizer::uptr) _ReturnAddress()
-#define GET_CURRENT_FRAME() \
-  (((__sanitizer::uptr)_AddressOfReturnAddress()) + sizeof(__sanitizer::uptr))
-
-__declspec(noinline) inline __sanitizer::uptr __asan_GetCurrentPc() {
-  return GET_CALLER_PC();
-}
-
-struct __asan_win_new_delete_data {
-  __forceinline __asan_win_new_delete_data()
-      : size(sizeof(__asan_win_new_delete_data)),
-        extra_context(2),  // TODO: Should only need one - investigate why we
-                           // need an extra frame.
-        pc(__asan_GetCurrentPc()),
-        bp(GET_CURRENT_FRAME()),
-        caller_pc(GET_CALLER_PC()) {}
-
-  size_t size;        // Size of this struct (it travels over the DLL boundary).
-  int extra_context;  // Number of extra frames we need to collect in the
-                      // backtrace.
-  __sanitizer::uptr pc;
-  __sanitizer::uptr bp;
-  __sanitizer::uptr caller_pc;
-};
+using __asan_win_new_delete_data = __asan_win_stack_data;
 
 ////////////////////////////////////
 // clang-format off

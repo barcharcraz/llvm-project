@@ -1,6 +1,9 @@
 // RUN: %clang_cl_asan -Od %s -Fe%t
 // RUN: not %run %t 2>&1 | FileCheck %s
 
+// RUN: %clang_cl_asan -Od %s -Fe%t /link /INFERASANLIBS:DEBUG
+// RUN: not %run %t 2>&1 | FileCheck %s
+
 #include <Windows.h>
 #include <stdio.h>
 

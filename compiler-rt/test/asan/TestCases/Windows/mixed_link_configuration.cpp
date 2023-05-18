@@ -12,18 +12,14 @@
 // RUN: %clang_asan_no_rt -Od /MT %s -Fe%t.asan.mt.to.asan.mt.exe mixed_link_configuration_dll.asan.mt.lib
 // RUN: echo "ASAN /MT EXE -> ASAN /MT DLL: %t.asan.mt.to.asan.mt.exe" 1>&2 && %run %t.asan.mt.to.asan.mt.exe 2>&1 | FileCheck %s
 
-// Unsupported on X86 since two instances and shadow map overlaps
-// RUN: %if_not_i386 ( %clang_asan_no_rt -Od /MT %s -Fe%t.asan.mt.to.asan.md.exe mixed_link_configuration_dll.asan.md.lib )
-// RUN: %if_not_i386 ( echo "ASAN /MT EXE -> ASAN /MD DLL: %t.asan.mt.to.asan.md.exe" 1>&2 && %run %t.asan.mt.to.asan.md.exe 2>&1 | FileCheck %s )
-// RUN: %if_i386     ( echo "ASAN /MT EXE -> ASAN /MD DLL: Disabled" )
+// RUN: %clang_asan_no_rt -Od /MT %s -Fe%t.asan.mt.to.asan.md.exe mixed_link_configuration_dll.asan.md.lib
+// RUN: echo "ASAN /MT EXE -> ASAN /MD DLL: %t.asan.mt.to.asan.md.exe" 1>&2 && %run %t.asan.mt.to.asan.md.exe 2>&1 | FileCheck %s
 
 // RUN: %clang_asan_no_rt -Od /MT %s -Fe%t.asan.mt.to.asan.mtd.exe mixed_link_configuration_dll.asan.mtd.lib
 // RUN: echo "ASAN /MT EXE -> ASAN /MTd DLL: %t.asan.mt.to.asan.mtd.exe" 1>&2 && %run %t.asan.mt.to.asan.mtd.exe 2>&1 | FileCheck %s
 
-// Unsupported on X86 since two instances and shadow map overlaps
-// RUN: %if_not_i386 ( %clang_asan_no_rt -Od /MT %s -Fe%t.asan.mt.to.asan.mdd.exe mixed_link_configuration_dll.asan.mdd.lib )
-// RUN: %if_not_i386 ( echo "ASAN /MT EXE -> ASAN /MDd DLL: %t.asan.mt.to.asan.mdd.exe" 1>&2 && %run %t.asan.mt.to.asan.mdd.exe 2>&1 | FileCheck %s )
-// RUN: %if_i386     ( echo "ASAN /MT EXE -> ASAN /MDd DLL: Disabled" )
+// RUN: %clang_asan_no_rt -Od /MT %s -Fe%t.asan.mt.to.asan.mdd.exe mixed_link_configuration_dll.asan.mdd.lib
+// RUN: echo "ASAN /MT EXE -> ASAN /MDd DLL: %t.asan.mt.to.asan.mdd.exe" 1>&2 && %run %t.asan.mt.to.asan.mdd.exe 2>&1 | FileCheck %s
 
 // RUN: %clang_asan_no_rt -Od /MT %s -Fe%t.asan.mt.to.mt.exe mixed_link_configuration_dll.mt.lib
 // RUN: echo "ASAN /MT EXE -> non-ASAN /MT DLL: %t.asan.mt.to.mt.exe" 1>&2 && %run %t.asan.mt.to.mt.exe 2>&1 | FileCheck %s
@@ -39,20 +35,17 @@
 
 
 // All ASAN /MD scenarios
-// Unsupported because EXE is does not contain ASAN
-// SKIP: %clang_asan_no_rt -Od /MD %s -Fe%t.asan.md.to.asan.mt.exe mixed_link_configuration_dll.asan.mt.lib
-// SKIP: echo "ASAN /MD EXE -> ASAN /MT DLL: %t.asan.md.to.asan.mt.exe" 1>&2 && %run %t.asan.md.to.asan.mt.exe 2>&1 | FileCheck %s
+// RUN: %clang_asan_no_rt -Od /MD %s -Fe%t.asan.md.to.asan.mt.exe mixed_link_configuration_dll.asan.mt.lib
+// RUN: echo "ASAN /MD EXE -> ASAN /MT DLL: %t.asan.md.to.asan.mt.exe" 1>&2 && %run %t.asan.md.to.asan.mt.exe 2>&1 | FileCheck %s
 
 // RUN: %clang_asan_no_rt -Od /MD %s -Fe%t.asan.md.to.asan.md.exe mixed_link_configuration_dll.asan.md.lib
 // RUN: echo "ASAN /MD EXE -> ASAN /MD DLL: %t.asan.md.to.asan.md.exe" 1>&2 && %run %t.asan.md.to.asan.md.exe 2>&1 | FileCheck %s
 
-// Unsupported because EXE is does not contain ASAN
-// SKIP: %clang_asan_no_rt -Od /MD %s -Fe%t.asan.md.to.asan.mtd.exe mixed_link_configuration_dll.asan.mtd.lib
-// SKIP: echo "ASAN /MD EXE -> ASAN /MTd DLL: %t.asan.md.to.asan.mtd.exe" 1>&2 && %run %t.asan.md.to.asan.mtd.exe 2>&1 | FileCheck %s
+// RUN: %clang_asan_no_rt -Od /MD %s -Fe%t.asan.md.to.asan.mtd.exe mixed_link_configuration_dll.asan.mtd.lib
+// RUN: echo "ASAN /MD EXE -> ASAN /MTd DLL: %t.asan.md.to.asan.mtd.exe" 1>&2 && %run %t.asan.md.to.asan.mtd.exe 2>&1 | FileCheck %s
 
-// Unsupported because two ASAN instances (manifests as wild pointer freed during startup)
-// SKIP: %clang_asan_no_rt -Od /MD %s -Fe%t.asan.md.to.asan.mdd.exe mixed_link_configuration_dll.asan.mdd.lib
-// SKIP: echo "ASAN /MD EXE -> ASAN /MDd DLL: %t.asan.md.to.asan.mdd.exe" 1>&2 && %run %t.asan.md.to.asan.mdd.exe 2>&1 | FileCheck %s
+// RUN: %clang_asan_no_rt -Od /MD %s -Fe%t.asan.md.to.asan.mdd.exe mixed_link_configuration_dll.asan.mdd.lib
+// RUN: echo "ASAN /MD EXE -> ASAN /MDd DLL: %t.asan.md.to.asan.mdd.exe" 1>&2 && %run %t.asan.md.to.asan.mdd.exe 2>&1 | FileCheck %s
 
 // RUN: %clang_asan_no_rt -Od /MD %s -Fe%t.asan.md.to.mt.exe mixed_link_configuration_dll.mt.lib
 // RUN: echo "ASAN /MD EXE -> non-ASAN /MT DLL: %t.asan.md.to.mt.exe" 1>&2 && %run %t.asan.md.to.mt.exe 2>&1 | FileCheck %s
@@ -71,17 +64,14 @@
 // RUN: %clang_asan_no_rt -Od /MTd %s -Fe%t.asan.mt.to.asan.mt.exe mixed_link_configuration_dll.asan.mt.lib
 // RUN: echo "ASAN /MTd EXE -> ASAN /MT DLL: %t.asan.mt.to.asan.mt.exe" 1>&2 && %run %t.asan.mt.to.asan.mt.exe 2>&1 | FileCheck %s
 
-// Unsupported on X86 since two instances and shadow map overlaps
-// RUN: %if_not_i386 ( %clang_asan_no_rt -Od /MTd %s -Fe%t.asan.mt.to.asan.md.exe mixed_link_configuration_dll.asan.md.lib )
-// RUN: %if_not_i386 ( echo "ASAN /MTd EXE -> ASAN /MD DLL: %t.asan.mt.to.asan.md.exe" 1>&2 && %run %t.asan.mt.to.asan.md.exe 2>&1 | FileCheck %s )
-// RUN: %if_i386     ( echo "ASAN /MTd EXE -> ASAN /MD DLL: Disabled" )
+// RUN: %clang_asan_no_rt -Od /MTd %s -Fe%t.asan.mt.to.asan.md.exe mixed_link_configuration_dll.asan.md.lib
+// RUN: echo "ASAN /MTd EXE -> ASAN /MD DLL: %t.asan.mt.to.asan.md.exe" 1>&2 && %run %t.asan.mt.to.asan.md.exe 2>&1 | FileCheck %s
 
 // RUN: %clang_asan_no_rt -Od /MTd %s -Fe%t.asan.mt.to.asan.mtd.exe mixed_link_configuration_dll.asan.mtd.lib
 // RUN: echo "ASAN /MTd EXE -> ASAN /MTd DLL: %t.asan.mt.to.asan.mtd.exe" 1>&2 && %run %t.asan.mt.to.asan.mtd.exe 2>&1 | FileCheck %s
 
-// RUN: %if_not_i386 ( %clang_asan_no_rt -Od /MTd %s -Fe%t.asan.mt.to.asan.mdd.exe mixed_link_configuration_dll.asan.mdd.lib )
-// RUN: %if_not_i386 ( echo "ASAN /MTd EXE -> ASAN /MDd DLL: %t.asan.mt.to.asan.mdd.exe" 1>&2 && %run %t.asan.mt.to.asan.mdd.exe 2>&1 | FileCheck %s )
-// RUN: %if_i386     ( echo "ASAN /MTd EXE -> ASAN /MDd DLL: Disabled" )
+// RUN: %clang_asan_no_rt -Od /MTd %s -Fe%t.asan.mt.to.asan.mdd.exe mixed_link_configuration_dll.asan.mdd.lib
+// RUN: echo "ASAN /MTd EXE -> ASAN /MDd DLL: %t.asan.mt.to.asan.mdd.exe" 1>&2 && %run %t.asan.mt.to.asan.mdd.exe 2>&1 | FileCheck %s
 
 // RUN: %clang_asan_no_rt -Od /MTd %s -Fe%t.asan.mt.to.mt.exe mixed_link_configuration_dll.mt.lib
 // RUN: echo "ASAN /MTd EXE -> non-ASAN /MT DLL: %t.asan.mt.to.mt.exe" 1>&2 && %run %t.asan.mt.to.mt.exe 2>&1 | FileCheck %s
@@ -97,17 +87,14 @@
 
 
 // All ASAN /MDd scenarios
-// Unsupported because EXE is does not contain ASAN
-// SKIP: %clang_asan_no_rt -Od /MDd %s -Fe%t.asan.md.to.asan.mt.exe mixed_link_configuration_dll.asan.mt.lib
-// SKIP: echo "ASAN /MDd EXE -> ASAN /MT DLL: %t.asan.md.to.asan.mt.exe" 1>&2 && %run %t.asan.md.to.asan.mt.exe 2>&1 | FileCheck %s
+// RUN: %clang_asan_no_rt -Od /MDd %s -Fe%t.asan.md.to.asan.mt.exe mixed_link_configuration_dll.asan.mt.lib
+// RUN: echo "ASAN /MDd EXE -> ASAN /MT DLL: %t.asan.md.to.asan.mt.exe" 1>&2 && %run %t.asan.md.to.asan.mt.exe 2>&1 | FileCheck %s
 
-// Unsupported because two ASAN instances (manifests as wild pointer freed during startup)
-// SKIP: %clang_asan_no_rt -Od /MDd %s -Fe%t.asan.md.to.asan.md.exe mixed_link_configuration_dll.asan.md.lib
-// SKIP: echo "ASAN /MDd EXE -> ASAN /MD DLL: %t.asan.md.to.asan.md.exe" 1>&2 && %run %t.asan.md.to.asan.md.exe 2>&1 | FileCheck %s
+// RUN: %clang_asan_no_rt -Od /MDd %s -Fe%t.asan.md.to.asan.md.exe mixed_link_configuration_dll.asan.md.lib
+// RUN: echo "ASAN /MDd EXE -> ASAN /MD DLL: %t.asan.md.to.asan.md.exe" 1>&2 && %run %t.asan.md.to.asan.md.exe 2>&1 | FileCheck %s
 
-// Unsupported because EXE is does not contain ASAN
-// SKIP: %clang_asan_no_rt -Od /MDd %s -Fe%t.asan.md.to.asan.mtd.exe mixed_link_configuration_dll.asan.mtd.lib
-// SKIP: echo "ASAN /MDd EXE -> ASAN /MTd DLL: %t.asan.md.to.asan.mtd.exe" 1>&2 && %run %t.asan.md.to.asan.mtd.exe 2>&1 | FileCheck %s
+// RUN: %clang_asan_no_rt -Od /MDd %s -Fe%t.asan.md.to.asan.mtd.exe mixed_link_configuration_dll.asan.mtd.lib
+// RUN: echo "ASAN /MDd EXE -> ASAN /MTd DLL: %t.asan.md.to.asan.mtd.exe" 1>&2 && %run %t.asan.md.to.asan.mtd.exe 2>&1 | FileCheck %s
 
 // RUN: %clang_asan_no_rt -Od /MDd %s -Fe%t.asan.md.to.asan.mdd.exe mixed_link_configuration_dll.asan.mdd.lib
 // RUN: echo "ASAN /MDd EXE -> ASAN /MDd DLL: %t.asan.md.to.asan.mdd.exe" 1>&2 && %run %t.asan.md.to.asan.mdd.exe 2>&1 | FileCheck %s
@@ -126,68 +113,59 @@
 
 
 // All non-ASAN /MT scenarios
-// Unsupported because EXE is does not contain ASAN
-// SKIP: %clang_cl_no_rt -Od /MT %s -Fe%t.mt.to.asan.mt.exe mixed_link_configuration_dll.asan.mt.lib
-// SKIP: echo "non-ASAN /MT EXE -> ASAN /MT DLL: %t.mt.to.asan.mt.exe" 1>&2 && %run %t.mt.to.asan.mt.exe 2>&1 | FileCheck %s
+// RUN: %clang_cl_no_rt -Od /MT %s -Fe%t.mt.to.asan.mt.exe mixed_link_configuration_dll.asan.mt.lib
+// RUN: echo "non-ASAN /MT EXE -> ASAN /MT DLL: %t.mt.to.asan.mt.exe" 1>&2 && %run %t.mt.to.asan.mt.exe 2>&1 | FileCheck %s
 
 // RUN: %clang_cl_no_rt -Od /MT %s -Fe%t.mt.to.asan.md.exe mixed_link_configuration_dll.asan.md.lib
 // RUN: echo "non-ASAN /MT EXE -> ASAN /MD DLL: %t.mt.to.asan.md.exe" 1>&2 && %run %t.mt.to.asan.md.exe 2>&1 | FileCheck %s
 
-// Unsupported because EXE is does not contain ASAN
-// SKIP: %clang_cl_no_rt -Od /MT %s -Fe%t.mt.to.asan.mtd.exe mixed_link_configuration_dll.asan.mtd.lib
-// SKIP: echo "non-ASAN /MT EXE -> ASAN /MTd DLL: %t.mt.to.asan.mtd.exe" 1>&2 && %run %t.mt.to.asan.mtd.exe 2>&1 | FileCheck %s
+// RUN: %clang_cl_no_rt -Od /MT %s -Fe%t.mt.to.asan.mtd.exe mixed_link_configuration_dll.asan.mtd.lib
+// RUN: echo "non-ASAN /MT EXE -> ASAN /MTd DLL: %t.mt.to.asan.mtd.exe" 1>&2 && %run %t.mt.to.asan.mtd.exe 2>&1 | FileCheck %s
 
 // RUN: %clang_cl_no_rt -Od /MT %s -Fe%t.mt.to.asan.mdd.exe mixed_link_configuration_dll.asan.mdd.lib
 // RUN: echo "non-ASAN /MT EXE -> ASAN /MDd DLL: %t.mt.to.asan.mdd.exe" 1>&2 && %run %t.mt.to.asan.mdd.exe 2>&1 | FileCheck %s
 
 
 // All non-ASAN /MD scenarios
-// Unsupported because EXE is does not contain ASAN
-// SKIP: %clang_cl_no_rt -Od /MD %s -Fe%t.md.to.asan.mt.exe mixed_link_configuration_dll.asan.mt.lib
-// SKIP: echo "non-ASAN /MD EXE -> ASAN /MT DLL: %t.md.to.asan.mt.exe" 1>&2 && %run %t.md.to.asan.mt.exe 2>&1 | FileCheck %s
+// RUN: %clang_cl_no_rt -Od /MD %s -Fe%t.md.to.asan.mt.exe mixed_link_configuration_dll.asan.mt.lib
+// RUN: echo "non-ASAN /MD EXE -> ASAN /MT DLL: %t.md.to.asan.mt.exe" 1>&2 && %run %t.md.to.asan.mt.exe 2>&1 | FileCheck %s
 
 // RUN: %clang_cl_no_rt -Od /MD %s -Fe%t.md.to.asan.md.exe mixed_link_configuration_dll.asan.md.lib
 // RUN: echo "non-ASAN /MD EXE -> ASAN /MD DLL: %t.md.to.asan.md.exe" 1>&2 && %run %t.md.to.asan.md.exe 2>&1 | FileCheck %s
 
-// Unsupported because EXE is does not contain ASAN
-// SKIP: %clang_cl_no_rt -Od /MD %s -Fe%t.md.to.asan.mtd.exe mixed_link_configuration_dll.asan.mtd.lib
-// SKIP: echo "non-ASAN /MD EXE -> ASAN /MTd DLL: %t.md.to.asan.mtd.exe" 1>&2 && %run %t.md.to.asan.mtd.exe 2>&1 | FileCheck %s
+// RUN: %clang_cl_no_rt -Od /MD %s -Fe%t.md.to.asan.mtd.exe mixed_link_configuration_dll.asan.mtd.lib
+// RUN: echo "non-ASAN /MD EXE -> ASAN /MTd DLL: %t.md.to.asan.mtd.exe" 1>&2 && %run %t.md.to.asan.mtd.exe 2>&1 | FileCheck %s
 
 // RUN: %clang_cl_no_rt -Od /MD %s -Fe%t.md.to.asan.mdd.exe mixed_link_configuration_dll.asan.mdd.lib
 // RUN: echo "non-ASAN /MD EXE -> ASAN /MDd DLL: %t.md.to.asan.mdd.exe" 1>&2 && %run %t.md.to.asan.mdd.exe 2>&1 | FileCheck %s
 
 
 // All non-ASAN /MTd scenarios
-// Unsupported because EXE is does not contain ASAN
-// SKIP: %clang_cl_no_rt -Od /MTd %s -Fe%t.mt.to.asan.mt.exe mixed_link_configuration_dll.asan.mt.lib
-// SKIP: echo "non-ASAN /MTd EXE -> ASAN /MT DLL: %t.mt.to.asan.mt.exe" 1>&2 && %run %t.mt.to.asan.mt.exe 2>&1 | FileCheck %s
+// RUN: %clang_cl_no_rt -Od /MTd %s -Fe%t.mt.to.asan.mt.exe mixed_link_configuration_dll.asan.mt.lib
+// RUN: echo "non-ASAN /MTd EXE -> ASAN /MT DLL: %t.mt.to.asan.mt.exe" 1>&2 && %run %t.mt.to.asan.mt.exe 2>&1 | FileCheck %s
 
 // RUN: %clang_cl_no_rt -Od /MTd %s -Fe%t.mt.to.asan.md.exe mixed_link_configuration_dll.asan.md.lib
 // RUN: echo "non-ASAN /MTd EXE -> ASAN /MD DLL: %t.mt.to.asan.md.exe" 1>&2 && %run %t.mt.to.asan.md.exe 2>&1 | FileCheck %s
 
-// Unsupported because EXE is does not contain ASAN
-// SKIP: %clang_cl_no_rt -Od /MTd %s -Fe%t.mt.to.asan.mtd.exe mixed_link_configuration_dll.asan.mtd.lib
-// SKIP: echo "non-ASAN /MTd EXE -> ASAN /MTd DLL: %t.mt.to.asan.mtd.exe" 1>&2 && %run %t.mt.to.asan.mtd.exe 2>&1 | FileCheck %s
+// RUN: %clang_cl_no_rt -Od /MTd %s -Fe%t.mt.to.asan.mtd.exe mixed_link_configuration_dll.asan.mtd.lib
+// RUN: echo "non-ASAN /MTd EXE -> ASAN /MTd DLL: %t.mt.to.asan.mtd.exe" 1>&2 && %run %t.mt.to.asan.mtd.exe 2>&1 | FileCheck %s
 
 // RUN: %clang_cl_no_rt -Od /MTd %s -Fe%t.mt.to.asan.mdd.exe mixed_link_configuration_dll.asan.mdd.lib
 // RUN: echo "non-ASAN /MTd EXE -> ASAN /MDd DLL: %t.mt.to.asan.mdd.exe" 1>&2 && %run %t.mt.to.asan.mdd.exe 2>&1 | FileCheck %s
 
 
 // All non-ASAN /MDd scenarios
-// Unsupported because EXE is does not contain ASAN
-// SKIP: %clang_cl_no_rt -Od /MDd %s -Fe%t.md.to.asan.mt.exe mixed_link_configuration_dll.asan.mt.lib
-// SKIP: echo "non-ASAN /MDd EXE -> ASAN /MT DLL: %t.md.to.asan.mt.exe" 1>&2 && %run %t.md.to.asan.mt.exe 2>&1 | FileCheck %s
+// RUN: %clang_cl_no_rt -Od /MDd %s -Fe%t.md.to.asan.mt.exe mixed_link_configuration_dll.asan.mt.lib
+// RUN: echo "non-ASAN /MDd EXE -> ASAN /MT DLL: %t.md.to.asan.mt.exe" 1>&2 && %run %t.md.to.asan.mt.exe 2>&1 | FileCheck %s
 
 // RUN: %clang_cl_no_rt -Od /MDd %s -Fe%t.md.to.asan.md.exe mixed_link_configuration_dll.asan.md.lib
 // RUN: echo "non-ASAN /MDd EXE -> ASAN /MD DLL: %t.md.to.asan.md.exe" 1>&2 && %run %t.md.to.asan.md.exe 2>&1 | FileCheck %s
 
-// Unsupported because EXE is does not contain ASAN
-// SKIP: %clang_cl_no_rt -Od /MDd %s -Fe%t.md.to.asan.mtd.exe mixed_link_configuration_dll.asan.mtd.lib
-// SKIP: echo "non-ASAN /MDd EXE -> ASAN /MTd DLL: %t.md.to.asan.mtd.exe" 1>&2 && %run %t.md.to.asan.mtd.exe 2>&1 | FileCheck %s
+// RUN: %clang_cl_no_rt -Od /MDd %s -Fe%t.md.to.asan.mtd.exe mixed_link_configuration_dll.asan.mtd.lib
+// RUN: echo "non-ASAN /MDd EXE -> ASAN /MTd DLL: %t.md.to.asan.mtd.exe" 1>&2 && %run %t.md.to.asan.mtd.exe 2>&1 | FileCheck %s
 
 // RUN: %clang_cl_no_rt -Od /MDd %s -Fe%t.md.to.asan.mdd.exe mixed_link_configuration_dll.asan.mdd.lib
 // RUN: echo "non-ASAN /MDd EXE -> ASAN /MDd DLL: %t.md.to.asan.mdd.exe" 1>&2 && %run %t.md.to.asan.mdd.exe 2>&1 | FileCheck %s
-
 
 // Only test during /MD builds to save time, since test is independent of runtime flavor.
 // REQUIRES: asan-release-runtime, asan-dynamic-runtime

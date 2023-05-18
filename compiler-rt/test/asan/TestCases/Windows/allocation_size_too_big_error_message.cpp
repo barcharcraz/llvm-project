@@ -1,6 +1,9 @@
 // RUN: %clang_cl_asan -Od %s -Fe%t
 // RUN: not %run %t 2>&1 | FileCheck %s
 
+// RUN: %clang_cl_asan -Od %s -Fe%t /link /INFERASANLIBS:DEBUG
+// RUN: not %run %t 2>&1 | FileCheck %s
+
 #include <stdio.h>
 #include <malloc.h>
 #include <memory.h>
@@ -15,7 +18,7 @@ __declspec(noinline) void bad_function() {
 // CHECK: HINT: if you don't care about these errors you may set allocator_may_return_null=1
 // CHECK: SUMMARY: AddressSanitizer: allocation-size-too-big
 
-  memcpy(buffer, buffer + 8, 8); 
+  memcpy(buffer, buffer + 8, 8);
 }
 
 // Testing output for example in

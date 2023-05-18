@@ -1,5 +1,7 @@
 // RUN: %clang_cl_asan -Od %s -Fe%t
 // RUN: %run %t 2>&1 | FileCheck %s
+// RUN: %clang_cl_asan -Od %s -Fe%t_dbg /link /INFERASANLIBS:DEBUG
+// RUN: %run %t_dbg 2>&1 | FileCheck %s
 #include <stdio.h>
 #include <windows.h>
 

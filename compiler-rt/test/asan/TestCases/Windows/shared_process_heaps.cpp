@@ -1,5 +1,5 @@
-// RUN: %clang_cl_asan -Od %s /std:c++17 /DASAN_PROCESS -Fe%tSend
-// RUN: %clang_cl_asan -Od %s /std:c++17 -Fe%tReceive
+// RUN: %clang_cl_asan /EHsc -Od %s /std:c++17 /DASAN_PROCESS -Fe%tSend
+// RUN: %clang_cl_asan /EHsc -Od %s /std:c++17 -Fe%tReceive
 // RUN: ((%run %tSend | %run %tReceive) 2>&1 ) | FileCheck %s
 
 #include <iostream>
@@ -43,6 +43,12 @@ void InitializeFunctions() {
 #endif
 }
 
+int Win32Fail(const char *message = "") {
+  auto gle = GetLastError();
+  fprintf(stderr, "%s Win32 Error: 0x%x (%s)\n", message, gle, std::system_category().message(gle).c_str());
+  return EXIT_FAILURE;
+}
+
 int Fail(const char *message = "") {
   std::cerr << message << std::endl;
   return EXIT_FAILURE;
@@ -73,7 +79,7 @@ struct SharedProcessMemory {
 
     if (!SetEvent(eventToOtherProcess)) {
       // CHECK-NOT: Failed to notify other process.
-      return Fail("Failed to notify other process.");
+      return Win32Fail("Failed to notify other process.");
     }
 
     fputs("Success.", stderr);
@@ -106,7 +112,7 @@ struct SharedProcessMemory {
 
     if (!FileMapping) {
       // CHECK-NOT: Failed to create file mapping.
-      return Fail("Failed to create file mapping.");
+      return Win32Fail("Failed to create file mapping.");
     }
 
     // Map the view of the shared section memory passed in
@@ -114,7 +120,7 @@ struct SharedProcessMemory {
         MapViewOfFile(FileMapping, FILE_MAP_ALL_ACCESS, 0, 0, bufferSize));
     if (!SharedMemory) {
       // CHECK-NOT: Failed to create shared memory.
-      return Fail("Failed to create shared memory.");
+      return Win32Fail("Failed to create shared memory.");
     }
 
     // Create a heap inside of the shared memory region
@@ -129,7 +135,7 @@ struct SharedProcessMemory {
 
     if (!HeapInSharedMemory) {
       // CHECK-NOT: Failed to create heap in shared heap.
-      return Fail("Failed to create heap in shared heap.");
+      return Win32Fail("Failed to create heap in shared heap.");
     }
 
     // Attempt to allocate inside of the heap located inside of the shared memory region
@@ -138,7 +144,7 @@ struct SharedProcessMemory {
 
     if (!BufferInHeap) {
       // CHECK-NOT: Failed to allocate in shared heap.
-      return Fail("Failed to allocate in shared heap.");
+      return Win32Fail("Failed to allocate in shared heap.");
     }
 
     // Copy a string into the buffer allocated above for the other process to read
@@ -164,7 +170,7 @@ struct SharedProcessMemory {
 
     if (!FileMapping) {
       // CHECK-NOT: Could not open file mapping object.
-      return Fail("Could not open file mapping object.");
+      return Win32Fail("Could not open file mapping object.");
     }
 
     SharedMemory = reinterpret_cast<BYTE *>(
@@ -173,7 +179,7 @@ struct SharedProcessMemory {
 
     if (!SharedMemory) {
       // CHECK-NOT: Could not map view of file.
-      return Fail("Could not map view of file.");
+      return Win32Fail("Could not map view of file.");
     }
 
     if (IsOutOfHeap(offset)) {

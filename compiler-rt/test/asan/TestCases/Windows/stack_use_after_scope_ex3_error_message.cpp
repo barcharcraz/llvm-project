@@ -1,11 +1,14 @@
 // RUN: %clang_cl_asan %s -Fe%t
 // RUN: not %run %t 2>&1 | FileCheck %s
 
+// RUN: %clang_cl_asan %s -Fe%t /link /INFERASANLIBS:DEBUG
+// RUN: not %run %t 2>&1 | FileCheck %s
+
 #include <stdio.h>
 
 // Testing output for example in
 // https://docs.microsoft.com/en-us/cpp/sanitizers/error-stack-use-after-scope
-// the documentation uses /O1 to compile the code (and fails without optimization). 
+// the documentation uses /O1 to compile the code (and fails without optimization).
 // If /O1 is passed at RUN, sometimes it gets overwritten by /Od and the test fails in some pipelines
 #pragma optimize("gsy", on )
 struct IntHolder {
@@ -24,7 +27,7 @@ struct IntHolder {
     // CHECK: Shadow bytes around the buggy address:
     // CHECK: Shadow byte legend (one shadow byte represents 8 application bytes):
     // CHECK-NEXT: Addressable:           00
-    // CHECK-NEXT: Partially addressable: 01 02 03 04 05 06 07 
+    // CHECK-NEXT: Partially addressable: 01 02 03 04 05 06 07
     // CHECK-NEXT: Heap left redzone:       fa
     // CHECK-NEXT: Freed heap region:       fd
     // CHECK-NEXT: Stack left redzone:      f1

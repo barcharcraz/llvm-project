@@ -1,11 +1,14 @@
 // RUN: %clang_cl_asan %S/global_buffer_overflow_ex1/a.c %S/global_buffer_overflow_ex1/b.c %S/global_buffer_overflow_ex1/c.c -Od %s -Fe%t
 // RUN: not %run %t 2>&1 | FileCheck %s
 
+// RUN: %clang_cl_asan %S/global_buffer_overflow_ex1/a.c %S/global_buffer_overflow_ex1/b.c %S/global_buffer_overflow_ex1/c.c -Od %s -Fe%t /link /INFERASANLIBS:DEBUG
+// RUN: not %run %t 2>&1 | FileCheck %s
+
 double x[5];
- 
+
 // Testing output for example in
 // https://docs.microsoft.com/en-us/cpp/sanitizers/error-global-buffer-overflow
-int main() { 
+int main() {
     int rc = (int) x[5];  // Boom!
   // CHECK:ERROR: AddressSanitizer: global-buffer-overflow on address [[ADDR:0x[0-9a-f]+]] at pc {{0x[0-9a-f]+}} bp {{0x[0-9a-f]+}} sp {{0x[0-9a-f]+}}
   // CHECK: READ of size {{[0-9]+}} at [[ADDR]] thread T0
@@ -14,7 +17,7 @@ int main() {
   // CHECK: Shadow bytes around the buggy address:
   // CHECK: Shadow byte legend (one shadow byte represents 8 application bytes):
   // CHECK-NEXT: Addressable:           00
-  // CHECK-NEXT: Partially addressable: 01 02 03 04 05 06 07 
+  // CHECK-NEXT: Partially addressable: 01 02 03 04 05 06 07
   // CHECK-NEXT: Heap left redzone:       fa
   // CHECK-NEXT: Freed heap region:       fd
   // CHECK-NEXT: Stack left redzone:      f1
@@ -31,5 +34,5 @@ int main() {
   // CHECK-NEXT: ASan internal:           fe
   // CHECK-NEXT: Left alloca redzone:     ca
   // CHECK-NEXT: Right alloca redzone:    cb
-    return rc; 
+    return rc;
 }

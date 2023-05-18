@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 #if SANITIZER_WINDOWS
 #pragma once
+// Requires including sanitizer_placement_new.h (which is not allowed to be included in headers).
 
 #include "sanitizer_win_defs.h"
 // These types are required to satisfy XFG which requires that the names of the

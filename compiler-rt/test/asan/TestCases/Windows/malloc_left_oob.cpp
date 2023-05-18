@@ -1,6 +1,10 @@
 // RUN: %clang_cl_asan -Od %s -Fe%t
 // RUN: not %run %t 2>&1 | FileCheck %s
 
+// Bug 1818751 - ASAN PDB cannot be found in CI environment.
+// SKIP: %clang_cl_asan -Od %s -Fe%t_dbg /link /INFERASANLIBS:DEBUG
+// SKIP: not %run %t_dbg 2>&1 | FileCheck %s
+
 #include <malloc.h>
 
 int main() {

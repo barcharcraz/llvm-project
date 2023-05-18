@@ -46,7 +46,7 @@
 
 #include "asan_win_runtime_functions.h"
 
-#ifdef SANITIZER_WINDOWS
+#if SANITIZER_WINDOWS
 
 /* Memory block identification taken from /minkernel/crts/ucrt/inc/crtdbg.h */
 #ifndef _NORMAL_BLOCK
@@ -61,6 +61,8 @@
 #include "interception/interception.h"
 #include "sanitizer_common/sanitizer_libc.h"
 #include "sanitizer_common/sanitizer_stacktrace.h"
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
 
 namespace __asan {
 
@@ -81,7 +83,7 @@ namespace __asan {
 #define CHECK_AND_CALL(allocationCheck, functionPointer, asanFunction, ptr,   \
                          ...)                                                 \
   do {                                                                        \
-    if (UNLIKELY(!asan_inited) ||                                         \
+    if (UNLIKELY(!asan_inited) ||                                             \
         !asan_mz_size(ptr) && allocationCheck(ptr)) {                         \
       return functionPointer(ptr, __VA_ARGS__);                               \
     } else                                                                    \
@@ -93,7 +95,7 @@ namespace __asan {
 #define CHECK_AND_CALL_FREE(allocationCheck, functionPointer, asanFunction,   \
                             ptr, ...)                                         \
   do {                                                                        \
-    if (UNLIKELY(!asan_inited)) {                                         \
+    if (UNLIKELY(!asan_inited)) {                                             \
       functionPointer(ptr, __VA_ARGS__);                                      \
     }                                                                         \
     if (!asan_mz_size(ptr) && allocationCheck(ptr)) {                         \
@@ -116,7 +118,7 @@ namespace __asan {
 #define SWITCH_TO_ASAN_ALLOCATION(allocationCheck, functionPointer,            \
                                   sizeCheck, asanFunction, freeFn, ptr, ...)   \
   do {                                                                         \
-    if (UNLIKELY(!asan_inited)) {                                          \
+    if (UNLIKELY(!asan_inited)) {                                              \
       return functionPointer(ptr, __VA_ARGS__);                                \
     }                                                                          \
     if (!asan_mz_size(ptr) && allocationCheck(ptr)) {                          \
@@ -153,7 +155,6 @@ struct __RuntimeFunctions {
   static inline void *(*pCalloc)(size_t, size_t);
   static inline void (*pFree)(void *);
 
-#if defined(_DEBUG)
   static inline void (*pAlignedFreeDbg)(void *);
   static inline void *(*pReallocDbg)(void *, size_t, int, const char *, int);
   static inline void *(*pAlignedOffsetReallocDbg)(void *const, size_t, size_t,
@@ -171,7 +172,6 @@ struct __RuntimeFunctions {
   static inline size_t (*pMsizeDbg)(void *, int);
   static inline void *(*pRecallocDbg)(void *, size_t, size_t, int, const char *,
                                       int);
-#endif
 
   static inline void AlignedFree(void *ptr) {
     CHECK_AND_CALL_FREE(AlignedAllocatedPriorToAsanInit, pAlignedFree,
@@ -273,7 +273,6 @@ struct __RuntimeFunctions {
     CHECK_AND_CALL_FREE(AllocatedPriorToAsanInit, pFree, ::free, ptr);
   }
 
-#ifdef _DEBUG
   static inline void AlignedFreeDbg(void *const ptr) {
     CHECK_AND_CALL_FREE(DbgAlignedAllocatedPriorToAsanInit, pAlignedFreeDbg,
                         ::_aligned_free_dbg, ptr);
@@ -354,8 +353,6 @@ struct __RuntimeFunctions {
                               blockType, fileName, lineNumber);
   }
 
-#endif
-
   struct OverrideFunctionInfo {
     const char *Name;
     uptr NewFunction;
@@ -364,7 +361,6 @@ struct __RuntimeFunctions {
 
   static void OverrideFunctions(const char *dllName) {
     static const OverrideFunctionInfo functions[] = {
-#ifdef _DEBUG
         {"_aligned_free_dbg", reinterpret_cast<uptr>(&AlignedFreeDbg),
          reinterpret_cast<uptr *>(&pAlignedFreeDbg)},
         {"_aligned_offset_recalloc_dbg",
@@ -384,7 +380,6 @@ struct __RuntimeFunctions {
          reinterpret_cast<uptr *>(&pReallocDbg)},
         {"_recalloc_dbg", reinterpret_cast<uptr>(&RecallocDbg),
          reinterpret_cast<uptr *>(&pRecallocDbg)},
-#endif
         {"_aligned_free", reinterpret_cast<uptr>(&AlignedFree),
          reinterpret_cast<uptr *>(&pAlignedFree)},
         {"_aligned_msize", reinterpret_cast<uptr>(&AlignedMsize),
@@ -425,9 +420,11 @@ struct __RuntimeFunctions {
          reinterpret_cast<uptr *>(&pFree)}};
 
     for (auto &[name, newFunction, oldFunction] : functions) {
-      if (!__interception::OverrideFunction(name, newFunction, oldFunction,
-                                            dllName)) {
-        VPrintf(2, "Failed to override function %s in %s\n", name, dllName);
+      if (GetModuleHandleA(dllName)) {
+        if (!__interception::OverrideFunction(name, newFunction, oldFunction,
+                                              dllName)) {
+          VPrintf(2, "Failed to override function %s in %s\n", name, dllName);
+        }
       }
     }
   }
@@ -436,74 +433,104 @@ struct __RuntimeFunctions {
 // Below are the runtimes that contain either a full set or subset of the
 // runtime functions that are attempted to be hooked from above.
 
-// Overrides functions in "msvcr100(d).dll"
+// Overrides functions in "msvcr100.dll"
 struct Msvcr100 {
   Msvcr100() {
-#ifdef _DEBUG
-    const char *dllName = "msvcr100d.dll";
-#else
     const char *dllName = "msvcr100.dll";
-#endif
     runtime.OverrideFunctions(dllName);
   }
 
   static __RuntimeFunctions<Msvcr100> runtime;
 };
 
-// Overrides functions in "msvcr110(d).dll"
+// Overrides functions in "msvcr100d.dll"
+struct Msvcr100d {
+  Msvcr100d() {
+    const char *dllName = "msvcr100d.dll";
+    runtime.OverrideFunctions(dllName);
+  }
+
+  static __RuntimeFunctions<Msvcr100d> runtime;
+};
+
+// Overrides functions in "msvcr110.dll"
 struct Msvcr110 {
   Msvcr110() {
-#ifdef _DEBUG
-    const char *dllName = "msvcr110d.dll";
-#else
     const char *dllName = "msvcr110.dll";
-#endif
     runtime.OverrideFunctions(dllName);
   }
 
   static __RuntimeFunctions<Msvcr110> runtime;
 };
 
-// Overrides functions in "msvcr120(d).dll"
+// Overrides functions in "msvcr110d.dll"
+struct Msvcr110d {
+  Msvcr110d() {
+    const char *dllName = "msvcr110d.dll";
+    runtime.OverrideFunctions(dllName);
+  }
+
+  static __RuntimeFunctions<Msvcr110d> runtime;
+};
+
+// Overrides functions in "msvcr120.dll"
 struct Msvcr120 {
   Msvcr120() {
-#ifdef _DEBUG
-    const char *dllName = "msvcr120d.dll";
-#else
     const char *dllName = "msvcr120.dll";
-#endif
     runtime.OverrideFunctions(dllName);
   }
 
   static __RuntimeFunctions<Msvcr120> runtime;
 };
 
-// Overrides functions in "vcruntime140(d).dll"
+// Overrides functions in "msvcr120d.dll"
+struct Msvcr120d {
+  Msvcr120d() {
+    const char *dllName = "msvcr120d.dll";
+    runtime.OverrideFunctions(dllName);
+  }
+
+  static __RuntimeFunctions<Msvcr120d> runtime;
+};
+
+// Overrides functions in "vcruntime140.dll"
 struct Vcruntime140 {
   Vcruntime140() {
-#ifdef _DEBUG
-    const char *dllName = "vcruntime140d.dll";
-#else
     const char *dllName = "vcruntime140.dll";
-#endif
     runtime.OverrideFunctions(dllName);
   }
 
   static __RuntimeFunctions<Vcruntime140> runtime;
 };
 
-// Overrides functions in "ucrtbase(d).dll"
+// Overrides functions in "vcruntime140d.dll"
+struct Vcruntime140d {
+  Vcruntime140d() {
+    const char *dllName = "vcruntime140d.dll";
+    runtime.OverrideFunctions(dllName);
+  }
+
+  static __RuntimeFunctions<Vcruntime140d> runtime;
+};
+
+// Overrides functions in "ucrtbase.dll"
 struct Ucrtbase {
   Ucrtbase() {
-#ifdef _DEBUG
-    const char *dllName = "ucrtbased.dll";
-#else
     const char *dllName = "ucrtbase.dll";
-#endif
     runtime.OverrideFunctions(dllName);
   }
 
   static __RuntimeFunctions<Ucrtbase> runtime;
+};
+
+// Overrides functions in "ucrtbased.dll"
+struct Ucrtbased {
+  Ucrtbased() {
+    const char *dllName = "ucrtbased.dll";
+    runtime.OverrideFunctions(dllName);
+  }
+
+  static __RuntimeFunctions<Ucrtbased> runtime;
 };
 
 // Overrides functions in "ntdll.dll"
@@ -521,11 +548,16 @@ void OverrideFunctionsForEachCrt() {
   // delegate back to in case there are allocations that happened prior to the
   // asan runtime initialization in them
   static Msvcr100 msvcr100;
+  static Msvcr100d msvcr100d;
   static Msvcr110 msvcr110;
+  static Msvcr110d msvcr110d;
   static Msvcr120 msvcr120;
+  static Msvcr120d msvcr120d;
   static Vcruntime140 vcruntime140;
+  static Vcruntime140d vcruntime140d;
+  static Ucrtbase ucrtbase;
+  static Ucrtbased ucrtbased;
   static Ntdll ntdll;
-  static Ucrtbase ucrtBase;
 }
 
 }  // namespace __asan

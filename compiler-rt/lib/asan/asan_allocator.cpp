@@ -110,7 +110,7 @@ class ChunkHeader {
     static_assert(sizeof(user_requested_size_lo) == 4,
                   "Expression below requires this");
     if (flags()->continue_on_error && !coe.ModulesLoading()) {
-      // When reporting an error, we optimize and avoid use of 
+      // When reporting an error, we optimize and avoid use of
       // safe meta data for heap blocks that will immediately be freed.
       return GetSafeSize((void *)this);
     }
@@ -156,9 +156,9 @@ class ChunkBase : public ChunkHeader {
 };
 
 // AsanChunk conveys positional information (beginning of user_data).
-// This safe copy node doe NOT encapsulate that semantic. In the 
-// real AsanChunk in a block the methods use the this pointer as an 
-// explicitly offset. That creates a pointer to real user data in a block. 
+// This safe copy node doe NOT encapsulate that semantic. In the
+// real AsanChunk in a block the methods use the this pointer as an
+// explicitly offset. That creates a pointer to real user data in a block.
 // This copy contains a pointer to the real AsanChunk if positional
 // information is required. This is mainly used to restore the AsanChunk
 // in the minimal number of places.
@@ -166,7 +166,7 @@ struct ChunkSafeCopy : ChunkBase {
   ChunkBase *real_chunk;
 };
 
-uptr GetSafeSize(void *p) { 
+uptr GetSafeSize(void *p) {
   CHECK(!coe.ModulesLoading());
   AsanAllocator &a = get_allocator();
   ChunkSafeCopy *sc = reinterpret_cast<ChunkSafeCopy *>(
@@ -196,7 +196,7 @@ class AsanChunk : public ChunkBase {
   bool AddrIsInside(uptr addr) {
     return (addr >= Beg()) && (addr < Beg() + UsedSize());
   }
-  void Copy(ChunkSafeCopy* smd) { 
+  void Copy(ChunkSafeCopy* smd) {
     CHECK(REAL(memcpy));
     REAL(memcpy)(smd, this, sizeof(ChunkHeader));
     smd->real_chunk = this;
@@ -703,7 +703,7 @@ struct Allocator {
       reinterpret_cast<LargeChunkHeader *>(alloc_beg)->Set(m);
     }
     // Read only
-    AsanChunkCOE_Allocate(alloc_beg, m); 
+    AsanChunkCOE_Allocate(alloc_beg, m);
     ASAN_MALLOC_HOOK(res, size);
     return res;
   }
@@ -1107,8 +1107,8 @@ void AsanThreadLocalMallocStorage::CommitBack() {
   instance.CommitBack(this, &stack);
 }
 
-void asan_quarantine_checkpoint() { 
-    instance.QuarantineCheckPoint(); 
+void asan_quarantine_checkpoint() {
+    instance.QuarantineCheckPoint();
 }
 
 void asan_quarantine_restore_checkpoint() {
@@ -1413,11 +1413,13 @@ int __asan_update_allocation_context(void* addr) {
 // Provide default (no-op) implementation of malloc hooks.
 SANITIZER_INTERFACE_WEAK_DEF(void, __sanitizer_malloc_hook,
                              void *ptr, uptr size) {
+  SANITIZER_INTERFACE_WEAK_NOOP_PROLOGUE();
   (void)ptr;
   (void)size;
 }
 
 SANITIZER_INTERFACE_WEAK_DEF(void, __sanitizer_free_hook, void *ptr) {
+  SANITIZER_INTERFACE_WEAK_NOOP_PROLOGUE();
   (void)ptr;
 }
 #endif

@@ -182,6 +182,18 @@ INTERFACE_WEAK_FUNCTION(__asan_default_suppressions)
 INTERFACE_WEAK_FUNCTION(__asan_on_error)
 
 #if SANITIZER_WINDOWS
+INTERFACE_FUNCTION(__asan_msize)
+INTERFACE_FUNCTION(__asan_free)
+INTERFACE_FUNCTION(__asan_malloc)
+INTERFACE_FUNCTION(__asan_calloc)
+INTERFACE_FUNCTION(__asan_realloc)
+INTERFACE_FUNCTION(__asan_recalloc)
+INTERFACE_FUNCTION(__asan_aligned_free)
+INTERFACE_FUNCTION(__asan_aligned_malloc)
+INTERFACE_FUNCTION(__asan_aligned_calloc)
+INTERFACE_FUNCTION(__asan_aligned_realloc)
+INTERFACE_FUNCTION(__asan_aligned_recalloc)
+
 INTERFACE_FUNCTION(__asan_delete)
 INTERFACE_FUNCTION(__asan_delete_align)
 INTERFACE_FUNCTION(__asan_delete_array)

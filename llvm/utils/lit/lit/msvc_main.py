@@ -376,30 +376,30 @@ else:
 testConfig.available_features += arch_specific_features
 
 #setup arch specific lib names for reference later
+arch = test_target_arch
 if opts.debug_runtimes:
-    dynamic_import_lib = "clang_rt.asan_dbg_dynamic-" + test_target_arch + ".lib"
-    static_lib = "clang_rt.asan_dbg-" + test_target_arch + ".lib"
-    static_cxx_lib = "clang_rt.asan_cxx_dbg-" + test_target_arch + ".lib"
-    dynamic_runtime_thunk = "clang_rt.asan_dbg_dynamic_runtime_thunk-" + test_target_arch + ".lib"
-    dynamic_runtime_dll = "clang_rt.asan_dbg_dynamic-" + test_target_arch + ".dll"
-    dll_thunk_lib = "clang_rt.asan_dbg_dll_thunk-" + test_target_arch + ".lib"
-    fuzzer_dynamic_lib = "clang_rt.fuzzer_MDd-" + test_target_arch + ".lib"
-    fuzzer_no_main_dynamic_lib = "clang_rt.fuzzer_MDd_no_main-" + test_target_arch + ".lib"
-    fuzzer_static_lib = "clang_rt.fuzzer_MTd-" + test_target_arch + ".lib"
-    fuzzer_no_main_static_lib = "clang_rt.fuzzer_MTd_no_main-" + test_target_arch + ".lib"
-    profile_lib = "clang_rt.profile-" + test_target_arch + ".lib"
+    d = "d"
+    dbg_ ="dbg_"
 else:
-    dynamic_import_lib = "clang_rt.asan_dynamic-" + test_target_arch + ".lib"
-    static_lib = "clang_rt.asan-" + test_target_arch + ".lib"
-    static_cxx_lib = "clang_rt.asan_cxx-" + test_target_arch + ".lib"
-    dynamic_runtime_thunk = "clang_rt.asan_dynamic_runtime_thunk-" + test_target_arch + ".lib"
-    dynamic_runtime_dll = "clang_rt.asan_dynamic-" + test_target_arch + ".dll"
-    dll_thunk_lib = "clang_rt.asan_dll_thunk-" + test_target_arch + ".lib"
-    fuzzer_dynamic_lib = "clang_rt.fuzzer_MD-" + test_target_arch + ".lib"
-    fuzzer_no_main_dynamic_lib = "clang_rt.fuzzer_MD_no_main-" + test_target_arch + ".lib"
-    fuzzer_static_lib = "clang_rt.fuzzer_MT-" + test_target_arch + ".lib"
-    fuzzer_no_main_static_lib = "clang_rt.fuzzer_MT_no_main-" + test_target_arch + ".lib"
-    profile_lib = "clang_rt.profile-" + test_target_arch + ".lib"
+    d = ""
+    dbg_ = ""
+
+import_lib                 = f"clang_rt.asan_{dbg_}dynamic-{arch}.lib"
+dynamic_runtime_thunk      = f"clang_rt.asan_{dbg_}dynamic_runtime_thunk-{arch}.lib"
+static_runtime_thunk       = f"clang_rt.asan_{dbg_}static_runtime_thunk-{arch}.lib"
+runtime_dll                = f"clang_rt.asan_{dbg_}dynamic-{arch}.dll"
+fuzzer_dynamic_lib         = f"clang_rt.fuzzer_MD{d}-{arch}.lib"
+fuzzer_no_main_dynamic_lib = f"clang_rt.fuzzer_MD{d}_no_main-{arch}.lib"
+fuzzer_static_lib          = f"clang_rt.fuzzer_MT{d}-{arch}.lib"
+fuzzer_no_main_static_lib  = f"clang_rt.fuzzer_MT{d}_no_main-{arch}.lib"
+profile_lib                = f"clang_rt.profile-{arch}.lib"
+
+del arch, d, dbg_
+
+if opts.force_dynamic:
+    runtime_thunk = dynamic_runtime_thunk
+else:
+    runtime_thunk = static_runtime_thunk
 
 runtime_flags = ""
 testConfig.environment['_CL_'] = ""
@@ -457,8 +457,6 @@ testConfig.substitutions = {
                             ("%no_fuzzer_cpp_compiler ", litConfig.clang + default_flags + runtime_flags),
                             ("%no_fuzzer_c_compiler ", litConfig.clang + default_flags + runtime_flags),
                             ("%libfuzzer_src", litConfig.compiler_rt_src_root + "\\lib\\fuzzer"),
-                            ("%asan_dll_lib", litConfig.compiler_rt_libdir + "\\" + dynamic_import_lib + " "),
-                            ("%asan_dll ", litConfig.compiler_rt_libdir + "\\" + dynamic_runtime_dll + " "),
                             ("%env_asan_opts=", "env ASAN_OPTIONS=" ),
                             ("-Fe","/Fe:"),
                             ("%run"," cmd /v /c "),
@@ -468,7 +466,6 @@ testConfig.substitutions = {
                             ("%stdcxx11","/std:c++14"), # Apparently we don't have a c++11 flag :(
                             ("-std=","/std:"),
                             ("%clang_cfi", litConfig.clang + " /guard:cf "),
-                            ("%asan_dll_thunk", litConfig.compiler_rt_libdir + "\\" + dll_thunk_lib + " "),
                             ("-link","/link /incremental:no"),
                             ("sed ",os.environ["UNIX_BIN_DIR"]+"\\sed.exe "),
                             ("mv ",os.environ["UNIX_BIN_DIR"]+"\\mv.exe "),
@@ -498,14 +495,10 @@ testConfig.substitutions = {
                             ("%os", "Windows")
                             }
 
-if opts.force_dynamic:
-    testConfig.substitutions |= {
-        ("%asan_dll_thunk_lib", slashsan(litConfig.compiler_rt_libdir) + "\\" + dynamic_runtime_thunk + " " + slashsan(litConfig.compiler_rt_libdir)+ "\\" + dynamic_import_lib)
-    }
-
 testConfig.substitutions |= optimization_subs
 testConfig.environment["INCLUDE"] = testConfig.environment["INCLUDE"] + litConfig.compiler_rt_src_root + "\\include" + ";" + litConfig.compiler_rt_src_root + "\\test\\asan\\TestCases" + ";" + litConfig.compiler_rt_src_root + "\\lib\\fuzzer" + ";"
 testConfig.environment["PATH"] += ";" + os.environ["ASAN_RT_BIN_DIR"] +";"+ os.environ["ASAN_RT_LIB_DIR"] + ";"
+testConfig.environment['_NT_SYMBOL_PATH'] = os.environ['ASAN_RT_BIN_DIR']
 
 #print litConfig.getToolsPath(opts.path[0],"",["cl.exe"])
 if opts.debug_runtimes:
@@ -568,8 +561,8 @@ for cc_file in cc_files:
             __testConfig.substitutions |= {
                 out_to_obj_tuple,
                 out_to_exe_tuple,
-                ("%asan_lib", __litConfig.compiler_rt_libdir + "\\" + static_lib + ""),
-                ("%asan_cxx_lib", __litConfig.compiler_rt_libdir + "\\" + static_cxx_lib + ""),
+                ("%asan_lib", __litConfig.compiler_rt_libdir + "\\" + import_lib + ""),
+                ("%asan_cxx_lib", __litConfig.compiler_rt_libdir + "\\" + runtime_thunk + ""),
             }
         if "seh.cpp" in cc_file:
             __testConfig.environment["_CL_"] = __testConfig.environment["_CL_"].replace("/EHs", "/EHa")

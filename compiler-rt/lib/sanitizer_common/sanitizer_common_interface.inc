@@ -40,3 +40,9 @@ INTERFACE_FUNCTION(__sanitizer_purge_allocator)
 INTERFACE_FUNCTION(__sanitizer_print_memory_profile)
 INTERFACE_WEAK_FUNCTION(__sanitizer_free_hook)
 INTERFACE_WEAK_FUNCTION(__sanitizer_malloc_hook)
+
+#if SANITIZER_WINDOWS
+INTERFACE_FUNCTION(__sanitizer_override_function)
+INTERFACE_FUNCTION(__sanitizer_override_function_by_addr)
+INTERFACE_FUNCTION(__sanitizer_register_weak_function)
+#endif

@@ -20,11 +20,6 @@
 // RUN: %clang_cl_asan /std:c++17 /DAPISET /EHsc -Od %s -Fe%t /link imagehlp.lib /NODEFAULTLIB:kernel32 /DEFAULTLIB:onecore_apiset.lib && %env_asan_opts=iat_overwrite=protect %run %t test3 2>&1 | FileCheck %s --check-prefix=CHECK7
 
 #include "iat_overwrite_protection.h"
-#ifdef _DEBUG
-#  define DBG_STR "_dbg"
-#else
-#  define DBG_STR
-#endif
 
 #ifdef _M_IX86
 #  define ARCH_STR "i386"
@@ -34,7 +29,7 @@
 #  error Unsupported architecture.
 #endif
 
-#define ASAN_DLL_NAME "clang_rt.asan" DBG_STR "_dynamic-" ARCH_STR ".dll"
+#define ASAN_DLL_NAME "clang_rt.asan_dynamic-" ARCH_STR ".dll"
 
 const char *moduleName;
 
@@ -112,15 +107,8 @@ void VirtualQueryTest(const char *module, const char *importModule) {
 
 int main(int argc, char **argv) {
   auto importModule = "KERNEL32.dll";
-#ifndef _DLL
-  moduleName = argv[0];
-#  ifdef APISET
-  // if linking against an apiset
-  importModule = "api-ms-win-core-memory-l1-1-0.dll";
-#  endif
-#else
   moduleName = ASAN_DLL_NAME;
-#endif
+
   if (argc != 2) {
     return 1;
   }

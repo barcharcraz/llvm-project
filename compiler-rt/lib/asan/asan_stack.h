@@ -16,8 +16,8 @@
 
 #include "asan_flags.h"
 #include "asan_thread.h"
-#include "sanitizer_common/sanitizer_internal_defs.h"
 #include "sanitizer_common/sanitizer_flags.h"
+#include "sanitizer_common/sanitizer_internal_defs.h"
 #include "sanitizer_common/sanitizer_stacktrace.h"
 
 namespace __asan {
@@ -63,8 +63,8 @@ u32 GetMallocContextSize();
     stack.Unwind(pc, bp, nullptr, fast, max_size + extra_context);  \
   }
 
-#define GET_STACK_TRACE_FATAL(pc, bp) \
-  __sanitizer::BufferedStackTrace stack;           \
+#define GET_STACK_TRACE_FATAL(pc, bp)    \
+  __sanitizer::BufferedStackTrace stack; \
   stack.Unwind(pc, bp, nullptr, common_flags()->fast_unwind_on_fatal)
 
 #define GET_STACK_TRACE_FATAL_HERE \
@@ -72,8 +72,9 @@ u32 GetMallocContextSize();
 
 #define GET_STACK_TRACE_THREAD GET_STACK_TRACE(kStackTraceMax, true)
 
-#define GET_STACK_TRACE_MALLOC \
-  GET_STACK_TRACE(__asan::GetMallocContextSize(), common_flags()->fast_unwind_on_malloc)
+#define GET_STACK_TRACE_MALLOC                    \
+  GET_STACK_TRACE(__asan::GetMallocContextSize(), \
+                  __asan::common_flags()->fast_unwind_on_malloc)
 
 #define GET_STACK_TRACE_MALLOC_WIN(pc, bp, caller_pc, extra_context)      \
   GET_STACK_TRACE_EXPLICIT(__asan::GetMallocContextSize(),                \

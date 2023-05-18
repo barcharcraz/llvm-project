@@ -294,6 +294,18 @@ if(COMPILER_RT_CAN_EXECUTE_TESTS AND NOT ANDROID)
         $<TARGET_OBJECTS:RTSanitizerCommonSymbolizer.osx>
         $<TARGET_OBJECTS:RTLSanCommon.osx>
         $<TARGET_OBJECTS:RTUbsan.osx>)
+    elseif(WIN32)
+      set(ASAN_TEST_RUNTIME_OBJECTS
+        $<TARGET_OBJECTS:RTAsan_dynamic.${arch}>
+        $<TARGET_OBJECTS:RTAsan_cxx.${arch}>
+        $<TARGET_OBJECTS:RTInterception.${arch}>
+        $<TARGET_OBJECTS:RTSanitizerCommon.${arch}>
+        $<TARGET_OBJECTS:RTSanitizerCommonLibc.${arch}>
+        $<TARGET_OBJECTS:RTSanitizerCommonCoverage.${arch}>
+        $<TARGET_OBJECTS:RTSanitizerCommonSymbolizer.${arch}>
+        $<TARGET_OBJECTS:RTLSanCommon.${arch}>
+        $<TARGET_OBJECTS:RTUbsan.${arch}>
+        $<TARGET_OBJECTS:RTUbsan_cxx.${arch}>)
     else()
       set(ASAN_TEST_RUNTIME_OBJECTS
         $<TARGET_OBJECTS:RTAsan.${arch}>
@@ -316,52 +328,7 @@ if(COMPILER_RT_CAN_EXECUTE_TESTS AND NOT ANDROID)
     add_asan_tests(${arch} ${ASAN_TEST_RUNTIME} KIND "-inline")
     add_asan_tests(${arch} ${ASAN_TEST_RUNTIME} KIND "-calls"
       CFLAGS -mllvm -asan-instrumentation-with-call-threshold=0)
-    if (MSVC)
-    #generate extra tests for windows debug runtimes
-    set(ASAN_TEST_RUNTIME_DEBUG_MTd RTAsanTest.debug.${arch})
-    set(ASAN_TEST_RUNTIME_DEBUG_MDd RTAsanTest.debug.dynamic.${arch})
-    set(ASAN_TEST_RUNTIME_OBJECTS_MTd
-        $<TARGET_OBJECTS:RTAsan_MTd.${arch}>
-        $<TARGET_OBJECTS:RTAsan_cxx_MTd.${arch}>
-        $<TARGET_OBJECTS:RTInterception_MTd.${arch}>
-        $<TARGET_OBJECTS:RTSanitizerCommon_MTd.${arch}>
-        $<TARGET_OBJECTS:RTSanitizerCommonLibc_MTd.${arch}>
-        $<TARGET_OBJECTS:RTSanitizerCommonCoverage_MTd.${arch}>
-        $<TARGET_OBJECTS:RTSanitizerCommonSymbolizer_MTd.${arch}>
-        $<TARGET_OBJECTS:RTLSanCommon_MTd.${arch}>
-        $<TARGET_OBJECTS:RTUbsan_MTd.${arch}>
-        $<TARGET_OBJECTS:RTUbsan_cxx_MTd.${arch}>)
-      set(ASAN_TEST_RUNTIME_OBJECTS_MDd
-        $<TARGET_OBJECTS:RTAsan_MDd.${arch}>
-        $<TARGET_OBJECTS:RTAsan_cxx_MDd.${arch}>
-        $<TARGET_OBJECTS:RTInterception_MDd.${arch}>
-        $<TARGET_OBJECTS:RTSanitizerCommon_MDd.${arch}>
-        $<TARGET_OBJECTS:RTSanitizerCommonLibc_MDd.${arch}>
-        $<TARGET_OBJECTS:RTSanitizerCommonCoverage_MDd.${arch}>
-        $<TARGET_OBJECTS:RTSanitizerCommonSymbolizer_MDd.${arch}>
-        $<TARGET_OBJECTS:RTLSanCommon_MDd.${arch}>
-        $<TARGET_OBJECTS:RTUbsan_MDd.${arch}>
-        $<TARGET_OBJECTS:RTUbsan_cxx_MDd.${arch}>)
 
-    add_library(${ASAN_TEST_RUNTIME_DEBUG_MTd} STATIC ${ASAN_TEST_RUNTIME_OBJECTS_MTd})
-    set_target_properties(${ASAN_TEST_RUNTIME_DEBUG_MTd} PROPERTIES
-      ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-      FOLDER "Compiler-RT Runtime tests (MTd)")
-
-    add_library(${ASAN_TEST_RUNTIME_DEBUG_MDd} STATIC ${ASAN_TEST_RUNTIME_OBJECTS_MDd})
-    set_target_properties(${ASAN_TEST_RUNTIME_DEBUG_MDd} PROPERTIES
-      ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-      FOLDER "Compiler-RT Runtime tests (MDd)")
-
-    add_asan_tests(${arch} ${ASAN_TEST_RUNTIME_DEBUG_MTd} KIND "-debug"
-      CFLAGS -D_DEBUG
-      LINK_FLAGS -D_DEBUG -Wl,-nodefaultlib:libcmt,-nodefaultlib:libucrt,-defaultlib:libucrtd,-force:multiple)
-
-    add_asan_dynamic_tests(${arch} ${ASAN_TEST_RUNTIME_DEBUG_MDd} KIND "-debug-dynamic"
-      CFLAGS -D_DEBUG -D_MT -D_DLL
-      LINK_FLAGS -D_DEBUG -D_MT -D_DLL -Wl,-nodefaultlib:libcmtd,-nodefaultlib:libucrt,-defaultlib:msvcrtd,-defaultlib:ucrtd,-defaultlib:oldnames
-      )
-    endif()
   endforeach()
 
 endif()

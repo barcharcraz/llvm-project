@@ -40,6 +40,7 @@ set(SANITIZER_SOURCES_NOTERMINATION
   sanitizer_thread_registry.cpp
   sanitizer_type_traits.cpp
   sanitizer_win.cpp
+  sanitizer_win_interception.cpp
   sanitizer_win_iat_protection.cpp
   )
 
@@ -198,8 +199,8 @@ set(SANITIZER_IMPL_HEADERS
   sanitizer_vector.h
   sanitizer_win.h
   sanitizer_win_defs.h
-  sanitizer_win_dll_thunk.h
-  sanitizer_win_weak_interception.h
+  sanitizer_win_interception.h
+  sanitizer_win_thunk_interception.h
   )
 
 include_directories(..)
@@ -230,6 +231,7 @@ add_compiler_rt_object_libraries(RTSanitizerCommon
   ADDITIONAL_HEADERS ${SANITIZER_IMPL_HEADERS}
   CFLAGS ${SANITIZER_CFLAGS}
   DEFS ${SANITIZER_COMMON_DEFINITIONS})
+
 add_compiler_rt_object_libraries(RTSanitizerCommonNoTermination
   ${OS_OPTION}
   ARCHS ${SANITIZER_COMMON_SUPPORTED_ARCH}
@@ -237,6 +239,7 @@ add_compiler_rt_object_libraries(RTSanitizerCommonNoTermination
   ADDITIONAL_HEADERS ${SANITIZER_IMPL_HEADERS}
   CFLAGS ${SANITIZER_CFLAGS}
   DEFS ${SANITIZER_COMMON_DEFINITIONS})
+
 add_compiler_rt_object_libraries(RTSanitizerCommonNoLibc
   ${OS_OPTION}
   ARCHS ${SANITIZER_COMMON_SUPPORTED_ARCH}
@@ -244,6 +247,7 @@ add_compiler_rt_object_libraries(RTSanitizerCommonNoLibc
   ADDITIONAL_HEADERS ${SANITIZER_IMPL_HEADERS}
   CFLAGS ${SANITIZER_CFLAGS}
   DEFS ${SANITIZER_COMMON_DEFINITIONS})
+
 add_compiler_rt_object_libraries(RTSanitizerCommonLibc
   ${OS_OPTION}
   ARCHS ${SANITIZER_COMMON_SUPPORTED_ARCH}
@@ -251,6 +255,18 @@ add_compiler_rt_object_libraries(RTSanitizerCommonLibc
   ADDITIONAL_HEADERS ${SANITIZER_IMPL_HEADERS}
   CFLAGS ${SANITIZER_CFLAGS}
   DEFS ${SANITIZER_COMMON_DEFINITIONS})
+
+if (MSVC)
+  add_compiler_rt_object_libraries(RTSanitizerCommonLibc_dbg
+    "${COMPILER_RT_WINDOWS_RT_VERSIONS}"
+    ${OS_OPTION}
+    ARCHS ${SANITIZER_COMMON_SUPPORTED_ARCH}
+    SOURCES ${SANITIZER_LIBCDEP_SOURCES}
+    ADDITIONAL_HEADERS ${SANITIZER_IMPL_HEADERS}
+    CFLAGS ${SANITIZER_DEBUG_CFLAGS}
+    DEFS ${SANITIZER_DEBUG_DEFINITIONS})
+endif()
+
 add_compiler_rt_object_libraries(RTSanitizerCommonCoverage
   ${OS_OPTION}
   ARCHS ${SANITIZER_COMMON_SUPPORTED_ARCH}
@@ -258,6 +274,7 @@ add_compiler_rt_object_libraries(RTSanitizerCommonCoverage
   ADDITIONAL_HEADERS ${SANITIZER_IMPL_HEADERS}
   CFLAGS ${SANITIZER_CFLAGS}
   DEFS ${SANITIZER_COMMON_DEFINITIONS})
+
 add_compiler_rt_object_libraries(RTSanitizerCommonSymbolizer
   ${OS_OPTION}
   ARCHS ${SANITIZER_COMMON_SUPPORTED_ARCH}
@@ -291,116 +308,25 @@ add_compiler_rt_object_libraries(RTSanitizerCommonSymbolizerNoHooks
   DEFS ${SANITIZER_COMMON_DEFINITIONS})
 
 if(WIN32)
+  set(RUNTIME_THUNK_CFLAGS ${NO_DEFAULT_LIBS_OPTION} -DSANITIZER_DYNAMIC_RUNTIME_THUNK -DSANITIZER_STATIC_RUNTIME_THUNK)
 
-  create_multiple_windows_obj_libs(RTSanitizerCommon
-  "${COMPILER_RT_WINDOWS_RT_VERSIONS}"
-    ${OS_OPTION}
-    ARCHS ${SANITIZER_COMMON_SUPPORTED_ARCH}
-    SOURCES ${SANITIZER_SOURCES}
-    ADDITIONAL_HEADERS ${SANITIZER_IMPL_HEADERS}
-    CFLAGS ${SANITIZER_CFLAGS}
-    DEFS ${SANITIZER_COMMON_DEFINITIONS})
-  create_multiple_windows_obj_libs(RTSanitizerCommonLibc
-    "${COMPILER_RT_WINDOWS_RT_VERSIONS}"
-    ${OS_OPTION}
-    ARCHS ${SANITIZER_COMMON_SUPPORTED_ARCH}
-    SOURCES ${SANITIZER_LIBCDEP_SOURCES}
-    ADDITIONAL_HEADERS ${SANITIZER_IMPL_HEADERS}
-    CFLAGS ${SANITIZER_CFLAGS}
-    DEFS ${SANITIZER_COMMON_DEFINITIONS})
-  create_multiple_windows_obj_libs(SanitizerCommonWeakInterception
-  "${COMPILER_RT_WINDOWS_RT_VERSIONS}"
+  add_compiler_rt_object_libraries(SanitizerRuntimeThunk
     ${SANITIZER_COMMON_SUPPORTED_OS}
     ARCHS ${SANITIZER_COMMON_SUPPORTED_ARCH}
     SOURCES
-      sanitizer_win_weak_interception.cpp
-    CFLAGS ${SANITIZER_CFLAGS} -DSANITIZER_DYNAMIC
-    DEFS ${SANITIZER_COMMON_DEFINITIONS})
-  create_multiple_windows_obj_libs(SancovWeakInterception
-   "${COMPILER_RT_WINDOWS_RT_VERSIONS}"
-    ${SANITIZER_COMMON_SUPPORTED_OS}
-    ARCHS ${SANITIZER_COMMON_SUPPORTED_ARCH}
-    SOURCES
-      sanitizer_coverage_win_weak_interception.cpp
-    CFLAGS ${SANITIZER_CFLAGS} -DSANITIZER_DYNAMIC
+      sanitizer_win_thunk_interception.cpp
+    CFLAGS ${SANITIZER_CFLAGS} ${RUNTIME_THUNK_CFLAGS}
     DEFS ${SANITIZER_COMMON_DEFINITIONS})
 
-  create_multiple_windows_obj_libs(SanitizerCommonDllThunk
-   "${COMPILER_RT_WINDOWS_RT_VERSIONS}"
+  add_compiler_rt_object_libraries(SancovRuntimeThunk
     ${SANITIZER_COMMON_SUPPORTED_OS}
     ARCHS ${SANITIZER_COMMON_SUPPORTED_ARCH}
     SOURCES
-      sanitizer_win_dll_thunk.cpp
-    CFLAGS ${SANITIZER_CFLAGS} -DSANITIZER_DLL_THUNK
-    DEFS ${SANITIZER_COMMON_DEFINITIONS})
-  create_multiple_windows_obj_libs(SancovDllThunk
-   "${COMPILER_RT_WINDOWS_RT_VERSIONS}"
-    ${SANITIZER_COMMON_SUPPORTED_OS}
-    ARCHS ${SANITIZER_COMMON_SUPPORTED_ARCH}
-    SOURCES
-      sanitizer_coverage_win_dll_thunk.cpp
+      sanitizer_coverage_win_runtime_thunk.cpp
       sanitizer_coverage_win_sections.cpp
-    CFLAGS ${SANITIZER_CFLAGS} -DSANITIZER_DLL_THUNK
+    CFLAGS ${SANITIZER_CFLAGS} ${RUNTIME_THUNK_CFLAGS}
     DEFS ${SANITIZER_COMMON_DEFINITIONS})
 
-  create_multiple_windows_obj_libs(RTSanitizerCommonCoverage
-   "${COMPILER_RT_WINDOWS_RT_VERSIONS}"
-    ${OS_OPTION}
-    ARCHS ${SANITIZER_COMMON_SUPPORTED_ARCH}
-    SOURCES ${SANITIZER_COVERAGE_SOURCES}
-    ADDITIONAL_HEADERS ${SANITIZER_IMPL_HEADERS}
-    CFLAGS ${SANITIZER_CFLAGS}
-    DEFS ${SANITIZER_COMMON_DEFINITIONS})
-  create_multiple_windows_obj_libs(RTSanitizerCommonSymbolizer
-   "${COMPILER_RT_WINDOWS_RT_VERSIONS}"
-    ${OS_OPTION}
-    ARCHS ${SANITIZER_COMMON_SUPPORTED_ARCH}
-    SOURCES ${SANITIZER_SYMBOLIZER_SOURCES}
-    ADDITIONAL_HEADERS ${SANITIZER_IMPL_HEADERS}
-    CFLAGS ${SANITIZER_CFLAGS}
-    DEFS ${SANITIZER_COMMON_DEFINITIONS})
-
-
-  set(DYNAMIC_RUNTIME_THUNK_CFLAGS "-DSANITIZER_DYNAMIC_RUNTIME_THUNK")
-  if(MSVC)
-    list(APPEND DYNAMIC_RUNTIME_THUNK_CFLAGS "-Zl")
-    create_multiple_windows_obj_libs(SanitizerCommonDynamicRuntimeThunk
-     "${COMPILER_RT_WINDOWS_RT_VERSIONS}"
-      ${SANITIZER_COMMON_SUPPORTED_OS}
-      ARCHS ${SANITIZER_COMMON_SUPPORTED_ARCH}
-      SOURCES sanitizer_win_dynamic_runtime_thunk.cpp
-      CFLAGS ${SANITIZER_CFLAGS} ${DYNAMIC_RUNTIME_THUNK_CFLAGS}
-      DEFS ${SANITIZER_COMMON_DEFINITIONS})
-    create_multiple_windows_obj_libs(SancovDynamicRuntimeThunk
-     "${COMPILER_RT_WINDOWS_RT_VERSIONS}"
-      ${SANITIZER_COMMON_SUPPORTED_OS}
-      ARCHS ${SANITIZER_COMMON_SUPPORTED_ARCH}
-      SOURCES sanitizer_coverage_win_dynamic_runtime_thunk.cpp
-              sanitizer_coverage_win_sections.cpp
-      CFLAGS ${SANITIZER_CFLAGS} ${DYNAMIC_RUNTIME_THUNK_CFLAGS}
-      DEFS ${SANITIZER_COMMON_DEFINITIONS})
-
-  elseif(CMAKE_C_COMPILER_ID MATCHES Clang)
-    list(APPEND DYNAMIC_RUNTIME_THUNK_CFLAGS "-nodefaultlibs")
-  endif()
-
-
-
-  add_compiler_rt_object_libraries(SanitizerCommonDynamicRuntimeThunk
-    ${SANITIZER_COMMON_SUPPORTED_OS}
-    ARCHS ${SANITIZER_COMMON_SUPPORTED_ARCH}
-    SOURCES
-      sanitizer_win_dynamic_runtime_thunk.cpp
-    CFLAGS ${SANITIZER_CFLAGS} ${DYNAMIC_RUNTIME_THUNK_CFLAGS}
-    DEFS ${SANITIZER_COMMON_DEFINITIONS})
-  add_compiler_rt_object_libraries(SancovDynamicRuntimeThunk
-    ${SANITIZER_COMMON_SUPPORTED_OS}
-    ARCHS ${SANITIZER_COMMON_SUPPORTED_ARCH}
-    SOURCES
-      sanitizer_coverage_win_dynamic_runtime_thunk.cpp
-      sanitizer_coverage_win_sections.cpp
-    CFLAGS ${SANITIZER_CFLAGS} ${DYNAMIC_RUNTIME_THUNK_CFLAGS}
-    DEFS ${SANITIZER_COMMON_DEFINITIONS})
 endif()
 
 # Unit tests for common sanitizer runtime.

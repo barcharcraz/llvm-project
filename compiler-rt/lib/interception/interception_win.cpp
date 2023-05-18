@@ -1,4 +1,4 @@
-//===-- interception_linux.cpp ----------------------------------*- C++ -*-===//
+//===-- interception_win.cpp ------------------------------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -238,15 +238,15 @@ static void _memcpy(void *dst, void *src, size_t sz) {
 static bool ChangeMemoryProtection(uptr address, uptr size,
                                    DWORD *old_protection) {
   return __sanitizer_virtual_protect((void *)address, size,
-                                              PAGE_EXECUTE_READWRITE,
-                                              old_protection) != FALSE;
+                                     PAGE_EXECUTE_READWRITE,
+                                     old_protection) != FALSE;
 }
 
 static bool RestoreMemoryProtection(uptr address, uptr size,
                                     DWORD old_protection) {
   DWORD unused;
-  return __sanitizer_virtual_protect((void *)address, size,
-                                              old_protection, &unused) != FALSE;
+  return __sanitizer_virtual_protect((void *)address, size, old_protection,
+                                     &unused) != FALSE;
 }
 
 static bool IsMemoryPadding(uptr address, uptr size) {
@@ -352,8 +352,7 @@ static void *AllocateTrampolineRegion(uptr image_address, size_t granularity) {
   uptr scanned = 0;
   while (scanned < kTrampolineScanLimitRange) {
     MEMORY_BASIC_INFORMATION info;
-    if (!__sanitizer_virtual_query((void *)address, &info,
-                                            sizeof(info)))
+    if (!__sanitizer_virtual_query((void *)address, &info, sizeof(info)))
       return nullptr;
 
     // Check whether a region can be allocated at |address|.
@@ -451,13 +450,12 @@ static const u8 kPrologueWithShortJump1[] = {
 //   84c0            test    al,al
 //   75f7            jne     -9
 static const u8 kPrologueWithShortJump2[] = {
-    0x4c, 0x8b, 0xc1, 0x8a, 0x01, 0x48, 0xff, 0xc1,
-    0x84, 0xc0, 0x75, 0xf7,
+    0x4c, 0x8b, 0xc1, 0x8a, 0x01, 0x48, 0xff, 0xc1, 0x84, 0xc0, 0x75, 0xf7,
 };
 #endif
 
 // Returns 0 on error.
-static size_t GetInstructionSize(uptr address, size_t* rel_offset = nullptr) {
+static size_t GetInstructionSize(uptr address, size_t *rel_offset = nullptr) {
 // clang-format off
 #if SANITIZER_WINDOWS64
   if (memcmp((u8*)address, kPrologueWithShortJump1,
@@ -1183,27 +1181,23 @@ static dll_info *InterestingDLLsAvailable() {
   };
 
   static const dll_pair InterestingDLLs[] = {
-    {"kernel32.dll", SANITIZER_WINDOWS64},
-#if defined(_DEBUG)
-    {"msvcr100d.dll", false},                // VS2010
-    {"msvcr110d.dll", false},                // VS2012
-    {"msvcr120d.dll", false},                // VS2013
-    {"vcruntime140d.dll", false},            // VS2015
-    {"ucrtbased.dll", SANITIZER_WINDOWS64},  // Universal CRT
-#else
-    {"msvcr100.dll", false},                // VS2010
-    {"msvcr110.dll", false},                // VS2012
-    {"msvcr120.dll", false},                // VS2013
-    {"vcruntime140.dll", false},            // VS2015
-    {"ucrtbase.dll", SANITIZER_WINDOWS64},  // Universal CRT
-#endif
-    // KernelBase for GlobalAlloc and LocalAlloc (dynamic)
-    {"KERNELBASE.dll", SANITIZER_WINDOWS64},
-    // NTDLL should go last as it exports some functions that we should
-    // override in the CRT [presumably only used internally].
-    {"ntdll.dll", SANITIZER_WINDOWS64},
-    {nullptr, false}
-  };
+      {"kernel32.dll", SANITIZER_WINDOWS64},
+      {"msvcr100d.dll", false},                // VS2010
+      {"msvcr110d.dll", false},                // VS2012
+      {"msvcr120d.dll", false},                // VS2013
+      {"vcruntime140d.dll", false},            // VS2015
+      {"ucrtbased.dll", SANITIZER_WINDOWS64},  // Universal CRT
+      {"msvcr100.dll", false},                 // VS2010
+      {"msvcr110.dll", false},                 // VS2012
+      {"msvcr120.dll", false},                 // VS2013
+      {"vcruntime140.dll", false},             // VS2015
+      {"ucrtbase.dll", SANITIZER_WINDOWS64},   // Universal CRT
+      // KernelBase for GlobalAlloc and LocalAlloc (dynamic)
+      {"KERNELBASE.dll", SANITIZER_WINDOWS64},
+      // NTDLL should go last as it exports some functions that we should
+      // override in the CRT [presumably only used internally].
+      {"ntdll.dll", SANITIZER_WINDOWS64},
+      {nullptr, false}};
   static dll_info result[ARRAY_SIZE(InterestingDLLs)] = {0};
 
   if (!result[0].data) {
@@ -1378,15 +1372,14 @@ bool OverrideImportedFunction(const char *module_to_patch,
     *orig_old_func = iat->u1.AddressOfData;
   DWORD old_prot, unused_prot;
   if (!__sanitizer_virtual_protect(&iat->u1.AddressOfData, 4,
-                                            PAGE_EXECUTE_READWRITE, &old_prot))
+                                   PAGE_EXECUTE_READWRITE, &old_prot))
     return false;
   iat->u1.AddressOfData = new_function;
   if (!__sanitizer_virtual_protect(&iat->u1.AddressOfData, 4, old_prot,
-                                            &unused_prot))
+                                   &unused_prot))
     return false;  // Not clear if this failure bothers us.
   return true;
 }
 
 }  // namespace __interception
-
 #endif  // SANITIZER_MAC

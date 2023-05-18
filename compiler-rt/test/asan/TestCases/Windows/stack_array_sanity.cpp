@@ -1,6 +1,9 @@
 // RUN: %clang_cl_asan -Od %s -Fe%t
 // RUN: %run %t | FileCheck %s
 
+// RUN: %clang_cl_asan -Od %s -Fe%t_dbg /link /INFERASANLIBS:DEBUG
+// RUN: %run %t_dbg | FileCheck %s
+
 #include <stdio.h>
 
 int main() {

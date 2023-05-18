@@ -605,6 +605,15 @@ endif()
 # Imbue all sanitizer binaries with ehcont
 append_list_if(MSVC /guard:ehcont SANITIZER_COMMON_CFLAGS)
 
+if (WIN32)
+  if(MSVC)
+    set(NO_DEFAULT_LIBS_OPTION /Zl)
+  elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    set(NO_DEFAULT_LIBS_OPTION -nodefaultlibs)
+  endif()
+  list(APPEND SANITIZER_COMMON_CFLAGS /MD)
+endif()
+
 add_subdirectory(include)
 
 option(COMPILER_RT_USE_LIBCXX

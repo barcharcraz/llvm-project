@@ -2,6 +2,10 @@
 // RUN: not %run %t 2>&1 | FileCheck %s
 // RUN: %clang_cl_asan /Od %s -Fe%t -DTEST_GLOBAL
 // RUN: not %run %t 2>&1 | FileCheck %s
+// RUN: %clang_cl_asan /Od %s -Fe%t_dbg -DTEST_LOCAL /link /INFERASANLIBS:DEBUG
+// RUN: not %run %t_dbg 2>&1 | FileCheck %s
+// RUN: %clang_cl_asan /Od %s -Fe%t_dbg -DTEST_GLOBAL /link /INFERASANLIBS:DEBUG
+// RUN: not %run %t_dbg 2>&1 | FileCheck %s
 
 #include <windows.h>
 #include "globallocal_shared.h"

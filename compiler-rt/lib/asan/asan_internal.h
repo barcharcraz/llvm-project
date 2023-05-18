@@ -76,14 +76,12 @@ bool IsSystemHeapAddress(uptr addr, void *heap = nullptr);
   // Specialized version of AllocatedPriorToAsanInit for aligned memory
   bool AlignedAllocatedPriorToAsanInit(void *addr);
 
-#if _DEBUG
   // Used in debug functions instead of the above in order to account for
   // differences in allocations caused by the debug heap
   bool DbgAllocatedPriorToAsanInit(void *addr);
 
   // Specialized version of DbgAllocatedPriorToAsanInit for aligned memory
   bool DbgAlignedAllocatedPriorToAsanInit(void *addr);
-#endif
 
   // Records allocations that occured prior to the ASAN runtime initialization.
   // This should only be called once during the ASAN runtime initialization

@@ -1,6 +1,9 @@
 // RUN: %clang_cl_asan -Od %s -Fe%t
 // RUN: not %run %t 2>&1 | FileCheck %s
 
+// RUN: %clang_cl_asan -Od %s -Fe%t /link /INFERASANLIBS:DEBUG
+// RUN: not %run %t 2>&1 | FileCheck %s
+
 #include <malloc.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -56,7 +59,7 @@ __try{
   // CHECK: Shadow bytes around the buggy address:
   // CHECK: Shadow byte legend (one shadow byte represents 8 application bytes):
   // CHECK-NEXT: Addressable:           00
-  // CHECK-NEXT: Partially addressable: 01 02 03 04 05 06 07 
+  // CHECK-NEXT: Partially addressable: 01 02 03 04 05 06 07
   // CHECK-NEXT: Heap left redzone:       fa
   // CHECK-NEXT: Freed heap region:       fd
   // CHECK-NEXT: Stack left redzone:      f1
@@ -86,9 +89,9 @@ __try{
   printf("fail\n");
   exit(7);
 } __except (1)
-            
+
   {
-    
+
    for (i=0;i<SIZE;i++)
      if (aa[i] != (x+i+1))
       fail = 1;
@@ -98,5 +101,5 @@ __try{
   }
   printf("pass\n");
   exit(0);
-  }  
+  }
 }

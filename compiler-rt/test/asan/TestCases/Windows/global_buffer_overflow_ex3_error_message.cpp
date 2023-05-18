@@ -1,6 +1,10 @@
 // RUN: %clang_cl_asan -Od %s -Fe%t
 // RUN: not %run %t -l 2>&1 | FileCheck %s
 
+// RUN: %clang_cl_asan -Od %s -Fe%t /link /INFERASABLIBS:DEBUG
+// RUN: not %run %t -l 2>&1 | FileCheck %s
+
+
 // Run 4 different ways with the choice of one of these flags:
 //
 // -g : Global
@@ -45,7 +49,7 @@ int main(int argc, char **argv) {
     // CHECK: Shadow bytes around the buggy address:
     // CHECK: Shadow byte legend (one shadow byte represents 8 application bytes):
     // CHECK-NEXT: Addressable:           00
-    // CHECK-NEXT: Partially addressable: 01 02 03 04 05 06 07 
+    // CHECK-NEXT: Partially addressable: 01 02 03 04 05 06 07
     // CHECK-NEXT: Heap left redzone:       fa
     // CHECK-NEXT: Freed heap region:       fd
     // CHECK-NEXT: Stack left redzone:      f1

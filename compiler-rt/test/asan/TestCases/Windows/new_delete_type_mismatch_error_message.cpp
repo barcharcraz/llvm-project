@@ -1,6 +1,9 @@
 // RUN: %clang_cl_asan -Od %s -Fe%t
 // RUN: not %run %t 2>&1 | FileCheck %s
 
+// RUN: %clang_cl_asan -Od %s -Fe%t /link /INFERASANLIBS:DEBUG
+// RUN: not %run %t 2>&1 | FileCheck %s
+
 #include <memory>
 #include <vector>
 
@@ -20,7 +23,7 @@ struct Derived : public Base {
 int main() {
     Base *b = new Derived;
 
-    delete b;  // Boom! 
+    delete b;  // Boom!
     // CHECK: ERROR: AddressSanitizer: new-delete-type-mismatch on [[ADDR:0x[0-9a-f]+]] in thread T0:
     // CHECK-NEXT: object passed to delete has wrong type:
     // CHECK-NEXT: size of the allocated type:   {{[0-9]+}} bytes;

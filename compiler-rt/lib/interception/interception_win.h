@@ -1,4 +1,4 @@
-//===-- interception_linux.h ------------------------------------*- C++ -*-===//
+//===-- interception_win.h --------------------------------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -29,7 +29,8 @@ bool OverrideFunction(uptr old_func, uptr new_func, uptr *orig_old_func = 0,
                       bool guaranteed_hotpatchable = false);
 
 // Overrides a function in a system DLL or DLL CRT by its exported name.
-bool OverrideFunction(const char *name, uptr new_func, uptr *orig_old_func = 0, const char* dll = nullptr);
+bool OverrideFunction(const char *name, uptr new_func, uptr *orig_old_func = 0,
+                      const char *dll = nullptr);
 
 // Windows-only replacement for GetProcAddress. Useful for some sanitizers.
 uptr InternalGetProcAddress(void *module, const char *func_name);
@@ -61,24 +62,18 @@ void TestOnlyReleaseTrampolineRegions();
 
 }  // namespace __interception
 
-#if defined(INTERCEPTION_DYNAMIC_CRT)
-#define INTERCEPT_FUNCTION_WIN(func)                                     \
-  ::__interception::OverrideFunction(#func,                              \
-                                     (::__interception::uptr)WRAP(func), \
-                                     (::__interception::uptr *)&REAL(func))
-#else
-#define INTERCEPT_FUNCTION_WIN(func)                                     \
-  ::__interception::OverrideFunction((::__interception::uptr)func,       \
-                                     (::__interception::uptr)WRAP(func), \
-                                     (::__interception::uptr *)&REAL(func))
-#endif
+#define INTERCEPT_FUNCTION_WIN(func)             \
+      ::__interception::OverrideFunction(            \
+          #func, (::__interception::uptr)WRAP(func), \
+          (::__interception::uptr *)&REAL(func))
 
-#define INTERCEPT_FUNCTION_VER_WIN(func, symver) INTERCEPT_FUNCTION_WIN(func)
+#define INTERCEPT_FUNCTION_VER_WIN(func, symver) \
+      INTERCEPT_FUNCTION_WIN(func)
 
 #define INTERCEPT_FUNCTION_DLLIMPORT(user_dll, provider_dll, func)       \
-  ::__interception::OverrideImportedFunction(                            \
-      user_dll, provider_dll, #func, (::__interception::uptr)WRAP(func), \
-      (::__interception::uptr *)&REAL(func))
+      ::__interception::OverrideImportedFunction(                            \
+          user_dll, provider_dll, #func, (::__interception::uptr)WRAP(func), \
+          (::__interception::uptr *)&REAL(func))
 
 #endif  // INTERCEPTION_WIN_H
-#endif  // SANITIZER_WINDOWS
+#endif    // SANITIZER_WINDOWS

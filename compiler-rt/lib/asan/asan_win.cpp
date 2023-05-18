@@ -277,7 +277,11 @@ static VEHShadowBehavior __cdecl ShadowExceptionHandler(
 
   // Commit the page.
   if (!__sanitizer_virtual_alloc((LPVOID)addr, 1, MEM_COMMIT, PAGE_READWRITE)) {
-    return VEH_SHADOW_USER_HANDLER;
+    // If the commit fails and we continue, it's likely that another AV will trigger
+    // on the address, causing a loop, causing a stack overflow. This is tedious to
+    // debug, so we can just error here with some diagnostics.
+    Report("Failed to commit shadow memory at '%p'. VirtualAlloc failed with 0x%x\n", addr, GetLastError());
+    Die();
   }
 
   // The page mapping succeeded, so continue execution as usual.
@@ -340,16 +344,19 @@ class ASANVectoredExceptionHandler {
       // ; LONG return - eax
       // ExceptionHandler:
       0x51,                                     // push rcx ; save exception_pointers to pass to UserExceptionHandler
-      0x48, 0x8B, 0x05, 0xE8, 0xFF, 0xFF, 0xFF, // mov rax, [rel ShadowExceptionHandlerAddress]
+      0x48, 0x83, 0xEC, 0x20,                   // sub rsp, 20h ; allocate callee register argument space
+      0x48, 0x8B, 0x05, 0xE4, 0xFF, 0xFF, 0xFF, // mov rax, [rel ShadowExceptionHandlerAddress]
       0xFF, 0xD0,                               // call rax
+      0x48, 0x83, 0xC4, 0x20,                   // add rsp, 20h ; remove callee register argument space
       0x59,                                     // pop rcx ; if we call UserExceptionHandler, fill in argument; else, just remove it from the stack
       0x83, 0xF8, 0x01,                         // cmp eax, 1 ; check if ShadowExceptionHandler returned VEH_SHADOW_USER_HANDLER
       0x74, 0x01,                               // je CallUserExceptionHandler
       0xC3,                                     // ret ; eax has the correct return value already
       // CallUserExceptionHandler:
-      0x48, 0x8B, 0x05, 0xE0, 0xFF, 0xFF, 0xFF, // mov rax, [rel UserExceptionHandlerAddress]
+      0x48, 0x8B, 0x05, 0xD8, 0xFF, 0xFF, 0xFF, // mov rax, [rel UserExceptionHandlerAddress]
       0xFF, 0xE0,                               // jmp rax ; tail call UserExceptionHandler
-      0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC,       // align 16, int3
+      0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, // align 16, int3
+      0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC  // align 16, int3
     };
     // clang-format on
 
@@ -651,7 +658,6 @@ bool AllocatedPriorToAsanInit(void *addr) {
                                 reinterpret_cast<uptr>(addr), false, false);
   found = h.exists();
 
-#if _DEBUG
   // In debug, some non-debug CRT functions will call their debug counterparts
   // (e.g. free calls free_dbg) In the event that a debug allocation is passed
   // to a non-debug function, we want to attempt to pass through to the debug
@@ -660,7 +666,6 @@ bool AllocatedPriorToAsanInit(void *addr) {
   if (!found) {
     found = DbgAllocatedPriorToAsanInit(addr);
   }
-#endif
 
   return found;
 }
@@ -676,16 +681,13 @@ bool AlignedAllocatedPriorToAsanInit(void *addr) {
   found = alignedHandle.exists();
   // TODO: May need to update checks after asan respects aligned offset
 
-#if _DEBUG
   if (!found) {
     found = DbgAlignedAllocatedPriorToAsanInit(addr);
   }
-#endif
 
   return found;
 }
 
-#if _DEBUG
 // This mocks an internal CRT data structure which is subject to change.
 // _AlignMemBlockHdr
 struct AlignedAllocationDebugHeader {
@@ -695,6 +697,39 @@ struct AlignedAllocationDebugHeader {
   AlignedAllocationDebugHeader() = delete;
   ~AlignedAllocationDebugHeader() = delete;
 };
+
+static bool IsDebugRuntimePresent() {
+  enum dbgrt_status : u8 {
+    dbgrt_status_unknown = 0,
+    dbgrt_status_absent,
+    dbgrt_status_present
+  };
+
+  // If we are handling an allocation that occurred prior to ASAN initialization
+  // via a debug C runtime, then that debug C runtime should be loaded at this
+  // time and should be considered active for the rest of the program lifetime.
+  // This contains a benign race condition that could result in extra
+  // GetModuleHandleA calls.
+  static volatile atomic_uint8_t debug_runtime_present; // zero-init to dbgrt_status_unknown
+  bool found_dbgrt = false;
+
+  if (atomic_load_relaxed(&debug_runtime_present) == dbgrt_status_unknown) {
+    static const char *const debug_runtimes[] = {
+        "msvcr100d.dll", "msvcr110d.dll", "msvcr120d.dll", "vcruntime140d.dll",
+        "ucrtbased.dll"};
+
+    for (const char *const runtime : debug_runtimes) {
+      if (GetModuleHandleA(runtime)) {
+        found_dbgrt = true;
+        break;
+      }
+    }
+
+    atomic_store_relaxed(&debug_runtime_present, (found_dbgrt) ? dbgrt_status_present : dbgrt_status_absent);
+  }
+
+  return atomic_load_relaxed(&debug_runtime_present) == dbgrt_status_present;
+}
 
 // Returns debug aligned allocation header information for a potential debug
 // allocation
@@ -712,6 +747,10 @@ static bool IsValidDebugAllocation(uptr addr, PROCESS_HEAP_ENTRY &heapEntry) {
   // First need to make sure that the address matches a debug allocation header,
   // then that the allocation is big enough to be a debug allocation before
   // reading debug header members
+  if (!IsDebugRuntimePresent()) {
+    return false;
+  }
+
   return reinterpret_cast<uptr>(heapEntry.lpData) +
                  sizeof(AllocationDebugHeader) ==
              addr &&
@@ -744,6 +783,10 @@ static bool AllocationPresentAndValid(void *lookupAddr, void *checkAddr) {
 }
 
 bool DbgAllocatedPriorToAsanInit(void *addr) {
+  if (!IsDebugRuntimePresent()) {
+    return false;
+  }
+
   auto found = false;
   if (!addr) {
     return found;
@@ -758,6 +801,10 @@ bool DbgAllocatedPriorToAsanInit(void *addr) {
 }
 
 bool DbgAlignedAllocatedPriorToAsanInit(void *addr) {
+  if (!IsDebugRuntimePresent()) {
+    return false;
+  }
+
   auto found = false;
   if (!addr) {
     return found;
@@ -776,8 +823,6 @@ bool DbgAlignedAllocatedPriorToAsanInit(void *addr) {
 
   return found;
 }
-
-#endif
 
 // We need to check if this address belongs to any of the heaps in the process.
 bool IsSystemHeapAddress(uptr addr, void *heap) {
@@ -807,14 +852,12 @@ bool IsSystemHeapAddress(uptr addr, void *heap) {
           return true;
         }
 
-// The CRT adds extra space in front of an allocation in debug mode so we do
-// our best detecting such allocations.
-#ifdef _DEBUG
+        // The CRT adds extra space in front of an allocation in debug mode so
+        // we do our best detecting such allocations.
         if (IsValidDebugAllocation(addr, lpEntry)) {
           ::HeapUnlock(*curr);
           return true;
         }
-#endif  // _DEBUG
       }
     }
 
@@ -856,33 +899,6 @@ bool HandleDlopenInit() {
                 "Expected SANITIZER_SUPPORTS_INIT_FOR_DLOPEN to be false");
   return false;
 }
-
-#if !ASAN_DYNAMIC
-// The CRT runs initializers in this order:
-// - C initializers, from XIA to XIZ
-// - C++ initializers, from XCA to XCZ
-// Prior to 2015, the CRT set the unhandled exception filter at priority XIY,
-// near the end of C initialization. Starting in 2015, it was moved to the
-// beginning of C++ initialization. We set our priority to XCAB to run
-// immediately after the CRT runs. This way, our exception filter is called
-// first and we can delegate to their filter if appropriate.
-#pragma section(".CRT$XCAB", long, read)
-__declspec(allocate(".CRT$XCAB")) int (*__intercept_seh)() =
-    __asan_set_seh_filter;
-
-// Piggyback on the TLS initialization callback directory to initialize asan as
-// early as possible. Initializers in .CRT$XL* are called directly by ntdll,
-// which run before the CRT. Users also add code to .CRT$XLC, so it's important
-// to run our initializers first.
-static void NTAPI asan_thread_init(void *module, DWORD reason, void *reserved) {
-  if (reason == DLL_PROCESS_ATTACH)
-    __asan_init();
-}
-
-#pragma section(".CRT$XLAB", long, read)
-__declspec(allocate(".CRT$XLAB")) void(NTAPI *__asan_tls_init)(
-    void *, unsigned long, void *) = asan_thread_init;
-#endif
 
 static void NTAPI asan_thread_exit(void *module, DWORD reason, void *reserved) {
   if (reason == DLL_THREAD_DETACH) {

@@ -189,7 +189,7 @@ static inline bool IsValidFrame(uptr frame, uptr stack_top, uptr stack_bottom) {
 // function in the top frame.
 #define GET_CURRENT_PC_BP \
   uptr bp = GET_CURRENT_FRAME();              \
-  uptr pc = StackTrace::GetCurrentPc()
+  uptr pc = __sanitizer::StackTrace::GetCurrentPc()
 
 #define GET_CURRENT_PC_BP_SP \
   GET_CURRENT_PC_BP;                          \
@@ -215,7 +215,7 @@ static inline bool IsValidFrame(uptr frame, uptr stack_top, uptr stack_bottom) {
       pc;                                 \
     }))
 #else
-#  define GET_CURRENT_PC() StackTrace::GetCurrentPc()
+#  define GET_CURRENT_PC() __sanitizer::StackTrace::GetCurrentPc()
 #endif
 
 #endif  // SANITIZER_STACKTRACE_H

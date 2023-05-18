@@ -8,7 +8,9 @@
 //
 // This file is a part of AddressSanitizer, an address sanity checker.
 //
-// Windows-specific malloc interception.
+// ASAN versions of the C Runtime allocation API used on Windows, including
+// interception of Rtl* Win32 APIs.
+//
 //===----------------------------------------------------------------------===//
 
 #include "sanitizer_common/sanitizer_addrhashmap.h"
@@ -26,7 +28,9 @@
 #include "asan_stack.h"
 #include "asan_win_runtime_functions.h"
 #include "asan_win_scoped_lock.h"
+#include "asan_win_thunk_common.h"
 #include "interception/interception.h"
+#include "sanitizer_common/sanitizer_allocator_interface.h"
 #include "sanitizer_common/sanitizer_allocator_internal.h"
 #include "sanitizer_common/sanitizer_placement_new.h"
 #include "sanitizer_common/sanitizer_win.h"
@@ -99,285 +103,468 @@ _declspec(dllimport) HLOCAL WINAPI LocalHandle(HLOCAL hMem);
 
 using namespace __asan;
 
-extern "C" {
-ALLOCATION_FUNCTION_ATTRIBUTE
-size_t _msize(void *ptr) {
-  GET_CURRENT_PC_BP_SP;
-  (void)sp;
+namespace __asan_malloc_impl {
+// Common implementation for CRT allocation functions.
+size_t msize(void *ptr, const uptr pc, const uptr bp) {
   return asan_malloc_usable_size(ptr, pc, bp);
 }
 
-ALLOCATION_FUNCTION_ATTRIBUTE
-size_t _msize_base(void *ptr) { return _msize(ptr); }
-
-ALLOCATION_FUNCTION_ATTRIBUTE
-void free(void *ptr) {
-  GET_STACK_TRACE_FREE;
-  return asan_free(ptr, &stack, FROM_MALLOC);
+void free(void *ptr, BufferedStackTrace *stack) {
+  return asan_free(ptr, stack, FROM_MALLOC);
 }
 
-ALLOCATION_FUNCTION_ATTRIBUTE
-void _free_base(void *ptr) { free(ptr); }
-
-ALLOCATION_FUNCTION_ATTRIBUTE
-void *malloc(size_t size) {
-  GET_STACK_TRACE_MALLOC;
-  return asan_malloc(size, &stack);
+void *malloc(const size_t size, BufferedStackTrace *stack) {
+  return asan_malloc(size, stack);
 }
 
-ALLOCATION_FUNCTION_ATTRIBUTE
-void *_malloc_base(size_t size) { return malloc(size); }
-
-ALLOCATION_FUNCTION_ATTRIBUTE
-void *calloc(size_t nmemb, size_t size) {
-  GET_STACK_TRACE_MALLOC;
-  return asan_calloc(nmemb, size, &stack);
+void *calloc(const size_t nmemb, const size_t size, BufferedStackTrace *stack) {
+  return asan_calloc(nmemb, size, stack);
 }
 
-ALLOCATION_FUNCTION_ATTRIBUTE
-void *_calloc_base(size_t nmemb, size_t size) { return calloc(nmemb, size); }
-
-ALLOCATION_FUNCTION_ATTRIBUTE
-void *_calloc_impl(size_t nmemb, size_t size, int *errno_tmp) {
-  return calloc(nmemb, size);
-}
-
-ALLOCATION_FUNCTION_ATTRIBUTE
-void *realloc(void *ptr, size_t size) {
-  GET_STACK_TRACE_MALLOC;
-  if (!__asan::flags()->allocator_frees_and_returns_null_on_realloc_zero)
+void *realloc(void *ptr, const size_t size, BufferedStackTrace *stack) {
+  if (!flags()->allocator_frees_and_returns_null_on_realloc_zero) {
     Report(
         "WARNING: allocator_frees_and_returns_null_on_realloc_zero is set to "
         "FALSE."
         " This is not consistent with libcmt/ucrt/msvcrt behavior.\n");
-  return asan_realloc(ptr, size, &stack);
+  }
+  return asan_realloc(ptr, size, stack);
 }
 
-ALLOCATION_FUNCTION_ATTRIBUTE
-void *_realloc_base(void *ptr, size_t size) { return realloc(ptr, size); }
-
-ALLOCATION_FUNCTION_ATTRIBUTE
-void *_recalloc(void *ptr, size_t nmemb, size_t size) {
-  GET_STACK_TRACE_MALLOC;
-  if (!__asan::flags()->allocator_frees_and_returns_null_on_realloc_zero)
+void *recalloc(void *ptr, const size_t nmemb, const size_t size,
+               BufferedStackTrace *stack) {
+  if (!flags()->allocator_frees_and_returns_null_on_realloc_zero) {
     Report(
         "WARNING: allocator_frees_and_returns_null_on_realloc_zero is set to "
         "FALSE."
         " This is not consistent with libcmt/ucrt/msvcrt behavior.\n");
-  return asan_recalloc(ptr, nmemb, size, &stack);
+  }
+  return asan_recalloc(ptr, nmemb, size, stack);
 }
 
-ALLOCATION_FUNCTION_ATTRIBUTE
-void *_recalloc_base(void *ptr, size_t nmemb, size_t size) {
-  return _recalloc(ptr, nmemb, size);
+void *aligned_malloc(const size_t size, const size_t alignment,
+                     BufferedStackTrace *stack) {
+  return asan_memalign(alignment, size, stack, FROM_MALLOC);
 }
 
-ALLOCATION_FUNCTION_ATTRIBUTE
-void *_expand(void *memblock, size_t size) {
-  // _expand is used in realloc-like functions to resize the buffer if possible.
-  // We don't want memory to stand still while resizing buffers, so return 0.
-  return 0;
+void aligned_free(void *memblock, BufferedStackTrace *stack) {
+  asan_free(memblock, stack, FROM_MALLOC);
 }
 
-ALLOCATION_FUNCTION_ATTRIBUTE
-void *_aligned_malloc(size_t size, size_t alignment) {
-  GET_STACK_TRACE_MALLOC;
-  return asan_memalign(alignment, size, &stack, FROM_MALLOC);
-}
-
-// We don't respect the offset
-ALLOCATION_FUNCTION_ATTRIBUTE
-void *_aligned_offset_malloc(size_t size, size_t alignment, size_t) {
-  return _aligned_malloc(size, alignment);
-}
-
-ALLOCATION_FUNCTION_ATTRIBUTE
-void _aligned_free(void *memblock) {
-  GET_STACK_TRACE_MALLOC;
-  asan_free(memblock, &stack, FROM_MALLOC);
-}
-
-ALLOCATION_FUNCTION_ATTRIBUTE
-size_t _aligned_msize(void *memblock, size_t alignment, size_t offset) {
-  // get the original pointer from the breadcrumb
-  GET_CURRENT_PC_BP;
-  return asan_malloc_usable_size(memblock, pc, bp);
-}
-
-ALLOCATION_FUNCTION_ATTRIBUTE
-void *_aligned_realloc(void *memblock, size_t size, size_t alignment) {
-  // msdn documentation states that if memblock is nullptr,
-  // this should just allocate a new block.
-  // if size is 0, the block should be freed and nullptr returned.
-  GET_STACK_TRACE_MALLOC;
+void *aligned_realloc(void *memblock, const size_t size, const size_t alignment,
+                      BufferedStackTrace *stack, const uptr pc, const uptr bp) {
   if (size == 0 && memblock != nullptr) {
-    asan_free(memblock, &stack, FROM_MALLOC);
+    asan_free(memblock, stack, FROM_MALLOC);
     return nullptr;
   }
 
-  void *new_ptr = asan_memalign(alignment, size, &stack, FROM_MALLOC);
+  void *new_ptr = asan_memalign(alignment, size, stack, FROM_MALLOC);
   if (new_ptr && memblock) {
-    GET_CURRENT_PC_BP;
-    size_t aligned_size = asan_malloc_usable_size(memblock, pc, bp);
+    const size_t aligned_size = asan_malloc_usable_size(memblock, pc, bp);
     internal_memcpy(new_ptr, memblock, Min<size_t>(aligned_size, size));
-    asan_free(memblock, &stack, FROM_MALLOC);
+    asan_free(memblock, stack, FROM_MALLOC);
   }
 
   return new_ptr;
 }
 
-// We don't respect the offset
-ALLOCATION_FUNCTION_ATTRIBUTE
-void *_aligned_offset_realloc(void *memblock, size_t size, size_t alignment,
-                              size_t) {
-  return _aligned_realloc(memblock, size, alignment);
-}
-
-ALLOCATION_FUNCTION_ATTRIBUTE
-void *_aligned_recalloc(void *memblock, size_t num, size_t element_size,
-                        size_t alignment) {
-  size_t size = num * element_size;
-  size_t old_size = 0;
-  if (memblock) {
-    old_size = _aligned_msize(memblock, alignment, 0);
-  }
-  void *new_ptr = _aligned_realloc(memblock, size, alignment);
+void *aligned_recalloc(void *memblock, const size_t num,
+                       const size_t element_size, const size_t alignment,
+                       BufferedStackTrace *stack, const uptr pc,
+                       const uptr bp) {
+  const size_t size = num * element_size;
+  const size_t old_size =
+      (memblock) ? asan_malloc_usable_size(memblock, pc, bp) : 0;
+  void *new_ptr = aligned_realloc(memblock, size, alignment, stack, pc, bp);
   if (new_ptr && old_size < size) {
     REAL(memset)(static_cast<u8 *>(new_ptr) + old_size, 0, size - old_size);
   }
   return new_ptr;
 }
+}  // namespace __asan_malloc_impl
 
-// We don't respect the offset
-ALLOCATION_FUNCTION_ATTRIBUTE
-void *_aligned_offset_recalloc(void *memblock, size_t num, size_t element_size,
-                               size_t alignment, size_t) {
-  return _aligned_recalloc(memblock, num, element_size, alignment);
+#define GET_STACK_TRACE_OVER_BOUNDARY(data)                               \
+  GET_STACK_TRACE_EXPLICIT(__asan::GetMallocContextSize(),                \
+                           __asan::common_flags()->fast_unwind_on_malloc, \
+                           (data)->pc, (data)->bp, (data)->caller_pc,     \
+                           (data)->extra_context)
+
+// Attribute for functions that will be exported.
+#define MALLOC_DLL_EXPORT __declspec(dllexport)
+
+// Attribute for functions that serve the ASAN DLL itself. Noinline to preserve
+// stack traces
+#define MALLOC_INTERNAL_DEF __declspec(noinline)
+
+extern "C" {
+// _msize
+MALLOC_DLL_EXPORT size_t __asan_msize(void *ptr, const uptr pc, const uptr bp) {
+  return __asan_malloc_impl::msize(ptr, pc, bp);
 }
 
-ALLOCATION_FUNCTION_ATTRIBUTE
-size_t _aligned_msize_dbg(void *memblock, size_t alignment, size_t offset) {
-  return _aligned_msize(memblock, alignment, offset);
+MALLOC_INTERNAL_DEF size_t _msize(void *ptr) {
+  GET_CURRENT_PC_BP;
+  return __asan_malloc_impl::msize(ptr, pc, bp);
 }
 
-ALLOCATION_FUNCTION_ATTRIBUTE
-void *_malloc_dbg(size_t size, int, const char *, int) { return malloc(size); }
-
-ALLOCATION_FUNCTION_ATTRIBUTE
-void _free_dbg(void *ptr, int) { free(ptr); }
-
-ALLOCATION_FUNCTION_ATTRIBUTE
-void *_expand_dbg(void *memblock, size_t size, int, const char *, int) {
-  return _expand(memblock, size);
+MALLOC_INTERNAL_DEF size_t _msize_base(void *ptr) {
+  GET_CURRENT_PC_BP;
+  return __asan_malloc_impl::msize(ptr, pc, bp);
 }
 
-ALLOCATION_FUNCTION_ATTRIBUTE
-void *_calloc_dbg(size_t nmemb, size_t size, int, const char *, int) {
-  return calloc(nmemb, size);
+MALLOC_INTERNAL_DEF size_t _msize_dbg(void *ptr, int) {
+  GET_CURRENT_PC_BP;
+  return __asan_malloc_impl::msize(ptr, pc, bp);
 }
 
-ALLOCATION_FUNCTION_ATTRIBUTE
-void *_realloc_dbg(void *ptr, size_t size, int, const char *, int) {
-  return realloc(ptr, size);
+// free
+MALLOC_DLL_EXPORT void __cdecl __asan_free(__asan_win_stack_data *data,
+                                           void *ptr) {
+  GET_STACK_TRACE_OVER_BOUNDARY(data);
+  __asan_malloc_impl::free(ptr, &stack);
 }
 
-ALLOCATION_FUNCTION_ATTRIBUTE
-void *_recalloc_dbg(void *userData, size_t nmemb, size_t size, int, const char *,
-                    int) {
-  return _recalloc(userData, nmemb, size);
+MALLOC_INTERNAL_DEF void free(void *ptr) {
+  GET_STACK_TRACE_FREE;
+  return __asan_malloc_impl::free(ptr, &stack);
 }
 
-ALLOCATION_FUNCTION_ATTRIBUTE
-size_t _msize_dbg(void *userData, int) { return _msize(userData); }
-
-ALLOCATION_FUNCTION_ATTRIBUTE
-void *_aligned_malloc_dbg(size_t const size, size_t const alignment,
-                          char const *const, int const) {
-  return _aligned_malloc(size, alignment);
+MALLOC_INTERNAL_DEF void _free_base(void *ptr) {
+  GET_STACK_TRACE_FREE;
+  return __asan_malloc_impl::free(ptr, &stack);
 }
 
-// We don't respect the offset
-ALLOCATION_FUNCTION_ATTRIBUTE
-void *_aligned_offset_malloc_dbg(size_t const size, size_t const alignment,
-                                 size_t const offset, char const *const,
-                                 int const) {
-  return _aligned_offset_malloc(size, alignment, offset);
+MALLOC_INTERNAL_DEF void _free_dbg(void *ptr, int) {
+  GET_STACK_TRACE_FREE;
+  return __asan_malloc_impl::free(ptr, &stack);
 }
 
-ALLOCATION_FUNCTION_ATTRIBUTE
-void *_aligned_realloc_dbg(void *const block, size_t const size,
-                           size_t const alignment, char const *const,
-                           int const) {
-  return _aligned_realloc(block, size, alignment);
+// malloc
+MALLOC_DLL_EXPORT void *__cdecl __asan_malloc(__asan_win_stack_data *data,
+                                              const size_t size) {
+  GET_STACK_TRACE_OVER_BOUNDARY(data);
+  return __asan_malloc_impl::malloc(size, &stack);
 }
 
-// We don't respect the offset
-ALLOCATION_FUNCTION_ATTRIBUTE
-void *_aligned_offset_realloc_dbg(void *const block, size_t const size,
-                                  size_t const alignment, size_t const offset,
-                                  char const *const, int const) {
-  return _aligned_offset_realloc(block, size, alignment, offset);
+MALLOC_INTERNAL_DEF void *malloc(const size_t size) {
+  GET_STACK_TRACE_MALLOC;
+  return __asan_malloc_impl::malloc(size, &stack);
 }
 
-ALLOCATION_FUNCTION_ATTRIBUTE
-void *_aligned_recalloc_dbg(void *const block, size_t const count,
-                            size_t const element_size, size_t const alignment,
-                            char const *const, int const) {
-  return _aligned_recalloc(block, count, element_size, alignment);
+MALLOC_INTERNAL_DEF void *_malloc_base(const size_t size) {
+  GET_STACK_TRACE_MALLOC;
+  return __asan_malloc_impl::malloc(size, &stack);
 }
 
-// We don't respect the offset
-ALLOCATION_FUNCTION_ATTRIBUTE
-void *_aligned_offset_recalloc_dbg(void *const block, size_t const count,
-                                   size_t const element_size,
-                                   size_t const alignment, size_t const offset,
-                                   char const *const, int const) {
-  return _aligned_offset_recalloc(block, count, element_size, alignment,
-                                  offset);
+MALLOC_INTERNAL_DEF void *_malloc_dbg(const size_t size, int, const char *,
+                                      int) {
+  GET_STACK_TRACE_MALLOC;
+  return __asan_malloc_impl::malloc(size, &stack);
 }
 
-ALLOCATION_FUNCTION_ATTRIBUTE
-void _aligned_free_dbg(void *const block) { return _aligned_free(block); }
+// calloc
+MALLOC_DLL_EXPORT void *__cdecl __asan_calloc(__asan_win_stack_data *data,
+                                              size_t const nmemb,
+                                              size_t const size) {
+  GET_STACK_TRACE_OVER_BOUNDARY(data);
+  return __asan_malloc_impl::calloc(nmemb, size, &stack);
+}
+
+MALLOC_INTERNAL_DEF void *calloc(const size_t nmemb, const size_t size) {
+  GET_STACK_TRACE_MALLOC;
+  return __asan_malloc_impl::calloc(nmemb, size, &stack);
+}
+
+MALLOC_INTERNAL_DEF void *_calloc_base(const size_t nmemb, const size_t size) {
+  GET_STACK_TRACE_MALLOC;
+  return __asan_malloc_impl::calloc(nmemb, size, &stack);
+}
+
+MALLOC_INTERNAL_DEF void *_calloc_impl(const size_t nmemb, const size_t size,
+                                       int *errno_tmp) {
+  // Provided by legacy msvcrt.
+  (void)errno_tmp;
+  GET_STACK_TRACE_MALLOC;
+  return __asan_malloc_impl::calloc(nmemb, size, &stack);
+}
+
+MALLOC_INTERNAL_DEF void *_calloc_dbg(const size_t nmemb, const size_t size,
+                                      int, const char *, int) {
+  GET_STACK_TRACE_MALLOC;
+  return __asan_malloc_impl::calloc(nmemb, size, &stack);
+}
+
+// realloc
+MALLOC_DLL_EXPORT void *__cdecl __asan_realloc(__asan_win_stack_data *data,
+                                               void *ptr, const size_t size) {
+  GET_STACK_TRACE_OVER_BOUNDARY(data);
+  return __asan_malloc_impl::realloc(ptr, size, &stack);
+}
+
+MALLOC_INTERNAL_DEF void *realloc(void *ptr, const size_t size) {
+  GET_STACK_TRACE_MALLOC;
+  return __asan_malloc_impl::realloc(ptr, size, &stack);
+}
+
+MALLOC_INTERNAL_DEF void *_realloc_base(void *ptr, const size_t size) {
+  GET_STACK_TRACE_MALLOC;
+  return __asan_malloc_impl::realloc(ptr, size, &stack);
+}
+
+MALLOC_INTERNAL_DEF void *_realloc_dbg(void *ptr, const size_t size, int,
+                                       const char *, int) {
+  GET_STACK_TRACE_MALLOC;
+  return __asan_malloc_impl::realloc(ptr, size, &stack);
+}
+
+// recalloc
+MALLOC_DLL_EXPORT void *__cdecl __asan_recalloc(__asan_win_stack_data *data,
+                                                void *ptr, const size_t nmemb,
+                                                const size_t size) {
+  GET_STACK_TRACE_OVER_BOUNDARY(data);
+  return __asan_malloc_impl::recalloc(ptr, nmemb, size, &stack);
+}
+
+MALLOC_INTERNAL_DEF void *_recalloc(void *ptr, const size_t nmemb,
+                                    const size_t size) {
+  GET_STACK_TRACE_MALLOC;
+  return __asan_malloc_impl::recalloc(ptr, nmemb, size, &stack);
+}
+
+MALLOC_INTERNAL_DEF void *_recalloc_base(void *ptr, const size_t nmemb,
+                                         const size_t size) {
+  GET_STACK_TRACE_MALLOC;
+  return __asan_malloc_impl::recalloc(ptr, nmemb, size, &stack);
+}
+
+MALLOC_INTERNAL_DEF void *_recalloc_dbg(void *ptr, const size_t nmemb,
+                                        const size_t size, int, const char *,
+                                        int) {
+  GET_STACK_TRACE_MALLOC;
+  return __asan_malloc_impl::recalloc(ptr, nmemb, size, &stack);
+}
+
+// expand
+MALLOC_INTERNAL_DEF void *_expand(void *, size_t) {
+  // _expand is used in realloc-like functions to resize the buffer if possible.
+  // We don't want memory to stand still while resizing buffers, so return 0.
+  return nullptr;
+}
+
+MALLOC_INTERNAL_DEF void *_expand_dbg(void *, size_t, int, const char *, int) {
+  return nullptr;
+}
+
+// aligned_msize
+MALLOC_INTERNAL_DEF size_t _aligned_msize(void *memblock,
+                                          const size_t alignment,
+                                          const size_t offset) {
+  // Same impl as non-aligned.
+  (void)alignment;
+  (void)offset;
+  GET_CURRENT_PC_BP;
+  return __asan_malloc_impl::msize(memblock, pc, bp);
+}
+
+MALLOC_INTERNAL_DEF size_t _aligned_msize_dbg(void *memblock,
+                                              const size_t alignment,
+                                              const size_t offset) {
+  // Same impl as non-aligned.
+  (void)alignment;
+  (void)offset;
+  GET_CURRENT_PC_BP;
+  return __asan_malloc_impl::msize(memblock, pc, bp);
+}
+
+// aligned_malloc
+MALLOC_DLL_EXPORT void *__cdecl __asan_aligned_malloc(
+    __asan_win_stack_data *data, const size_t size, const size_t alignment) {
+  GET_STACK_TRACE_OVER_BOUNDARY(data);
+  return __asan_malloc_impl::aligned_malloc(size, alignment, &stack);
+}
+
+MALLOC_INTERNAL_DEF void *_aligned_malloc(const size_t size,
+                                          const size_t alignment) {
+  GET_STACK_TRACE_MALLOC;
+  return __asan_malloc_impl::aligned_malloc(size, alignment, &stack);
+}
+
+MALLOC_INTERNAL_DEF void *_aligned_malloc_dbg(const size_t size,
+                                              const size_t alignment,
+                                              char const *, int) {
+  GET_STACK_TRACE_MALLOC;
+  return __asan_malloc_impl::aligned_malloc(size, alignment, &stack);
+}
+
+MALLOC_INTERNAL_DEF void *_aligned_offset_malloc(const size_t size,
+                                                 const size_t alignment,
+                                                 const size_t offset) {
+  // We don't respect the offset
+  (void)offset;
+  GET_STACK_TRACE_MALLOC;
+  return __asan_malloc_impl::aligned_malloc(size, alignment, &stack);
+}
+
+MALLOC_INTERNAL_DEF void *_aligned_offset_malloc_dbg(const size_t size,
+                                                     const size_t alignment,
+                                                     const size_t offset,
+                                                     char const *, int) {
+  // We don't respect the offset
+  (void)offset;
+  GET_STACK_TRACE_MALLOC;
+  return __asan_malloc_impl::aligned_malloc(size, alignment, &stack);
+}
+
+// aligned_free
+MALLOC_DLL_EXPORT void __cdecl __asan_aligned_free(__asan_win_stack_data *data,
+                                                   void *memblock) {
+  GET_STACK_TRACE_OVER_BOUNDARY(data);
+  __asan_malloc_impl::aligned_free(memblock, &stack);
+}
+
+MALLOC_INTERNAL_DEF void _aligned_free(void *memblock) {
+  GET_STACK_TRACE_MALLOC;
+  __asan_malloc_impl::aligned_free(memblock, &stack);
+}
+
+MALLOC_INTERNAL_DEF void _aligned_free_dbg(void *memblock) {
+  GET_STACK_TRACE_MALLOC;
+  __asan_malloc_impl::aligned_free(memblock, &stack);
+}
+
+// aligned_realloc
+MALLOC_DLL_EXPORT void *__cdecl __asan_aligned_realloc(
+    __asan_win_stack_data *data, void *memblock, const size_t size,
+    const size_t alignment) {
+  GET_STACK_TRACE_OVER_BOUNDARY(data);
+  return __asan_malloc_impl::aligned_realloc(memblock, size, alignment, &stack,
+                                             data->pc, data->bp);
+}
+
+MALLOC_INTERNAL_DEF void *_aligned_realloc(void *memblock, const size_t size,
+                                           const size_t alignment) {
+  GET_CURRENT_PC_BP;
+  GET_STACK_TRACE_MALLOC;
+  return __asan_malloc_impl::aligned_realloc(memblock, size, alignment, &stack,
+                                             pc, bp);
+}
+
+MALLOC_INTERNAL_DEF void *_aligned_realloc_dbg(void *memblock,
+                                               const size_t size,
+                                               const size_t alignment,
+                                               char const *, int) {
+  GET_CURRENT_PC_BP;
+  GET_STACK_TRACE_MALLOC;
+  return __asan_malloc_impl::aligned_realloc(memblock, size, alignment, &stack,
+                                             pc, bp);
+}
+
+MALLOC_INTERNAL_DEF void *_aligned_offset_realloc(void *memblock,
+                                                  const size_t size,
+                                                  const size_t alignment,
+                                                  const size_t offset) {
+  // We don't respect the offset
+  (void)offset;
+  GET_CURRENT_PC_BP;
+  GET_STACK_TRACE_MALLOC;
+  return __asan_malloc_impl::aligned_realloc(memblock, size, alignment, &stack,
+                                             pc, bp);
+}
+
+MALLOC_INTERNAL_DEF void *_aligned_offset_realloc_dbg(void *memblock,
+                                                      const size_t size,
+                                                      const size_t alignment,
+                                                      const size_t offset,
+                                                      char const *, int) {
+  // We don't respect the offset
+  (void)offset;
+  GET_CURRENT_PC_BP;
+  GET_STACK_TRACE_MALLOC;
+  return __asan_malloc_impl::aligned_realloc(memblock, size, alignment, &stack,
+                                             pc, bp);
+}
+
+// aligned_recalloc
+MALLOC_DLL_EXPORT void *__cdecl __asan_aligned_recalloc(
+    __asan_win_stack_data *data, void *memblock, const size_t num,
+    const size_t element_size, const size_t alignment) {
+  GET_STACK_TRACE_OVER_BOUNDARY(data);
+  return __asan_malloc_impl::aligned_recalloc(
+      memblock, num, element_size, alignment, &stack, data->pc, data->bp);
+}
+
+MALLOC_INTERNAL_DEF void *_aligned_recalloc(void *memblock, const size_t num,
+                                            const size_t element_size,
+                                            const size_t alignment) {
+  GET_CURRENT_PC_BP;
+  GET_STACK_TRACE_MALLOC;
+  return __asan_malloc_impl::aligned_recalloc(memblock, num, element_size,
+                                              alignment, &stack, pc, bp);
+}
+
+MALLOC_INTERNAL_DEF void *_aligned_recalloc_dbg(void *memblock,
+                                                const size_t num,
+                                                const size_t element_size,
+                                                const size_t alignment,
+                                                char const *, int) {
+  GET_CURRENT_PC_BP;
+  GET_STACK_TRACE_MALLOC;
+  return __asan_malloc_impl::aligned_recalloc(memblock, num, element_size,
+                                              alignment, &stack, pc, bp);
+}
+
+MALLOC_INTERNAL_DEF void *_aligned_offset_recalloc(void *memblock,
+                                                   const size_t num,
+                                                   const size_t element_size,
+                                                   const size_t alignment,
+                                                   const size_t offset) {
+  // We don't respect the offset
+  GET_CURRENT_PC_BP;
+  GET_STACK_TRACE_MALLOC;
+  return __asan_malloc_impl::aligned_recalloc(memblock, num, element_size,
+                                              alignment, &stack, pc, bp);
+}
+
+MALLOC_INTERNAL_DEF void *_aligned_offset_recalloc_dbg(
+    void *memblock, const size_t num, const size_t element_size,
+    const size_t alignment, const size_t offset, char const *, int) {
+  // We don't respect the offset
+  GET_CURRENT_PC_BP;
+  GET_STACK_TRACE_MALLOC;
+  return __asan_malloc_impl::aligned_recalloc(memblock, num, element_size,
+                                              alignment, &stack, pc, bp);
+}
 
 // We need to provide symbols for all the debug CRT functions if we decide to
 // provide any. Most of these functions make no sense under ASan and so we
 // make them no-ops.
-ALLOCATION_FUNCTION_ATTRIBUTE
 long _CrtSetBreakAlloc(long const) { return ~0; }
 
-ALLOCATION_FUNCTION_ATTRIBUTE
 void _CrtSetDbgBlockType(void *const, int const) { return; }
 
 typedef int(__cdecl *CRT_ALLOC_HOOK)(int, void *, size_t, int, long,
                                      const unsigned char *, int);
 
-ALLOCATION_FUNCTION_ATTRIBUTE
 CRT_ALLOC_HOOK _CrtGetAllocHook() { return nullptr; }
 
-ALLOCATION_FUNCTION_ATTRIBUTE
 CRT_ALLOC_HOOK _CrtSetAllocHook(CRT_ALLOC_HOOK const hook) { return hook; }
 
-ALLOCATION_FUNCTION_ATTRIBUTE
 int _CrtCheckMemory() { return 1; }
 
-ALLOCATION_FUNCTION_ATTRIBUTE
 int _CrtSetDbgFlag(int const new_bits) { return new_bits; }
 
 typedef void (*CrtDoForAllClientObjectsCallback)(void *, void *);
 
-ALLOCATION_FUNCTION_ATTRIBUTE
 void _CrtDoForAllClientObjects(CrtDoForAllClientObjectsCallback const,
                                void *const) {
   return;
 }
 
-ALLOCATION_FUNCTION_ATTRIBUTE
-int _CrtIsValidPointer(void const *const p, unsigned int const, int const) {
+int _CrtIsValidPointer(void const *p, unsigned int const, int const) {
   return p != nullptr;
 }
 
-ALLOCATION_FUNCTION_ATTRIBUTE
-int _CrtIsValidHeapPointer(void const *const block) {
+int _CrtIsValidHeapPointer(void const *block) {
   if (!block) {
     return 0;
   }
@@ -385,50 +572,39 @@ int _CrtIsValidHeapPointer(void const *const block) {
   return __sanitizer_get_ownership(block);
 }
 
-ALLOCATION_FUNCTION_ATTRIBUTE
 int _CrtIsMemoryBlock(void const *const, unsigned const, long *const,
                       char **const, int *const) {
   return 0;
 }
 
-ALLOCATION_FUNCTION_ATTRIBUTE
 int _CrtReportBlockType(void const *const) { return -1; }
 
 typedef void(__cdecl *CRT_DUMP_CLIENT)(void *, size_t);
 
-ALLOCATION_FUNCTION_ATTRIBUTE
 CRT_DUMP_CLIENT _CrtGetDumpClient() { return nullptr; }
 
-ALLOCATION_FUNCTION_ATTRIBUTE
 CRT_DUMP_CLIENT _CrtSetDumpClient(CRT_DUMP_CLIENT new_client) {
   return new_client;
 }
 
-ALLOCATION_FUNCTION_ATTRIBUTE
 void _CrtMemCheckpoint(void *const) { return; }
 
-ALLOCATION_FUNCTION_ATTRIBUTE
 int _CrtMemDifference(void *const, void const *const, void const *const) {
   return 0;
 }
 
-ALLOCATION_FUNCTION_ATTRIBUTE
 void _CrtMemDumpAllObjectsSince(void const *const) { return; }
 
-ALLOCATION_FUNCTION_ATTRIBUTE
 int _CrtDumpMemoryLeaks() { return 0; }
 
-ALLOCATION_FUNCTION_ATTRIBUTE
 void _CrtMemDumpStatistics(void const *const) { return; }
 
 int _crtDbgFlag{0};
 long _crtBreakAlloc{-1};
 CRT_DUMP_CLIENT _pfnDumpClient{nullptr};
 
-ALLOCATION_FUNCTION_ATTRIBUTE
 int *__p__crtDbgFlag() { return &_crtDbgFlag; }
 
-ALLOCATION_FUNCTION_ATTRIBUTE
 long *__p__crtBreakAlloc() { return &_crtBreakAlloc; }
 
 // TODO: These were added upstream but conflict with definitions in ucrtbased.
@@ -1321,43 +1497,45 @@ INTERCEPTOR_WINAPI(size_t, RtlSizeHeap, HANDLE HeapHandle, DWORD Flags,
   return asan_malloc_usable_size(BaseAddress, pc, bp);
 }
 
-INTERCEPTOR_WINAPI(bool, RtlValidateHeap, void *HeapHandle, DWORD Flags, void *BaseAddress) {
-    if (UNLIKELY(!asan_inited)) {
-        // DebugCheck omitted: Asan can't handle the call yet/invalid arguments.
-        return REAL(RtlValidateHeap)(HeapHandle, Flags, BaseAddress);
+INTERCEPTOR_WINAPI(bool, RtlValidateHeap, void *HeapHandle, DWORD Flags,
+                   void *BaseAddress) {
+  if (UNLIKELY(!asan_inited)) {
+    // DebugCheck omitted: Asan can't handle the call yet/invalid arguments.
+    return REAL(RtlValidateHeap)(HeapHandle, Flags, BaseAddress);
+  }
+
+  DebugChecksData dbg_data;
+  DebugChecks dbg{dbg_data};
+
+  AllocationOwnership owner(HeapHandle, BaseAddress, dbg);
+  if (UNLIKELY(owner != AllocationOwnership::ASAN) || BaseAddress == nullptr) {
+    // When BaseAddress is nullptr, the user wants to validate the heap object,
+    // not check whether the address is owned by that heap, so pass that on to
+    // the real function. DebugCheck omitted: RtlValidateHeap does not suffer
+    // from a potential reentrancy issue.
+    return REAL(RtlValidateHeap)(HeapHandle, Flags, BaseAddress);
+  }
+
+  if (!__sanitizer::IsProcessTerminating()) {
+    auto heap_handle = GetAsanHeap(HeapHandle, dbg);
+    auto access_locked = heap_handle.MemoryMapLockGuard();
+    AsanMemoryMap &memory_map = access_locked.MemoryMap();
+
+    // ASAN owns the memory, but double check heap handle is correct.
+    AsanMemoryMap::Handle h(&memory_map, reinterpret_cast<uptr>(BaseAddress),
+                            false, false);
+    if (!h.exists()) {
+      return false;
     }
+  }
 
-    DebugChecksData dbg_data;
-    DebugChecks dbg{dbg_data};
-
-    AllocationOwnership owner(HeapHandle, BaseAddress, dbg);
-    if (UNLIKELY(owner != AllocationOwnership::ASAN) || BaseAddress == nullptr) {
-        // When BaseAddress is nullptr, the user wants to validate the heap object,
-        // not check whether the address is owned by that heap, so pass that on to the real function.
-        // DebugCheck omitted: RtlValidateHeap does not suffer from a potential
-        // reentrancy issue.
-        return REAL(RtlValidateHeap)(HeapHandle, Flags, BaseAddress);
-    }
-
-    if (!__sanitizer::IsProcessTerminating()) {
-        auto heap_handle = GetAsanHeap(HeapHandle, dbg);
-        auto access_locked = heap_handle.MemoryMapLockGuard();
-        AsanMemoryMap &memory_map = access_locked.MemoryMap();
-
-        // ASAN owns the memory, but double check heap handle is correct.
-        AsanMemoryMap::Handle h(&memory_map, reinterpret_cast<uptr>(BaseAddress), false, false);
-        if (!h.exists()) {
-            return false;
-        }
-    }
-
-    // Already confirmed __sanitizer_get_ownership(BaseAddress) == true in AllocationOwnership.
-    return true;
+  // Already confirmed __sanitizer_get_ownership(BaseAddress) == true in
+  // AllocationOwnership.
+  return true;
 }
 
 INTERCEPTOR_WINAPI(void *, RtlAllocateHeap, HANDLE HeapHandle, DWORD Flags,
                    size_t Size) {
-
   if (UNLIKELY(!asan_inited || __sanitizer::IsProcessTerminating())) {
     // DebugCheck omitted: Asan can't handle the call yet.
     return REAL(RtlAllocateHeap)(HeapHandle, Flags, Size);
@@ -1372,15 +1550,18 @@ INTERCEPTOR_WINAPI(void *, RtlAllocateHeap, HANDLE HeapHandle, DWORD Flags,
 
   // NOTE:
   //
-  // ASAN won't place this allocation inside of a heap from RtlCreateHeap like REAL(RtlAllocateHeap) would.
-  // When ASAN intercepts RtlAllocateHeap, the allocation instead will live inside the ASAN allocator.
-  // The HeapHandle parameter is used for tracking which heap the allocation is meant to
-  // belong to, but the allocation doesn't actually live there. This is problematic for
+  // ASAN won't place this allocation inside of a heap from RtlCreateHeap like
+  // REAL(RtlAllocateHeap) would. When ASAN intercepts RtlAllocateHeap, the
+  // allocation instead will live inside the ASAN allocator. The HeapHandle
+  // parameter is used for tracking which heap the allocation is meant to belong
+  // to, but the allocation doesn't actually live there. This is problematic for
   // applications that make use of mapped memory, specifically in the case of
-  // multiple actors passing around relative addresses and expecting allocations to be at a particular
-  // location. If memory is mapped, we delegate back to the real Rtl* functions.
+  // multiple actors passing around relative addresses and expecting allocations
+  // to be at a particular location. If memory is mapped, we delegate back to
+  // the real Rtl* functions.
   if (UNLIKELY(!heap_handle.IsSupported() || asan_unsupported_flags ||
-               heap_handle.IsLfhInternal(Flags) || IsMemoryMapped(HeapHandle))) {
+               heap_handle.IsLfhInternal(Flags) ||
+               IsMemoryMapped(HeapHandle))) {
     auto rtlguard = heap_handle.RtlReentrancyLockGuard();
 
     DCHECK_ASSERT_LOCK_INVARIANT_CALL_RTL(dbg);
@@ -1399,12 +1580,13 @@ INTERCEPTOR_WINAPI(void *, RtlAllocateHeap, HANDLE HeapHandle, DWORD Flags,
   // NOTE:
   //
   // There is no guarantee nor good indicator of predicting whether memory
-  // will be zeroed out unless using the HEAP_ZERO_MEMORY flag. The noninstrumented
-  // calls to RtlAllocateHeap may return zeroed out memory, but those cases
-  // are from large allocations that go directly to VirtualAlloc for its memory,
-  // which is guaranteed by the OS to be zeroed. The malloc_fill_byte option=00
-  // can be used by the user to instruct the asan allocator to fill allocated memory
-  // with zeros up to max_malloc_fill_size option.
+  // will be zeroed out unless using the HEAP_ZERO_MEMORY flag. The
+  // noninstrumented calls to RtlAllocateHeap may return zeroed out memory, but
+  // those cases are from large allocations that go directly to VirtualAlloc for
+  // its memory, which is guaranteed by the OS to be zeroed. The
+  // malloc_fill_byte option=00 can be used by the user to instruct the asan
+  // allocator to fill allocated memory with zeros up to max_malloc_fill_size
+  // option.
   if (p && (all_flags & HEAP_ZERO_MEMORY)) {
     GET_CURRENT_PC_BP_SP;
     (void)sp;
@@ -1494,7 +1676,6 @@ static void __asan_wrap_RtlFreeHeap_UpdateTracking(AsanHeapHandle &heap_handle,
 
 INTERCEPTOR_WINAPI(LOGICAL, RtlFreeHeap, void *HeapHandle, DWORD Flags,
                    void *BaseAddress) {
-  
   if (UNLIKELY(!asan_inited || !BaseAddress || IsMemoryMapped(HeapHandle))) {
     // DebugCheck omitted: Asan can't handle the call yet/invalid arguments.
     return REAL(RtlFreeHeap)(HeapHandle, Flags, BaseAddress);
@@ -1508,7 +1689,8 @@ INTERCEPTOR_WINAPI(LOGICAL, RtlFreeHeap, void *HeapHandle, DWORD Flags,
   if (LIKELY(!__sanitizer::IsProcessTerminating())) {
     auto heap_handle = GetAsanHeap(HeapHandle, dbg);
 
-    if (UNLIKELY(owner == AllocationOwnership::RTL || IsMemoryMapped(HeapHandle))) {
+    if (UNLIKELY(owner == AllocationOwnership::RTL ||
+                 IsMemoryMapped(HeapHandle))) {
       auto rtlguard = heap_handle.RtlReentrancyLockGuard();
 
       DCHECK_ASSERT_LOCK_INVARIANT_CALL_RTL(dbg);
@@ -1552,7 +1734,6 @@ INTERCEPTOR_WINAPI(LOGICAL, RtlFreeHeap, void *HeapHandle, DWORD Flags,
 
 INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
                    void *BaseAddress, size_t Size) {
-
   if (UNLIKELY(!asan_inited || __sanitizer::IsProcessTerminating())) {
     // DebugCheck omitted: Asan can't handle the call yet/invalid arguments.
     return REAL(RtlReAllocateHeap)(HeapHandle, Flags, BaseAddress, Size);
@@ -1569,8 +1750,8 @@ INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
   AllocationOwnership owner(HeapHandle, BaseAddress, dbg);
   auto heap_handle = GetAsanHeap(HeapHandle, dbg);
 
-  if (UNLIKELY(!heap_handle.IsSupported() ||
-               heap_handle.IsLfhInternal(Flags) || IsMemoryMapped(HeapHandle))) {
+  if (UNLIKELY(!heap_handle.IsSupported() || heap_handle.IsLfhInternal(Flags) ||
+               IsMemoryMapped(HeapHandle))) {
     auto rtlguard = heap_handle.RtlReentrancyLockGuard();
 
     DCHECK_ASSERT_LOCK_INVARIANT_CALL_RTL(dbg);
@@ -1814,10 +1995,12 @@ using GlobalLocalSize = SIZE_T(WINAPI *)(HANDLE);
 using GlobalLocalFree = HANDLE(WINAPI *)(HANDLE);
 HANDLE GlobalLocalGenericFree(GlobalLocalLock lockFunction,
                               GlobalLocalUnlock unlockFunction,
-                              GlobalLocalFree freeFunction, HANDLE hMem, BufferedStackTrace &stack);
+                              GlobalLocalFree freeFunction, HANDLE hMem,
+                              BufferedStackTrace &stack);
 }  // namespace __asan
 
-HANDLE SharedLock(HANDLE hMem, GlobalLocalLock lockFunc, BufferedStackTrace &stack) {
+HANDLE SharedLock(HANDLE hMem, GlobalLocalLock lockFunc,
+                  BufferedStackTrace &stack) {
   DCHECK(lockFunc != nullptr);
   if (asan_inited && !__sanitizer::IsProcessTerminating() &&
       !IsSystemHeapAddress(reinterpret_cast<uptr>(hMem), GetProcessHeap())) {
@@ -1827,7 +2010,8 @@ HANDLE SharedLock(HANDLE hMem, GlobalLocalLock lockFunc, BufferedStackTrace &sta
   return lockFunc(hMem);
 }
 
-BOOL SharedUnlock(HANDLE hMem, GlobalLocalUnlock unlockFunc, BufferedStackTrace &stack) {
+BOOL SharedUnlock(HANDLE hMem, GlobalLocalUnlock unlockFunc,
+                  BufferedStackTrace &stack) {
   DCHECK(unlockFunc != nullptr);
   if (asan_inited && !__sanitizer::IsProcessTerminating() &&
       !IsSystemHeapAddress(reinterpret_cast<uptr>(hMem), GetProcessHeap())) {
@@ -1859,16 +2043,18 @@ INTERCEPTOR_WINAPI(BOOL, GlobalUnlock, HGLOBAL hMem) {
 
 INTERCEPTOR_WINAPI(HGLOBAL, GlobalFree, HGLOBAL hMem) {
   GET_STACK_TRACE_FREE;
-  return GlobalLocalGenericFree(REAL(GlobalLock), REAL(GlobalUnlock), REAL(GlobalFree), hMem, stack);
+  return GlobalLocalGenericFree(REAL(GlobalLock), REAL(GlobalUnlock),
+                                REAL(GlobalFree), hMem, stack);
 }
 
 INTERCEPTOR_WINAPI(HGLOBAL, GlobalHandle, HGLOBAL hMem) {
   // We need to check whether the ASAN allocator owns the pointer
   // we're about to use. Allocations might occur before interception
   // takes place, or if reallocation logic defers to REAL(*) functions.
-  // If it is not owned by RTL heap, then we can pass it to 
+  // If it is not owned by RTL heap, then we can pass it to
   // ASAN heap for inspection.
-  if (!asan_inited || IsSystemHeapAddress(reinterpret_cast<uptr>(hMem), GetProcessHeap())) {
+  if (!asan_inited ||
+      IsSystemHeapAddress(reinterpret_cast<uptr>(hMem), GetProcessHeap())) {
     return REAL(GlobalHandle)(hMem);
   }
   GET_STACK_TRACE_MALLOC;
@@ -1880,7 +2066,8 @@ INTERCEPTOR_WINAPI(SIZE_T, GlobalSize, HGLOBAL hMem) {
   // we're about to use. Allocations might occur before interception
   // takes place, so if it is not owned by RTL heap, then we can
   // pass it to ASAN heap for inspection.
-  if (!asan_inited || IsSystemHeapAddress(reinterpret_cast<uptr>(hMem), GetProcessHeap())) {
+  if (!asan_inited ||
+      IsSystemHeapAddress(reinterpret_cast<uptr>(hMem), GetProcessHeap())) {
     return REAL(GlobalSize)(hMem);
   }
 
@@ -1918,29 +2105,30 @@ enum class AllocationOwnership {
 
 HANDLE GlobalLocalGenericFree(GlobalLocalLock lockFunction,
                               GlobalLocalUnlock unlockFunction,
-                              GlobalLocalFree freeFunction, HANDLE hMem, BufferedStackTrace &stack) {
+                              GlobalLocalFree freeFunction, HANDLE hMem,
+                              BufferedStackTrace &stack) {
   // If the memory we are trying to free is not owned
   // by ASan heap, then fall back to the original GlobalFree.
 
-  // Although the stack trace won't be quite as pretty, by doing this we can avoid
-  // tracking which fixed allocations were already freed since RtlFreeHeap will handle
-  // double-free detection.
+  // Although the stack trace won't be quite as pretty, by doing this we can
+  // avoid tracking which fixed allocations were already freed since RtlFreeHeap
+  // will handle double-free detection.
 
   if (__asan_win_moveable::IsOwned(hMem) || hMem == nullptr) {
-      return __asan_win_moveable::Free(hMem, stack);
+    return __asan_win_moveable::Free(hMem, stack);
   }
 
   // Only call free if not null, but we need to lock to check.
   HGLOBAL pointer = lockFunction(hMem);
 
   if (pointer == nullptr) {
-      // Report invalid pointer.
-      return __asan_win_moveable::Free(hMem, stack);
+    // Report invalid pointer.
+    return __asan_win_moveable::Free(hMem, stack);
   }
 
   if (pointer != hMem) {
-      // Only unlock moveable pointers.
-      unlockFunction(hMem);
+    // Only unlock moveable pointers.
+    unlockFunction(hMem);
   }
 
   return freeFunction(hMem);
@@ -1985,8 +2173,10 @@ AllocationOwnership CheckGlobalLocalHeapOwnership(
 void *ReAllocGlobalLocal(GlobalLocalRealloc reallocFunc,
                          GlobalLocalSize sizeFunc, GlobalLocalFree freeFunc,
                          GlobalLocalAlloc allocFunc, GlobalLocalLock lockFunc,
-                         GlobalLocalUnlock unlockFunc, __asan_win_moveable::HeapCaller caller,
-                         HANDLE hMem, SIZE_T dwBytes, UINT uFlags, BufferedStackTrace &stack) {
+                         GlobalLocalUnlock unlockFunc,
+                         __asan_win_moveable::HeapCaller caller, HANDLE hMem,
+                         SIZE_T dwBytes, UINT uFlags,
+                         BufferedStackTrace &stack) {
   CHECK(reallocFunc && sizeFunc && freeFunc && allocFunc);
 
   AllocationOwnership ownershipState =
@@ -2007,7 +2197,8 @@ void *ReAllocGlobalLocal(GlobalLocalRealloc reallocFunc,
 
   if (ownershipState == AllocationOwnership::OWNED_BY_ASAN) {
     CHECK((COMBINED_GLOBALLOCAL_UNSUPPORTED_FLAGS & uFlags) == 0);
-    return __asan_win_moveable::ReAllocate(hMem, uFlags, dwBytes, caller, stack);
+    return __asan_win_moveable::ReAllocate(hMem, uFlags, dwBytes, caller,
+                                           stack);
   }
   return nullptr;
 }
@@ -2020,8 +2211,8 @@ INTERCEPTOR_WINAPI(HGLOBAL, GlobalReAlloc, HGLOBAL hMem, SIZE_T dwBytes,
       (GlobalLocalRealloc)REAL(GlobalReAlloc),
       (GlobalLocalSize)REAL(GlobalSize), (GlobalLocalFree)REAL(GlobalFree),
       (GlobalLocalAlloc)REAL(GlobalAlloc), (GlobalLocalLock)REAL(GlobalLock),
-      (GlobalLocalUnlock)GlobalUnlock, __asan_win_moveable::HeapCaller::GLOBAL, (HANDLE)hMem,
-      dwBytes, uFlags, stack);
+      (GlobalLocalUnlock)GlobalUnlock, __asan_win_moveable::HeapCaller::GLOBAL,
+      (HANDLE)hMem, dwBytes, uFlags, stack);
 }
 
 INTERCEPTOR_WINAPI(HLOCAL, LocalAlloc, UINT uFlags, SIZE_T uBytes) {
@@ -2039,7 +2230,8 @@ INTERCEPTOR_WINAPI(HLOCAL, LocalFree, HGLOBAL hMem) {
   // If the memory we are trying to free is not owned
   // ASan heap, then fall back to the original LocalFree.
   GET_STACK_TRACE_FREE;
-  return GlobalLocalGenericFree(REAL(LocalLock), REAL(LocalUnlock), REAL(LocalFree), hMem, stack);
+  return GlobalLocalGenericFree(REAL(LocalLock), REAL(LocalUnlock),
+                                REAL(LocalFree), hMem, stack);
 }
 
 INTERCEPTOR_WINAPI(SIZE_T, LocalSize, HGLOBAL hMem) {
@@ -2061,7 +2253,8 @@ INTERCEPTOR_WINAPI(HLOCAL, LocalReAlloc, HGLOBAL hMem, SIZE_T dwBytes,
       (GlobalLocalRealloc)REAL(LocalReAlloc), (GlobalLocalSize)REAL(LocalSize),
       (GlobalLocalFree)REAL(LocalFree), (GlobalLocalAlloc)REAL(LocalAlloc),
       (GlobalLocalLock)REAL(LocalLock), (GlobalLocalUnlock)LocalUnlock,
-      __asan_win_moveable::HeapCaller::LOCAL, (HANDLE)hMem, dwBytes, uFlags, stack);
+      __asan_win_moveable::HeapCaller::LOCAL, (HANDLE)hMem, dwBytes, uFlags,
+      stack);
 }
 
 namespace __asan {
@@ -2082,7 +2275,6 @@ void ReplaceSystemMalloc() {
   TryToOverrideFunction("_malloc_crt", (uptr)malloc);
   TryToOverrideFunction("calloc", (uptr)calloc);
   TryToOverrideFunction("malloc", (uptr)malloc);
-#ifdef _DEBUG
   TryToOverrideFunction("_aligned_malloc_dbg", (uptr)_aligned_malloc_dbg);
   TryToOverrideFunction("_aligned_offset_malloc_dbg",
                         (uptr)_aligned_offset_malloc_dbg);
@@ -2115,7 +2307,6 @@ void ReplaceSystemMalloc() {
   // (uptr)_CrtSetDbgBlockType); TryToOverrideFunction("_CrtSetDbgFlag",
   // (uptr)_CrtSetDbgFlag); TryToOverrideFunction("_CrtSetDumpClient",
   // (uptr)_CrtSetDumpClient);
-#endif
 
   // Malloc and calloc are intercepted above rather than by each individual
   // runtime that is present. Allocations that take place prior to asan
@@ -2147,7 +2338,9 @@ void ReplaceSystemMalloc() {
   // Undocumented functions must be intercepted by name, not by symbol.
   __interception::OverrideFunction("RtlSizeHeap", (uptr)WRAP(RtlSizeHeap),
                                    (uptr *)&REAL(RtlSizeHeap));
-  __interception::OverrideFunction("RtlValidateHeap", (uptr)WRAP(RtlValidateHeap), (uptr *)&REAL(RtlValidateHeap));
+  __interception::OverrideFunction("RtlValidateHeap",
+                                   (uptr)WRAP(RtlValidateHeap),
+                                   (uptr *)&REAL(RtlValidateHeap));
   __interception::OverrideFunction("RtlFreeHeap", (uptr)WRAP(RtlFreeHeap),
                                    (uptr *)&REAL(RtlFreeHeap));
   __interception::OverrideFunction("RtlReAllocateHeap",
