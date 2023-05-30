@@ -9,6 +9,7 @@
 #define UNLOCK GlobalUnlock
 #define SIZE GlobalSize
 #define HANDLE_FUNC GlobalHandle
+#define FLAGS GlobalFlags
 static constexpr auto ZEROINIT = GMEM_ZEROINIT;
 static constexpr auto FixedType = GMEM_FIXED;
 static constexpr auto MOVEABLE = GMEM_MOVEABLE;
@@ -22,6 +23,7 @@ static constexpr const char *const TEST_TYPE = "Global";
 #define UNLOCK LocalUnlock
 #define SIZE LocalSize
 #define HANDLE_FUNC LocalHandle
+#define FLAGS LocalFlags
 static constexpr auto ZEROINIT = LMEM_ZEROINIT;
 static constexpr auto FixedType = LMEM_FIXED;
 static constexpr auto MOVEABLE = LMEM_MOVEABLE;

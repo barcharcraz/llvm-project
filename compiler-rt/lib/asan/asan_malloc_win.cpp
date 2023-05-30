@@ -91,6 +91,7 @@ _declspec(dllimport) HGLOBAL WINAPI
 _declspec(dllimport) HGLOBAL WINAPI GlobalLock(HGLOBAL hMem);
 _declspec(dllimport) BOOL WINAPI GlobalUnlock(HGLOBAL hMem);
 _declspec(dllimport) HGLOBAL WINAPI GlobalHandle(HGLOBAL hMem);
+_declspec(dllimport) UINT WINAPI GlobalFlags(HGLOBAL hMem);
 _declspec(dllimport) HLOCAL WINAPI LocalAlloc(UINT uFlags, SIZE_T dwBytes);
 _declspec(dllimport) HLOCAL WINAPI LocalFree(HLOCAL hMem);
 _declspec(dllimport) HLOCAL WINAPI LocalSize(HLOCAL hMem);
@@ -99,6 +100,7 @@ _declspec(dllimport) HLOCAL WINAPI
 _declspec(dllimport) HLOCAL WINAPI LocalLock(HLOCAL hMem);
 _declspec(dllimport) BOOL WINAPI LocalUnlock(HLOCAL hMem);
 _declspec(dllimport) HLOCAL WINAPI LocalHandle(HLOCAL hMem);
+_declspec(dllimport) UINT WINAPI LocalFlags(HLOCAL hMem);
 }
 
 using namespace __asan;
@@ -2075,6 +2077,18 @@ INTERCEPTOR_WINAPI(SIZE_T, GlobalSize, HGLOBAL hMem) {
   return __asan_win_moveable::GetAllocationSize(hMem, stack);
 }
 
+INTERCEPTOR_WINAPI(UINT, GlobalFlags, HGLOBAL hMem) {
+  // We need to check whether the ASAN allocator owns the pointer
+  // we're about to use. Allocations might occur before interception
+  // takes place, so if it is not owned by RTL heap, then we can
+  // pass it to ASAN heap for inspection.
+  if(!asan_inited || IsSystemHeapAddress(reinterpret_cast<uptr>(hMem), GetProcessHeap())) {
+    return REAL(GlobalFlags)(hMem);
+  }
+  GET_STACK_TRACE_MALLOC;
+  return __asan_win_moveable::Flags(hMem, stack);
+}
+
 INTERCEPTOR_WINAPI(HLOCAL, LocalLock, HLOCAL hMem) {
   GET_STACK_TRACE_MALLOC;
   return SharedLock(hMem, REAL(LocalLock), stack);
@@ -2091,6 +2105,14 @@ INTERCEPTOR_WINAPI(HLOCAL, LocalHandle, HLOCAL hMem) {
   }
   GET_STACK_TRACE_MALLOC;
   return __asan_win_moveable::ResolvePointerToHandle(hMem, stack);
+}
+
+INTERCEPTOR_WINAPI(UINT, LocalFlags, HLOCAL hMem) {
+  if (!asan_inited || IsSystemHeapAddress(reinterpret_cast<uptr>(hMem))) {
+    return REAL(LocalFlags)(hMem);
+  }
+  GET_STACK_TRACE_MALLOC;
+  return __asan_win_moveable::Flags(hMem, stack);
 }
 
 namespace __asan {
@@ -2322,6 +2344,7 @@ void ReplaceSystemMalloc() {
     INTERCEPT_FUNCTION(GlobalLock);
     INTERCEPT_FUNCTION(GlobalUnlock);
     INTERCEPT_FUNCTION(GlobalHandle);
+    INTERCEPT_FUNCTION(GlobalFlags);
 
     INTERCEPT_FUNCTION(LocalAlloc);
     INTERCEPT_FUNCTION(LocalFree);
@@ -2329,6 +2352,7 @@ void ReplaceSystemMalloc() {
     INTERCEPT_FUNCTION(LocalReAlloc);
     INTERCEPT_FUNCTION(LocalLock);
     INTERCEPT_FUNCTION(LocalUnlock);
+    INTERCEPT_FUNCTION(LocalFlags);
 
     // LocalHandle symbol is not always available.
     __interception::OverrideFunction("LocalHandle", (uptr)WRAP(LocalHandle),

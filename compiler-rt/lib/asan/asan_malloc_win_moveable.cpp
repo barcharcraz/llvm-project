@@ -190,6 +190,12 @@ struct Result {
     Error error = Error::None;
 };
 
+struct FlagsResult {
+    size_t lock_count;
+    bool active;
+    Error error = Error::None;
+};
+
 class MoveableMemoryMap {
 private:
     static constexpr void *ReservedAddress = reinterpret_cast<void *>(-1ULL);
@@ -396,6 +402,17 @@ public:
         return entry->addr;
     }
 
+    FlagsResult GetFlags(void *const item) {
+        RecursiveScopedLock scoped_lock(_lock, _thread_id);
+
+        const auto [entry, error_result] = _GetEntry(item, scoped_lock);
+        if (entry == nullptr) {
+            return {0, false, error_result.error};
+        }
+
+        return {entry->lock_count, entry->active};
+    }
+
     static void *operator new(size_t, void *p) { return p; } // Immortalize helper
 
 private:
@@ -595,6 +612,14 @@ public:
             return {addr, Error::InvalidHandle};
         }
         return addr;
+    }
+
+    FlagsResult GetFlags(void *addr) {
+        if (!IsOwned(addr)) {
+            return {0, false, Error::InvalidHandle};
+        }
+
+        return {0, true};
     }
 
     static void *operator new(size_t, void *p) { return p; } // Immortalize helper
@@ -824,6 +849,31 @@ void *Alloc(const unsigned long flags, const size_t size, BufferedStackTrace &st
         return nullptr;
     }
     return Visit(flags, [&new_region](auto& memory_map){ return AllocImpl(memory_map, new_region); });
+}
+
+template <typename MemoryMap>
+static unsigned int FlagsImpl(MemoryMap &memory_map, void *item,
+                              BufferedStackTrace &stack) 
+{
+    FlagsResult flags = memory_map.GetFlags(item);
+    if (flags.error != Error::None && flags.error != Error::InactiveHandle) {
+        return INVALID_HANDLE;
+    }
+    unsigned int result = 0;
+    result |= GMEM_LOCKCOUNT & flags.lock_count;
+    if (!flags.active) {
+        result |= GMEM_DISCARDED;
+    }
+    return result;
+}
+unsigned int Flags(void *item, BufferedStackTrace &stack) {
+    if (item == nullptr) {
+        ReportInvalidHandle(item, stack);
+        return INVALID_HANDLE;
+    }
+    return Visit(item, [=, &stack](auto &memory_map) {
+      return FlagsImpl(memory_map, item, stack);
+    });
 }
 
 template <typename MemoryMap>

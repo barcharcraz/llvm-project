@@ -35,6 +35,7 @@
 #define ERROR_INVALID_HANDLE 0x6
 
 #define GMEM_LOCKCOUNT 0x00FF
+#define GMEM_DISCARDED 0x4000
 
 namespace __sanitizer {
     struct BufferedStackTrace;
@@ -54,4 +55,5 @@ bool DecrementLockCount(void *item, GlobalLocalUnlock, __sanitizer::BufferedStac
 void *Free(void *item, __sanitizer::BufferedStackTrace&);
 void *Alloc(unsigned long flags, size_t size, __sanitizer::BufferedStackTrace&);
 void *ReAllocate(void *item, unsigned long flags, size_t size, HeapCaller caller, __sanitizer::BufferedStackTrace&);
+unsigned int Flags(void *item, __sanitizer::BufferedStackTrace&); 
 }  // namespace __asan_win_moveable

@@ -198,6 +198,11 @@ void test_fixed() {
         CHECK_GLE(REALLOC(nullptr, -1, 0) == nullptr, ERROR_NOT_ENOUGH_MEMORY);
         CHECK_GLE(REALLOC(nullptr, -1, ZEROINIT) == nullptr, ERROR_NOT_ENOUGH_MEMORY);
     }
+
+    // Flags
+    {
+        CHECK(FLAGS(valid_handle()) == 0x0000);
+    }
 }
 
 void test_moveable() {
@@ -336,6 +341,21 @@ void test_moveable() {
         CHECK_GLE(REALLOC(nullptr, -1, 0) == nullptr, ERROR_NOT_ENOUGH_MEMORY);
         CHECK_GLE(REALLOC(nullptr, -1, ZEROINIT) == nullptr, ERROR_NOT_ENOUGH_MEMORY);
         CHECK_GLE(REALLOC(nullptr, -1, ZEROINIT | MOVEABLE) == nullptr, ERROR_NOT_ENOUGH_MEMORY);
+    }
+
+    // Flags
+    {
+        auto h = valid_moveable_handle();
+        CHECK(FLAGS(h) == 0x0000);
+        LOCK(h);
+        CHECK(FLAGS(h) == 0x0001);
+        LOCK(h);
+        CHECK(FLAGS(h) == 0x0002);
+        UNLOCK(h);
+        CHECK(FLAGS(h) == 0x0001);
+        UNLOCK(h);
+        CHECK(FLAGS(h) == 0x0000);
+
     }
 }
 
