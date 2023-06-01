@@ -94,11 +94,14 @@ static int intercept_except_handler4(void *a, void *b, void *c, void *d) {
 
 extern "C" void __asan_initialize_static_thunk() {
 #ifndef _WIN64
-  if (!__sanitizer_override_function_by_addr(
-          reinterpret_cast<__sanitizer::uptr>(&intercept_except_handler4),
-          reinterpret_cast<__sanitizer::uptr>(&_except_handler4),
-          reinterpret_cast<__sanitizer::uptr*>(&real_except_handler4))) {
-    abort();
+  if (real_except_handler4 == &_except_handler4) {
+    // Single threaded, no need for synchronization.
+    if (!__sanitizer_override_function_by_addr(
+            reinterpret_cast<__sanitizer::uptr>(&intercept_except_handler4),
+            reinterpret_cast<__sanitizer::uptr>(&_except_handler4),
+            reinterpret_cast<__sanitizer::uptr*>(&real_except_handler4))) {
+        abort();
+    }
   }
 #endif
 }
