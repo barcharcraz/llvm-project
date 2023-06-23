@@ -215,7 +215,7 @@ class Symbolizer final {
   };
 };
 
-#ifdef SANITIZER_WINDOWS
+#if SANITIZER_WINDOWS
 void InitializeDbgHelpIfNeeded();
 #endif
 
