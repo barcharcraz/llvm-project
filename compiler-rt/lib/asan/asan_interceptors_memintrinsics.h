@@ -18,10 +18,32 @@
 #include "asan_mapping.h"
 #include "interception/interception.h"
 
+#if SANITIZER_WINDOWS64
+#include "sanitizer_common/sanitizer_win.h"
+#endif
+
 DECLARE_REAL(void*, memcpy, void *to, const void *from, uptr size)
 DECLARE_REAL(void*, memset, void *block, int c, uptr size)
 
 namespace __asan {
+
+// On x64, the ShadowExceptionHandler is expected to handle all AVs that happen
+// as a result of uncommitted shadow memory pages. However, in programs that use
+// ntdll (a Windows-specific library that contains some memory intrinsics as
+// well as Windows-specific exception handling mechanisms) as their C Runtime,
+// or in cases where ntdll uses mem* functions inside
+// its exception handling infrastructure, ASAN can end up rethrowing a shadow
+// memory AV until a stack overflow occurs. In other words, ntdll can call back
+// into ASAN for a poisoning check, which creates infinite recursion. To remedy
+// this, we precommit the shadow memory of the address being accessed on x64 for
+// ntdll callees.
+bool ShouldReplaceIntrinsic(bool, void *, uptr, const void * = nullptr);
+
+#if SANITIZER_WINDOWS64
+#define IS_NTDLL_CALLEE __sanitizer::IsNtdllCallee(_ReturnAddress())
+#else
+#define IS_NTDLL_CALLEE false
+#endif
 
 // Return true if we can quickly decide that the region is unpoisoned.
 // We assume that a redzone is at least 16 bytes.
@@ -49,75 +71,79 @@ struct AsanInterceptorContext {
 // that no extra frames are created, and stack trace contains
 // relevant information only.
 // We check all shadow bytes.
-#define ACCESS_MEMORY_RANGE(ctx, offset, size, isWrite) do {            \
-    uptr __offset = (uptr)(offset);                                     \
-    uptr __size = (uptr)(size);                                         \
-    uptr __bad = 0;                                                     \
-    if (__offset > __offset + __size) {                                 \
-      GET_STACK_TRACE_FATAL_HERE;                                       \
-      ReportStringFunctionSizeOverflow(__offset, __size, &stack);       \
-    }                                                                   \
-    if (!QuickCheckForUnpoisonedRegion(__offset, __size) &&             \
-        (__bad = __asan_region_is_poisoned(__offset, __size))) {        \
-      AsanInterceptorContext *_ctx = (AsanInterceptorContext *)ctx;     \
-      bool suppressed = false;                                          \
-      if (_ctx) {                                                       \
-        suppressed = IsInterceptorSuppressed(_ctx->interceptor_name);   \
-        if (!suppressed && HaveStackTraceBasedSuppressions()) {         \
-          GET_STACK_TRACE_FATAL_HERE;                                   \
-          suppressed = IsStackTraceSuppressed(&stack);                  \
-        }                                                               \
-      }                                                                 \
-      if (!suppressed) {                                                \
-        GET_CURRENT_PC_BP_SP;                                           \
-        ReportGenericError(pc, bp, sp, __bad, isWrite, __size, 0, false);\
-      }                                                                 \
-    }                                                                   \
+#define ACCESS_MEMORY_RANGE(ctx, offset, size, isWrite)                   \
+  do {                                                                    \
+    uptr __offset = (uptr)(offset);                                       \
+    uptr __size = (uptr)(size);                                           \
+    uptr __bad = 0;                                                       \
+    if (__offset > __offset + __size) {                                   \
+      GET_STACK_TRACE_FATAL_HERE;                                         \
+      ReportStringFunctionSizeOverflow(__offset, __size, &stack);         \
+    }                                                                     \
+    if (!QuickCheckForUnpoisonedRegion(__offset, __size) &&               \
+        (__bad = __asan_region_is_poisoned(__offset, __size))) {          \
+      AsanInterceptorContext *_ctx = (AsanInterceptorContext *)ctx;       \
+      bool suppressed = false;                                            \
+      if (_ctx) {                                                         \
+        suppressed = IsInterceptorSuppressed(_ctx->interceptor_name);     \
+        if (!suppressed && HaveStackTraceBasedSuppressions()) {           \
+          GET_STACK_TRACE_FATAL_HERE;                                     \
+          suppressed = IsStackTraceSuppressed(&stack);                    \
+        }                                                                 \
+      }                                                                   \
+      if (!suppressed) {                                                  \
+        GET_CURRENT_PC_BP_SP;                                             \
+        ReportGenericError(pc, bp, sp, __bad, isWrite, __size, 0, false); \
+      }                                                                   \
+    }                                                                     \
   } while (0)
 
 // memcpy is called during __asan_init() from the internals of printf(...).
 // We do not treat memcpy with to==from as a bug.
 // See http://llvm.org/bugs/show_bug.cgi?id=11763.
-#define ASAN_MEMCPY_IMPL(ctx, to, from, size)                           \
-  do {                                                                  \
-    if (UNLIKELY(!asan_inited)) return internal_memcpy(to, from, size); \
-    if (asan_init_is_running) {                                         \
-      return REAL(memcpy)(to, from, size);                              \
-    }                                                                   \
-    ENSURE_ASAN_INITED();                                               \
-    if (flags()->replace_intrin) {                                      \
-      if (to != from) {                                                 \
-        CHECK_RANGES_OVERLAP("memcpy", to, size, from, size);           \
-      }                                                                 \
-      ASAN_READ_RANGE(ctx, from, size);                                 \
-      ASAN_WRITE_RANGE(ctx, to, size);                                  \
-    }                                                                   \
-    return REAL(memcpy)(to, from, size);                                \
+#define ASAN_MEMCPY_IMPL(ctx, to, from, size)                      \
+  do {                                                             \
+    if (UNLIKELY(!asan_inited))                                    \
+      return internal_memcpy(to, from, size);                      \
+    if (asan_init_is_running) {                                    \
+      return REAL(memcpy)(to, from, size);                         \
+    }                                                              \
+    ENSURE_ASAN_INITED();                                          \
+    if (ShouldReplaceIntrinsic(IS_NTDLL_CALLEE, to, size, from)) { \
+      if (to != from) {                                            \
+        CHECK_RANGES_OVERLAP("memcpy", to, size, from, size);      \
+      }                                                            \
+      ASAN_READ_RANGE(ctx, from, size);                            \
+      ASAN_WRITE_RANGE(ctx, to, size);                             \
+    }                                                              \
+    return REAL(memcpy)(to, from, size);                           \
   } while (0)
 
 // memset is called inside Printf.
-#define ASAN_MEMSET_IMPL(ctx, block, c, size)                           \
-  do {                                                                  \
-    if (UNLIKELY(!asan_inited)) return internal_memset(block, c, size); \
-    if (asan_init_is_running) {                                         \
-      return REAL(memset)(block, c, size);                              \
-    }                                                                   \
-    ENSURE_ASAN_INITED();                                               \
-    if (flags()->replace_intrin) {                                      \
-      ASAN_WRITE_RANGE(ctx, block, size);                               \
-    }                                                                   \
-    return REAL(memset)(block, c, size);                                \
+#define ASAN_MEMSET_IMPL(ctx, block, c, size)                   \
+  do {                                                          \
+    if (UNLIKELY(!asan_inited))                                 \
+      return internal_memset(block, c, size);                   \
+    if (asan_init_is_running) {                                 \
+      return REAL(memset)(block, c, size);                      \
+    }                                                           \
+    ENSURE_ASAN_INITED();                                       \
+    if (ShouldReplaceIntrinsic(IS_NTDLL_CALLEE, block, size)) { \
+      ASAN_WRITE_RANGE(ctx, block, size);                       \
+    }                                                           \
+    return REAL(memset)(block, c, size);                        \
   } while (0)
 
-#define ASAN_MEMMOVE_IMPL(ctx, to, from, size)                           \
-  do {                                                                   \
-    if (UNLIKELY(!asan_inited)) return internal_memmove(to, from, size); \
-    ENSURE_ASAN_INITED();                                                \
-    if (flags()->replace_intrin) {                                       \
-      ASAN_READ_RANGE(ctx, from, size);                                  \
-      ASAN_WRITE_RANGE(ctx, to, size);                                   \
-    }                                                                    \
-    return internal_memmove(to, from, size);                             \
+#define ASAN_MEMMOVE_IMPL(ctx, to, from, size)                     \
+  do {                                                             \
+    if (UNLIKELY(!asan_inited))                                    \
+      return internal_memmove(to, from, size);                     \
+    ENSURE_ASAN_INITED();                                          \
+    if (ShouldReplaceIntrinsic(IS_NTDLL_CALLEE, to, size, from)) { \
+      ASAN_READ_RANGE(ctx, from, size);                            \
+      ASAN_WRITE_RANGE(ctx, to, size);                             \
+    }                                                              \
+    return internal_memmove(to, from, size);                       \
   } while (0)
 
 #define ASAN_READ_RANGE(ctx, offset, size) \

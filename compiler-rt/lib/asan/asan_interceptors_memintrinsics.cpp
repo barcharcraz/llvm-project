@@ -12,6 +12,7 @@
 //===---------------------------------------------------------------------===//
 
 #include "asan_interceptors_memintrinsics.h"
+#include "asan_poisoning.h"
 #include "asan_report.h"
 #include "asan_stack.h"
 #include "asan_suppressions.h"
@@ -29,6 +30,23 @@ void *__asan_memset(void *block, int c, uptr size) {
 void *__asan_memmove(void *to, const void *from, uptr size) {
   ASAN_MEMMOVE_IMPL(nullptr, to, from, size);
 }
+
+namespace __asan {
+
+bool ShouldReplaceIntrinsic(bool isNtdllCallee, void *addr, uptr size, const void* from) {
+#if SANITIZER_WINDOWS64
+  if (isNtdllCallee) {
+    CommitShadowMemory(reinterpret_cast<uptr>(addr), size);
+    if(from)
+    {
+      CommitShadowMemory(reinterpret_cast<uptr>(from), size);
+    }
+  }
+#endif
+  return flags()->replace_intrin;
+}
+
+}  // namespace __asan
 
 #if SANITIZER_FUCHSIA
 

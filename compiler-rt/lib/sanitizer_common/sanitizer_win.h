@@ -37,6 +37,12 @@ bool IsInDebugger();
 // Checks if the address is part of a memory mapping.
 bool IsMemoryMapped(void* Handle);
 
+// Initializes module information of ntdll for referencing callee addresses
+void InitializeNtdllInfo();
+
+// Returns whether or not the callee address lies within ntdll
+bool IsNtdllCallee(void* calleeAddr);
+
 }  // namespace __sanitizer
 
 extern "C" {
