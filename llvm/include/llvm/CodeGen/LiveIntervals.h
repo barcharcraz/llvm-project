@@ -39,7 +39,6 @@ namespace llvm {
 
 extern cl::opt<bool> UseSegmentSetForPhysRegs;
 
-class AAResults;
 class BitVector;
 class LiveIntervalCalc;
 class MachineBlockFrequencyInfo;
@@ -52,12 +51,11 @@ class TargetInstrInfo;
 class VirtRegMap;
 
   class LiveIntervals : public MachineFunctionPass {
-    MachineFunction* MF;
-    MachineRegisterInfo* MRI;
-    const TargetRegisterInfo* TRI;
-    const TargetInstrInfo* TII;
-    AAResults *AA;
-    SlotIndexes* Indexes;
+    MachineFunction *MF = nullptr;
+    MachineRegisterInfo *MRI = nullptr;
+    const TargetRegisterInfo *TRI = nullptr;
+    const TargetInstrInfo *TII = nullptr;
+    SlotIndexes *Indexes = nullptr;
     MachineDominatorTree *DomTree = nullptr;
     LiveIntervalCalc *LICalc = nullptr;
 
@@ -210,10 +208,6 @@ class VirtRegMap;
 
     SlotIndexes *getSlotIndexes() const {
       return Indexes;
-    }
-
-    AAResults *getAliasAnalysis() const {
-      return AA;
     }
 
     /// Returns true if the specified machine instr has been removed or was
@@ -374,7 +368,7 @@ class VirtRegMap;
     ///
     /// Returns false if \p LI doesn't cross any register mask instructions. In
     /// that case, the bit vector is not filled in.
-    bool checkRegMaskInterference(LiveInterval &LI,
+    bool checkRegMaskInterference(const LiveInterval &LI,
                                   BitVector &UsableRegs);
 
     // Register unit functions.
@@ -423,8 +417,8 @@ class VirtRegMap;
     /// method can result in inconsistent liveness tracking if multiple phyical
     /// registers share a regunit, and should be used cautiously.
     void removeAllRegUnitsForPhysReg(MCRegister Reg) {
-      for (MCRegUnitIterator Units(Reg, TRI); Units.isValid(); ++Units)
-        removeRegUnit(*Units);
+      for (MCRegUnit Unit : TRI->regunits(Reg))
+        removeRegUnit(Unit);
     }
 
     /// Remove value numbers and related live segments starting at position

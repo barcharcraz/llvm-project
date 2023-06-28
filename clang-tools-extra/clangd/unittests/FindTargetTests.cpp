@@ -15,7 +15,7 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/Testing/Support/Annotations.h"
+#include "llvm/Testing/Annotations/Annotations.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include <initializer_list>
@@ -229,6 +229,71 @@ TEST_F(TargetDeclTest, UsingDecl) {
     )cpp";
   EXPECT_DECLS("UnresolvedUsingValueDecl", {"using Base<T>::waldo", Rel::Alias},
                {"void waldo()"});
+
+  Code = R"cpp(
+    namespace ns {
+    template<typename T> class S {};
+    }
+
+    using ns::S;
+
+    template<typename T>
+    using A = [[S]]<T>;
+  )cpp";
+  EXPECT_DECLS("TemplateSpecializationTypeLoc", {"using ns::S", Rel::Alias},
+               {"template <typename T> class S"},
+               {"class S", Rel::TemplatePattern});
+
+  Code = R"cpp(
+    namespace ns {
+    template<typename T> class S {};
+    }
+
+    using ns::S;
+    template <template <typename> class T> class X {};
+    using B = X<[[S]]>;
+  )cpp";
+  EXPECT_DECLS("TemplateArgumentLoc", {"using ns::S", Rel::Alias},
+               {"template <typename T> class S"});
+
+  Code = R"cpp(
+    namespace ns {
+    template<typename T> class S { public: S(T); };
+    }
+
+    using ns::S;
+    [[S]] s(123);
+  )cpp";
+  Flags.push_back("-std=c++17"); // For CTAD feature.
+  EXPECT_DECLS("DeducedTemplateSpecializationTypeLoc",
+               {"using ns::S", Rel::Alias}, {"template <typename T> class S"},
+               {"class S", Rel::TemplatePattern});
+
+  Code = R"cpp(
+    template<typename T>
+    class Foo { public: class foo {}; };
+    template <class T> class A : public Foo<T> {
+      using typename Foo<T>::foo;
+      [[foo]] abc;
+    };
+  )cpp";
+  EXPECT_DECLS("UnresolvedUsingTypeLoc",
+               {"using typename Foo<T>::foo", Rel::Alias});
+
+  // Using enum.
+  Flags.push_back("-std=c++20");
+  Code = R"cpp(
+    namespace ns { enum class A { X }; }
+    [[using enum ns::A]];
+  )cpp";
+  EXPECT_DECLS("UsingEnumDecl", "enum class A : int");
+
+  Code = R"cpp(
+    namespace ns { enum class A { X }; }
+    using enum ns::A;
+    auto m = [[X]];
+  )cpp";
+  EXPECT_DECLS("DeclRefExpr", "X");
 }
 
 TEST_F(TargetDeclTest, BaseSpecifier) {
@@ -509,6 +574,50 @@ TEST_F(TargetDeclTest, Concept) {
                {"template <typename T, typename U> concept Fooable = true"});
 }
 
+TEST_F(TargetDeclTest, Coroutine) {
+  Flags.push_back("-std=c++20");
+
+  Code = R"cpp(
+    namespace std {
+    template <typename, typename...> struct coroutine_traits;
+    template <typename> struct coroutine_handle {
+      template <typename U>
+      coroutine_handle(coroutine_handle<U>&&) noexcept;
+      static coroutine_handle from_address(void* __addr) noexcept;
+    };
+    } // namespace std
+
+    struct executor {};
+    struct awaitable {};
+    struct awaitable_frame {
+      awaitable get_return_object();
+      void return_void();
+      void unhandled_exception();
+      struct result_t {
+        ~result_t();
+        bool await_ready() const noexcept;
+        void await_suspend(std::coroutine_handle<void>) noexcept;
+        void await_resume() const noexcept;
+      };
+      result_t initial_suspend() noexcept;
+      result_t final_suspend() noexcept;
+      result_t await_transform(executor) noexcept;
+    };
+
+    namespace std {
+    template <>
+    struct coroutine_traits<awaitable> {
+      typedef awaitable_frame promise_type;
+    };
+    } // namespace std
+
+    awaitable foo() {
+      co_await [[executor]]();
+    }
+  )cpp";
+  EXPECT_DECLS("RecordTypeLoc", "struct executor");
+}
+
 TEST_F(TargetDeclTest, FunctionTemplate) {
   Code = R"cpp(
     // Implicit specialization.
@@ -754,6 +863,49 @@ TEST_F(TargetDeclTest, DependentExprs) {
       )cpp";
   EXPECT_DECLS("CXXDependentScopeMemberExpr",
                "template <typename T> T convert() const");
+
+  Code = R"cpp(
+        template <typename T>
+        struct Waldo {
+          void find();
+        };
+        template <typename T>
+        using Wally = Waldo<T>;
+        template <typename T>
+        void foo(Wally<T> w) {
+          w.[[find]]();
+        }
+  )cpp";
+  EXPECT_DECLS("CXXDependentScopeMemberExpr", "void find()");
+
+  Code = R"cpp(
+        template <typename T>
+        struct Waldo {
+          void find();
+        };
+        template <typename T>
+        struct MetaWaldo {
+          using Type = Waldo<T>;
+        };
+        template <typename T>
+        void foo(typename MetaWaldo<T>::Type w) {
+          w.[[find]]();
+        }
+  )cpp";
+  EXPECT_DECLS("CXXDependentScopeMemberExpr", "void find()");
+
+  Code = R"cpp(
+        struct Waldo {
+          void find();
+        };
+        template <typename T>
+        using Wally = Waldo;
+        template <typename>
+        struct S : Wally<int> {
+          void Foo() { this->[[find]](); }
+        };
+  )cpp";
+  EXPECT_DECLS("CXXDependentScopeMemberExpr", "void find()");
 }
 
 TEST_F(TargetDeclTest, DependentTypes) {
@@ -946,11 +1098,9 @@ TEST_F(TargetDeclTest, ObjC) {
   EXPECT_DECLS("ObjCCategoryImplDecl", "@interface Foo(Ext)");
 
   Code = R"cpp(
-    @protocol Foo
-    @end
-    void test([[id<Foo>]] p);
+    void test(id</*error-ok*/[[InvalidProtocol]]> p);
   )cpp";
-  EXPECT_DECLS("ObjCObjectTypeLoc", "@protocol Foo");
+  EXPECT_DECLS("ParmVarDecl", "id p");
 
   Code = R"cpp(
     @class C;
@@ -966,7 +1116,7 @@ TEST_F(TargetDeclTest, ObjC) {
     @end
     void test(C<[[Foo]]> *p);
   )cpp";
-  EXPECT_DECLS("ObjCObjectTypeLoc", "@protocol Foo");
+  EXPECT_DECLS("ObjCProtocolLoc", "@protocol Foo");
 
   Code = R"cpp(
     @class C;
@@ -976,8 +1126,17 @@ TEST_F(TargetDeclTest, ObjC) {
     @end
     void test(C<[[Foo]], Bar> *p);
   )cpp";
-  // FIXME: We currently can't disambiguate between multiple protocols.
-  EXPECT_DECLS("ObjCObjectTypeLoc", "@protocol Foo", "@protocol Bar");
+  EXPECT_DECLS("ObjCProtocolLoc", "@protocol Foo");
+
+  Code = R"cpp(
+    @class C;
+    @protocol Foo
+    @end
+    @protocol Bar
+    @end
+    void test(C<Foo, [[Bar]]> *p);
+  )cpp";
+  EXPECT_DECLS("ObjCProtocolLoc", "@protocol Bar");
 
   Code = R"cpp(
     @interface Foo
@@ -1151,6 +1310,15 @@ TEST_F(FindExplicitReferencesTest, All) {
         )cpp",
         "0: targets = {ns}\n"
         "1: targets = {ns::global}, qualifier = 'ns::'\n"},
+       // Using enum declarations.
+       {R"cpp(
+          namespace ns { enum class A {}; }
+          void foo() {
+            using enum $0^ns::$1^A;
+          }
+        )cpp",
+        "0: targets = {ns}\n"
+        "1: targets = {ns::A}, qualifier = 'ns::'\n"},
        // Simple types.
        {R"cpp(
          struct Struct { int a; };
@@ -1511,13 +1679,14 @@ TEST_F(FindExplicitReferencesTest, All) {
        {
            R"cpp(
              void foo() {
-              class {} $0^x;
-              int (*$1^fptr)(int $2^a, int) = nullptr;
+              $0^class {} $1^x;
+              int (*$2^fptr)(int $3^a, int) = nullptr;
              }
            )cpp",
-           "0: targets = {x}, decl\n"
-           "1: targets = {fptr}, decl\n"
-           "2: targets = {a}, decl\n"},
+           "0: targets = {(unnamed)}\n"
+           "1: targets = {x}, decl\n"
+           "2: targets = {fptr}, decl\n"
+           "3: targets = {a}, decl\n"},
        // Namespace aliases should be handled properly.
        {
            R"cpp(

@@ -28,7 +28,6 @@
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallPtrSet.h"
-#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/ADT/iterator_range.h"
@@ -50,7 +49,6 @@
 #include "llvm/CodeGen/TargetRegisterInfo.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
 #include "llvm/MC/MCInstrDesc.h"
-#include "llvm/MC/MCInstrItineraries.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/CommandLine.h"
@@ -89,18 +87,18 @@ static cl::opt<unsigned> MaxDataFlowEdge(
 namespace {
 
 class TwoAddressInstructionPass : public MachineFunctionPass {
-  MachineFunction *MF;
-  const TargetInstrInfo *TII;
-  const TargetRegisterInfo *TRI;
-  const InstrItineraryData *InstrItins;
-  MachineRegisterInfo *MRI;
-  LiveVariables *LV;
-  LiveIntervals *LIS;
-  AliasAnalysis *AA;
-  CodeGenOpt::Level OptLevel;
+  MachineFunction *MF = nullptr;
+  const TargetInstrInfo *TII = nullptr;
+  const TargetRegisterInfo *TRI = nullptr;
+  const InstrItineraryData *InstrItins = nullptr;
+  MachineRegisterInfo *MRI = nullptr;
+  LiveVariables *LV = nullptr;
+  LiveIntervals *LIS = nullptr;
+  AliasAnalysis *AA = nullptr;
+  CodeGenOpt::Level OptLevel = CodeGenOpt::None;
 
   // The current basic block being processed.
-  MachineBasicBlock *MBB;
+  MachineBasicBlock *MBB = nullptr;
 
   // Keep track the distance of a MI from the start of the current basic block.
   DenseMap<MachineInstr*, unsigned> DistanceMap;
@@ -163,6 +161,7 @@ class TwoAddressInstructionPass : public MachineFunctionPass {
   bool collectTiedOperands(MachineInstr *MI, TiedOperandMap&);
   void processTiedPairs(MachineInstr *MI, TiedPairList&, unsigned &Dist);
   void eliminateRegSequence(MachineBasicBlock::iterator&);
+  bool processStatepoint(MachineInstr *MI, TiedOperandMap &TiedOperands);
 
 public:
   static char ID; // Pass identification, replacement for typeid
@@ -198,8 +197,6 @@ INITIALIZE_PASS_BEGIN(TwoAddressInstructionPass, DEBUG_TYPE,
 INITIALIZE_PASS_DEPENDENCY(AAResultsWrapperPass)
 INITIALIZE_PASS_END(TwoAddressInstructionPass, DEBUG_TYPE,
                 "Two-Address instruction pass", false, false)
-
-static bool isPlainlyKilled(MachineInstr *MI, Register Reg, LiveIntervals *LIS);
 
 /// Return the MachineInstr* if it is the single def of the Reg in current BB.
 static MachineInstr *getSingleDef(Register Reg, MachineBasicBlock *BB,
@@ -288,7 +285,7 @@ static bool isCopyToReg(MachineInstr &MI, const TargetInstrInfo *TII,
 
 /// Test if the given register value, which is used by the
 /// given instruction, is killed by the given instruction.
-static bool isPlainlyKilled(MachineInstr *MI, Register Reg,
+static bool isPlainlyKilled(const MachineInstr *MI, Register Reg,
                             LiveIntervals *LIS) {
   if (LIS && Reg.isVirtual() && !LIS->isNotInMIMap(*MI)) {
     // FIXME: Sometimes tryInstructionTransform() will add instructions and
@@ -310,6 +307,12 @@ static bool isPlainlyKilled(MachineInstr *MI, Register Reg,
   }
 
   return MI->killsRegister(Reg);
+}
+
+/// Test if the register used by the given operand is killed by the operand's
+/// instruction.
+static bool isPlainlyKilled(const MachineOperand &MO, LiveIntervals *LIS) {
+  return MO.isKill() || isPlainlyKilled(MO.getParent(), MO.getReg(), LIS);
 }
 
 /// Test if the given register value, which is used by the given
@@ -405,7 +408,7 @@ findOnlyInterestingUse(Register Reg, MachineBasicBlock *MBB,
   }
   if (UseMI.isCommutable()) {
     unsigned Src1 = TargetInstrInfo::CommuteAnyOperandIndex;
-    unsigned Src2 = UseMI.getOperandNo(UseOp);
+    unsigned Src2 = UseOp->getOperandNo();
     if (TII->findCommutedOpIndices(UseMI, Src1, Src2)) {
       MachineOperand &MO = UseMI.getOperand(Src1);
       if (MO.isReg() && MO.isUse() &&
@@ -694,10 +697,8 @@ bool TwoAddressInstructionPass::convertInstTo3Addr(
     assert(NewMI->getNumExplicitDefs() == 1);
 
     // Find the old and new def location.
-    auto OldIt = mi->defs().begin();
-    auto NewIt = NewMI->defs().begin();
-    unsigned OldIdx = mi->getOperandNo(OldIt);
-    unsigned NewIdx = NewMI->getOperandNo(NewIt);
+    unsigned OldIdx = mi->defs().begin()->getOperandNo();
+    unsigned NewIdx = NewMI->defs().begin()->getOperandNo();
 
     // Record that one def has been replaced by the other.
     unsigned NewInstrNum = NewMI->getDebugInstrNum();
@@ -864,8 +865,7 @@ bool TwoAddressInstructionPass::rescheduleMIBelowKill(
       Defs.push_back(MOReg);
     else {
       Uses.push_back(MOReg);
-      if (MOReg != Reg && (MO.isKill() ||
-                           (LIS && isPlainlyKilled(MI, MOReg, LIS))))
+      if (MOReg != Reg && isPlainlyKilled(MO, LIS))
         Kills.push_back(MOReg);
     }
   }
@@ -916,8 +916,7 @@ bool TwoAddressInstructionPass::rescheduleMIBelowKill(
       } else {
         if (regOverlapsSet(Defs, MOReg, TRI))
           return false;
-        bool isKill =
-            MO.isKill() || (LIS && isPlainlyKilled(&OtherMI, MOReg, LIS));
+        bool isKill = isPlainlyKilled(MO, LIS);
         if (MOReg != Reg && ((isKill && regOverlapsSet(Uses, MOReg, TRI)) ||
                              regOverlapsSet(Kills, MOReg, TRI)))
           // Don't want to extend other live ranges and update kills.
@@ -1045,7 +1044,7 @@ bool TwoAddressInstructionPass::rescheduleKillAboveMI(
         continue;
       if (isDefTooClose(MOReg, DI->second, MI))
         return false;
-      bool isKill = MO.isKill() || (LIS && isPlainlyKilled(KillMI, MOReg, LIS));
+      bool isKill = isPlainlyKilled(MO, LIS);
       if (MOReg == Reg && !isKill)
         return false;
       Uses.push_back(MOReg);
@@ -1087,8 +1086,7 @@ bool TwoAddressInstructionPass::rescheduleKillAboveMI(
         if (regOverlapsSet(Kills, MOReg, TRI))
           // Don't want to extend other live ranges and update kills.
           return false;
-        if (&OtherMI != MI && MOReg == Reg &&
-            !(MO.isKill() || (LIS && isPlainlyKilled(&OtherMI, MOReg, LIS))))
+        if (&OtherMI != MI && MOReg == Reg && !isPlainlyKilled(MO, LIS))
           // We can't schedule across a use of the register in question.
           return false;
       } else {
@@ -1451,9 +1449,9 @@ void
 TwoAddressInstructionPass::processTiedPairs(MachineInstr *MI,
                                             TiedPairList &TiedPairs,
                                             unsigned &Dist) {
-  bool IsEarlyClobber = llvm::find_if(TiedPairs, [MI](auto const &TP) {
-                          return MI->getOperand(TP.second).isEarlyClobber();
-                        }) != TiedPairs.end();
+  bool IsEarlyClobber = llvm::any_of(TiedPairs, [MI](auto const &TP) {
+    return MI->getOperand(TP.second).isEarlyClobber();
+  });
 
   bool RemovedKillFlag = false;
   bool AllUsesCopied = true;
@@ -1534,8 +1532,8 @@ TwoAddressInstructionPass::processTiedPairs(MachineInstr *MI,
           S.addSegment(LiveRange::Segment(LastCopyIdx, endIdx, VNI));
         }
       } else {
-        for (MCRegUnitIterator Unit(RegA, TRI); Unit.isValid(); ++Unit) {
-          if (LiveRange *LR = LIS->getCachedRegUnit(*Unit)) {
+        for (MCRegUnit Unit : TRI->regunits(RegA)) {
+          if (LiveRange *LR = LIS->getCachedRegUnit(Unit)) {
             VNInfo *VNI =
                 LR->getNextValue(LastCopyIdx, LIS->getVNInfoAllocator());
             LR->addSegment(LiveRange::Segment(LastCopyIdx, endIdx, VNI));
@@ -1567,8 +1565,8 @@ TwoAddressInstructionPass::processTiedPairs(MachineInstr *MI,
   if (AllUsesCopied) {
     LaneBitmask RemainingUses = LaneBitmask::getNone();
     // Replace other (un-tied) uses of regB with LastCopiedReg.
-    for (MachineOperand &MO : MI->operands()) {
-      if (MO.isReg() && MO.getReg() == RegB && MO.isUse()) {
+    for (MachineOperand &MO : MI->all_uses()) {
+      if (MO.getReg() == RegB) {
         if (MO.getSubReg() == SubRegB && !IsEarlyClobber) {
           if (MO.isKill()) {
             MO.setIsKill(false);
@@ -1620,13 +1618,106 @@ TwoAddressInstructionPass::processTiedPairs(MachineInstr *MI,
     // regB is still used in this instruction, but a kill flag was
     // removed from a different tied use of regB, so now we need to add
     // a kill flag to one of the remaining uses of regB.
-    for (MachineOperand &MO : MI->operands()) {
-      if (MO.isReg() && MO.getReg() == RegB && MO.isUse()) {
+    for (MachineOperand &MO : MI->all_uses()) {
+      if (MO.getReg() == RegB) {
         MO.setIsKill(true);
         break;
       }
     }
   }
+}
+
+// For every tied operand pair this function transforms statepoint from
+//    RegA = STATEPOINT ... RegB(tied-def N)
+// to
+//    RegB = STATEPOINT ... RegB(tied-def N)
+// and replaces all uses of RegA with RegB.
+// No extra COPY instruction is necessary because tied use is killed at
+// STATEPOINT.
+bool TwoAddressInstructionPass::processStatepoint(
+    MachineInstr *MI, TiedOperandMap &TiedOperands) {
+
+  bool NeedCopy = false;
+  for (auto &TO : TiedOperands) {
+    Register RegB = TO.first;
+    if (TO.second.size() != 1) {
+      NeedCopy = true;
+      continue;
+    }
+
+    unsigned SrcIdx = TO.second[0].first;
+    unsigned DstIdx = TO.second[0].second;
+
+    MachineOperand &DstMO = MI->getOperand(DstIdx);
+    Register RegA = DstMO.getReg();
+
+    assert(RegB == MI->getOperand(SrcIdx).getReg());
+
+    if (RegA == RegB)
+      continue;
+
+    // CodeGenPrepare can sink pointer compare past statepoint, which
+    // breaks assumption that statepoint kills tied-use register when
+    // in SSA form (see note in IR/SafepointIRVerifier.cpp). Fall back
+    // to generic tied register handling to avoid assertion failures.
+    // TODO: Recompute LIS/LV information for new range here.
+    if (LIS) {
+      const auto &UseLI = LIS->getInterval(RegB);
+      const auto &DefLI = LIS->getInterval(RegA);
+      if (DefLI.overlaps(UseLI)) {
+        LLVM_DEBUG(dbgs() << "LIS: " << printReg(RegB, TRI, 0)
+                          << " UseLI overlaps with DefLI\n");
+        NeedCopy = true;
+        continue;
+      }
+    } else if (LV && LV->getVarInfo(RegB).findKill(MI->getParent()) != MI) {
+      // Note that MachineOperand::isKill does not work here, because it
+      // is set only on first register use in instruction and for statepoint
+      // tied-use register will usually be found in preceeding deopt bundle.
+      LLVM_DEBUG(dbgs() << "LV: " << printReg(RegB, TRI, 0)
+                        << " not killed by statepoint\n");
+      NeedCopy = true;
+      continue;
+    }
+
+    if (!MRI->constrainRegClass(RegB, MRI->getRegClass(RegA))) {
+      LLVM_DEBUG(dbgs() << "MRI: couldn't constrain" << printReg(RegB, TRI, 0)
+                        << " to register class of " << printReg(RegA, TRI, 0)
+                        << '\n');
+      NeedCopy = true;
+      continue;
+    }
+    MRI->replaceRegWith(RegA, RegB);
+
+    if (LIS) {
+      VNInfo::Allocator &A = LIS->getVNInfoAllocator();
+      LiveInterval &LI = LIS->getInterval(RegB);
+      LiveInterval &Other = LIS->getInterval(RegA);
+      SmallVector<VNInfo *> NewVNIs;
+      for (const VNInfo *VNI : Other.valnos) {
+        assert(VNI->id == NewVNIs.size() && "assumed");
+        NewVNIs.push_back(LI.createValueCopy(VNI, A));
+      }
+      for (auto &S : Other) {
+        VNInfo *VNI = NewVNIs[S.valno->id];
+        LiveRange::Segment NewSeg(S.start, S.end, VNI);
+        LI.addSegment(NewSeg);
+      }
+      LIS->removeInterval(RegA);
+    }
+
+    if (LV) {
+      if (MI->getOperand(SrcIdx).isKill())
+        LV->removeVirtualRegisterKilled(RegB, *MI);
+      LiveVariables::VarInfo &SrcInfo = LV->getVarInfo(RegB);
+      LiveVariables::VarInfo &DstInfo = LV->getVarInfo(RegA);
+      SrcInfo.AliveBlocks |= DstInfo.AliveBlocks;
+      DstInfo.AliveBlocks.clear();
+      for (auto *KillMI : DstInfo.Kills)
+        LV->addVirtualRegisterKilled(RegB, *KillMI, false);
+    }
+  }
+  return !NeedCopy;
 }
 
 /// Reduce two-address instructions to two operands.
@@ -1722,6 +1813,14 @@ bool TwoAddressInstructionPass::runOnMachineFunction(MachineFunction &Func) {
         }
       }
 
+      if (mi->getOpcode() == TargetOpcode::STATEPOINT &&
+          processStatepoint(&*mi, TiedOperands)) {
+        TiedOperands.clear();
+        LLVM_DEBUG(dbgs() << "\t\trewrite to:\t" << *mi);
+        mi = nmi;
+        continue;
+      }
+
       // Now iterate over the information collected above.
       for (auto &TO : TiedOperands) {
         processTiedPairs(&*mi, TO.second, Dist);
@@ -1733,11 +1832,11 @@ bool TwoAddressInstructionPass::runOnMachineFunction(MachineFunction &Func) {
         // From %reg = INSERT_SUBREG %reg, %subreg, subidx
         // To   %reg:subidx = COPY %subreg
         unsigned SubIdx = mi->getOperand(3).getImm();
-        mi->RemoveOperand(3);
+        mi->removeOperand(3);
         assert(mi->getOperand(0).getSubReg() == 0 && "Unexpected subreg idx");
         mi->getOperand(0).setSubReg(SubIdx);
         mi->getOperand(0).setIsUndef(mi->getOperand(1).isUndef());
-        mi->RemoveOperand(1);
+        mi->removeOperand(1);
         mi->setDesc(TII->get(TargetOpcode::COPY));
         LLVM_DEBUG(dbgs() << "\t\tconvert to:\t" << *mi);
 
@@ -1795,11 +1894,6 @@ void TwoAddressInstructionPass::
 eliminateRegSequence(MachineBasicBlock::iterator &MBBI) {
   MachineInstr &MI = *MBBI;
   Register DstReg = MI.getOperand(0).getReg();
-  if (MI.getOperand(0).getSubReg() || DstReg.isPhysical() ||
-      !(MI.getNumOperands() & 1)) {
-    LLVM_DEBUG(dbgs() << "Illegal REG_SEQUENCE instruction:" << MI);
-    llvm_unreachable(nullptr);
-  }
 
   SmallVector<Register, 4> OrigRegs;
   if (LIS) {
@@ -1858,7 +1952,7 @@ eliminateRegSequence(MachineBasicBlock::iterator &MBBI) {
     LLVM_DEBUG(dbgs() << "Turned: " << MI << " into an IMPLICIT_DEF");
     MI.setDesc(TII->get(TargetOpcode::IMPLICIT_DEF));
     for (int j = MI.getNumOperands() - 1, ee = 0; j > ee; --j)
-      MI.RemoveOperand(j);
+      MI.removeOperand(j);
   } else {
     if (LIS)
       LIS->RemoveMachineInstrFromMaps(MI);

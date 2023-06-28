@@ -837,7 +837,7 @@ struct Allocator {
       return;
     }
 
-    ASAN_FREE_HOOK(ptr);
+    RunFreeHooks(ptr);
 
     // Bad mutating writes during COE, can clobber the AsanChunk
     ChunkSafeCopy *smd = AsanChunkCOE_Restore(m);
@@ -965,6 +965,10 @@ struct Allocator {
     return m->UsedSize();
   }
 
+  uptr AllocationSizeFast(uptr p) {
+    return reinterpret_cast<AsanChunk *>(p - kChunkHeaderSize)->UsedSize();
+  }
+
   AsanChunkView FindHeapChunkByAddress(uptr addr) {
     AsanChunk *m1 = GetAsanChunkByAddr(addr);
     sptr offset = 0;
@@ -974,8 +978,8 @@ struct Allocator {
     }
     if (!m1 || AsanChunkView(m1).AddrIsAtLeft(addr, 1, &offset)) {
       // The address is in the chunk's left redzone, so maybe it is actually
-      // a right buffer overflow from the other chunk to the left.
-      // Search a bit to the left to see if there is another chunk.
+      // a right buffer overflow from the other chunk before.
+      // Search a bit before to see if there is another chunk.
       AsanChunk *m2 = nullptr;
       for (uptr l = 1; l < GetPageSizeCached(); l++) {
         m2 = GetAsanChunkByAddr(addr - l);
@@ -1285,8 +1289,14 @@ uptr PointsIntoChunk(void *p) {
 }
 
 uptr GetUserBegin(uptr chunk) {
+  // FIXME: All usecases provide chunk address, GetAsanChunkByAddrFastLocked is
+  // not needed.
   __asan::AsanChunk *m = __asan::instance.GetAsanChunkByAddrFastLocked(chunk);
   return m ? m->Beg() : 0;
+}
+
+uptr GetUserAddr(uptr chunk) {
+  return chunk;
 }
 
 LsanMetadata::LsanMetadata(uptr chunk) {
@@ -1329,7 +1339,7 @@ void ForEachChunk(ForEachChunkCallback callback, void *arg) {
   __asan::get_allocator().ForEachChunk(callback, arg);
 }
 
-IgnoreObjectResult IgnoreObjectLocked(const void *p) {
+IgnoreObjectResult IgnoreObject(const void *p) {
   uptr addr = reinterpret_cast<uptr>(p);
   __asan::AsanChunk *m = __asan::instance.GetAsanChunkByAddr(addr);
   if (!m ||
@@ -1344,37 +1354,21 @@ IgnoreObjectResult IgnoreObjectLocked(const void *p) {
   return kIgnoreObjectSuccess;
 }
 
-void GetAdditionalThreadContextPtrs(ThreadContextBase *tctx, void *ptrs) {
-  // Look for the arg pointer of threads that have been created or are running.
-  // This is necessary to prevent false positive leaks due to the AsanThread
-  // holding the only live reference to a heap object.  This can happen because
-  // the `pthread_create()` interceptor doesn't wait for the child thread to
-  // start before returning and thus loosing the the only live reference to the
-  // heap object on the stack.
-
-  __asan::AsanThreadContext *atctx =
-      reinterpret_cast<__asan::AsanThreadContext *>(tctx);
-  __asan::AsanThread *asan_thread = atctx->thread;
-
-  // Note ThreadStatusRunning is required because there is a small window where
-  // the thread status switches to `ThreadStatusRunning` but the `arg` pointer
-  // still isn't on the stack yet.
-  if (atctx->status != ThreadStatusCreated &&
-      atctx->status != ThreadStatusRunning)
-    return;
-
-  uptr thread_arg = reinterpret_cast<uptr>(asan_thread->get_arg());
-  if (!thread_arg)
-    return;
-
-  auto ptrsVec = reinterpret_cast<InternalMmapVector<uptr> *>(ptrs);
-  ptrsVec->push_back(thread_arg);
-}
-
 }  // namespace __lsan
 
 // ---------------------- Interface ---------------- {{{1
 using namespace __asan;
+
+static const void *AllocationBegin(const void *p) {
+  AsanChunk *m = __asan::instance.GetAsanChunkByAddr((uptr)p);
+  if (!m)
+    return nullptr;
+  if (atomic_load(&m->chunk_state, memory_order_acquire) != CHUNK_ALLOCATED)
+    return nullptr;
+  if (m->UsedSize() == 0)
+    return nullptr;
+  return (const void *)(m->Beg());
+}
 
 // ASan allocator doesn't reserve extra bytes, so normally we would
 // just return "size". We don't want to expose our redzone sizes, etc here.
@@ -1399,6 +1393,17 @@ uptr __sanitizer_get_allocated_size(const void *p) {
   return allocated_size;
 }
 
+uptr __sanitizer_get_allocated_size_fast(const void *p) {
+  DCHECK_EQ(p, __sanitizer_get_allocated_begin(p));
+  uptr ret = instance.AllocationSizeFast(reinterpret_cast<uptr>(p));
+  DCHECK_EQ(ret, __sanitizer_get_allocated_size(p));
+  return ret;
+}
+
+const void *__sanitizer_get_allocated_begin(const void *p) {
+  return AllocationBegin(p);
+}
+
 void __sanitizer_purge_allocator() {
   GET_STACK_TRACE_MALLOC;
   instance.Purge(&stack);
@@ -1409,17 +1414,3 @@ int __asan_update_allocation_context(void* addr) {
   return instance.UpdateAllocationStack((uptr)addr, &stack);
 }
 
-#if !SANITIZER_SUPPORTS_WEAK_HOOKS
-// Provide default (no-op) implementation of malloc hooks.
-SANITIZER_INTERFACE_WEAK_DEF(void, __sanitizer_malloc_hook,
-                             void *ptr, uptr size) {
-  SANITIZER_INTERFACE_WEAK_NOOP_PROLOGUE();
-  (void)ptr;
-  (void)size;
-}
-
-SANITIZER_INTERFACE_WEAK_DEF(void, __sanitizer_free_hook, void *ptr) {
-  SANITIZER_INTERFACE_WEAK_NOOP_PROLOGUE();
-  (void)ptr;
-}
-#endif

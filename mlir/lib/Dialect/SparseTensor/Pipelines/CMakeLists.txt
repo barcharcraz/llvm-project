@@ -5,18 +5,33 @@ add_mlir_dialect_library(MLIRSparseTensorPipelines
   ${MLIR_MAIN_INCLUDE_DIR}/mlir/Dialect/SparseTensor
 
   LINK_LIBS PUBLIC
-  MLIRArithmeticTransforms
+  MLIRArithTransforms
   MLIRAffineToStandard
   MLIRBufferizationTransforms
+  MLIRComplexToLLVM
+  MLIRComplexToLibm
+  MLIRComplexToStandard
+  MLIRFuncTransforms
+  MLIRGPUToNVVMTransforms
+  MLIRGPUTransforms
   MLIRLinalgTransforms
+  MLIRMathToLibm
   MLIRMathToLLVM
   MLIRMemRefToLLVM
   MLIRPass
   MLIRReconcileUnrealizedCasts
-  MLIRSCFToStandard
-  MLIRSparseTensor
+  MLIRSCFToControlFlow
+  MLIRSparseTensorDialect
   MLIRSparseTensorTransforms
-  MLIRStandardOpsTransforms
   MLIRTensorTransforms
   MLIRVectorToLLVM
+  MLIRVectorTransforms
 )
+
+if(MLIR_ENABLE_CUDA_RUNNER)
+   # Enable gpu-to-cubin pass.
+  target_compile_definitions(obj.MLIRSparseTensorPipelines
+    PRIVATE
+    MLIR_GPU_TO_CUBIN_PASS_ENABLE=1
+  )
+endif()

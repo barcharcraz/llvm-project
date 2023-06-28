@@ -10,10 +10,15 @@
 #define LLVM_LIBC_SRC_SUPPORT_FPUTIL_GENERIC_SQRT_H
 
 #include "sqrt_80_bit_long_double.h"
-#include "src/__support/CPP/TypeTraits.h"
+#include "src/__support/CPP/bit.h"
+#include "src/__support/CPP/type_traits.h"
 #include "src/__support/FPUtil/FEnvImpl.h"
 #include "src/__support/FPUtil/FPBits.h"
 #include "src/__support/FPUtil/PlatformDefs.h"
+#include "src/__support/FPUtil/rounding_mode.h"
+#include "src/__support/UInt128.h"
+#include "src/__support/builtin_wrappers.h"
+#include "src/__support/common.h"
 
 namespace __llvm_libc {
 namespace fputil {
@@ -31,72 +36,28 @@ template <> struct SpecialLongDouble<long double> {
 #endif // SPECIAL_X86_LONG_DOUBLE
 
 template <typename T>
-static inline void normalize(int &exponent,
-                             typename FPBits<T>::UIntType &mantissa);
-
-template <> inline void normalize<float>(int &exponent, uint32_t &mantissa) {
-  // Use binary search to shift the leading 1 bit.
-  // With MantissaWidth<float> = 23, it will take
-  // ceil(log2(23)) = 5 steps checking the mantissa bits as followed:
-  // Step 1: 0000 0000 0000 XXXX XXXX XXXX
-  // Step 2: 0000 00XX XXXX XXXX XXXX XXXX
-  // Step 3: 000X XXXX XXXX XXXX XXXX XXXX
-  // Step 4: 00XX XXXX XXXX XXXX XXXX XXXX
-  // Step 5: 0XXX XXXX XXXX XXXX XXXX XXXX
-  constexpr int NSTEPS = 5; // = ceil(log2(MantissaWidth))
-  constexpr uint32_t BOUNDS[NSTEPS] = {1 << 12, 1 << 18, 1 << 21, 1 << 22,
-                                       1 << 23};
-  constexpr int SHIFTS[NSTEPS] = {12, 6, 3, 2, 1};
-
-  for (int i = 0; i < NSTEPS; ++i) {
-    if (mantissa < BOUNDS[i]) {
-      exponent -= SHIFTS[i];
-      mantissa <<= SHIFTS[i];
-    }
-  }
-}
-
-template <> inline void normalize<double>(int &exponent, uint64_t &mantissa) {
-  // Use binary search to shift the leading 1 bit similar to float.
-  // With MantissaWidth<double> = 52, it will take
-  // ceil(log2(52)) = 6 steps checking the mantissa bits.
-  constexpr int NSTEPS = 6; // = ceil(log2(MantissaWidth))
-  constexpr uint64_t BOUNDS[NSTEPS] = {1ULL << 26, 1ULL << 39, 1ULL << 46,
-                                       1ULL << 49, 1ULL << 51, 1ULL << 52};
-  constexpr int SHIFTS[NSTEPS] = {27, 14, 7, 4, 2, 1};
-
-  for (int i = 0; i < NSTEPS; ++i) {
-    if (mantissa < BOUNDS[i]) {
-      exponent -= SHIFTS[i];
-      mantissa <<= SHIFTS[i];
-    }
-  }
+LIBC_INLINE void normalize(int &exponent,
+                           typename FPBits<T>::UIntType &mantissa) {
+  const int shift = unsafe_clz(mantissa) -
+                    (8 * sizeof(mantissa) - 1 - MantissaWidth<T>::VALUE);
+  exponent -= shift;
+  mantissa <<= shift;
 }
 
 #ifdef LONG_DOUBLE_IS_DOUBLE
 template <>
-inline void normalize<long double>(int &exponent, uint64_t &mantissa) {
+LIBC_INLINE void normalize<long double>(int &exponent, uint64_t &mantissa) {
   normalize<double>(exponent, mantissa);
 }
 #elif !defined(SPECIAL_X86_LONG_DOUBLE)
 template <>
-inline void normalize<long double>(int &exponent, __uint128_t &mantissa) {
-  // Use binary search to shift the leading 1 bit similar to float.
-  // With MantissaWidth<long double> = 112, it will take
-  // ceil(log2(112)) = 7 steps checking the mantissa bits.
-  constexpr int NSTEPS = 7; // = ceil(log2(MantissaWidth))
-  constexpr __uint128_t BOUNDS[NSTEPS] = {
-      __uint128_t(1) << 56,  __uint128_t(1) << 84,  __uint128_t(1) << 98,
-      __uint128_t(1) << 105, __uint128_t(1) << 109, __uint128_t(1) << 111,
-      __uint128_t(1) << 112};
-  constexpr int SHIFTS[NSTEPS] = {57, 29, 15, 8, 4, 2, 1};
-
-  for (int i = 0; i < NSTEPS; ++i) {
-    if (mantissa < BOUNDS[i]) {
-      exponent -= SHIFTS[i];
-      mantissa <<= SHIFTS[i];
-    }
-  }
+LIBC_INLINE void normalize<long double>(int &exponent, UInt128 &mantissa) {
+  const uint64_t hi_bits = static_cast<uint64_t>(mantissa >> 64);
+  const int shift = hi_bits
+                        ? (unsafe_clz(hi_bits) - 15)
+                        : (unsafe_clz(static_cast<uint64_t>(mantissa)) + 49);
+  exponent -= shift;
+  mantissa <<= shift;
 }
 #endif
 
@@ -105,8 +66,7 @@ inline void normalize<long double>(int &exponent, __uint128_t &mantissa) {
 // Correctly rounded IEEE 754 SQRT for all rounding modes.
 // Shift-and-add algorithm.
 template <typename T>
-static inline cpp::EnableIfType<cpp::IsFloatingPointType<T>::Value, T>
-sqrt(T x) {
+LIBC_INLINE cpp::enable_if_t<cpp::is_floating_point_v<T>, T> sqrt(T x) {
 
   if constexpr (internal::SpecialLongDouble<T>::VALUE) {
     // Special 80-bit long double.
@@ -121,7 +81,7 @@ sqrt(T x) {
     if (bits.is_inf_or_nan()) {
       if (bits.get_sign() && (bits.get_mantissa() == 0)) {
         // sqrt(-Inf) = NaN
-        return FPBits<T>::build_nan(ONE >> 1);
+        return FPBits<T>::build_quiet_nan(ONE >> 1);
       } else {
         // sqrt(NaN) = NaN
         // sqrt(+Inf) = +Inf
@@ -133,7 +93,7 @@ sqrt(T x) {
       return x;
     } else if (bits.get_sign()) {
       // sqrt( negative numbers ) = NaN
-      return FPBits<T>::build_nan(ONE >> 1);
+      return FPBits<T>::build_quiet_nan(ONE >> 1);
     } else {
       int x_exp = bits.get_exponent();
       UIntType x_mant = bits.get_mantissa();
@@ -177,7 +137,7 @@ sqrt(T x) {
       }
 
       // We compute one more iteration in order to round correctly.
-      bool lsb = y & 1; // Least significant bit
+      bool lsb = static_cast<bool>(y & 1); // Least significant bit
       bool rb = false;  // Round bit
       r <<= 2;
       UIntType tmp = (y << 2) + 1;
@@ -191,7 +151,7 @@ sqrt(T x) {
 
       y = (y - ONE) | (static_cast<UIntType>(x_exp) << MantissaWidth<T>::VALUE);
 
-      switch (get_round()) {
+      switch (quick_get_round()) {
       case FE_TONEAREST:
         // Round to nearest, ties to even
         if (rb && (lsb || (r != 0)))
@@ -203,7 +163,7 @@ sqrt(T x) {
         break;
       }
 
-      return *reinterpret_cast<T *>(&y);
+      return cpp::bit_cast<T>(y);
     }
   }
 }

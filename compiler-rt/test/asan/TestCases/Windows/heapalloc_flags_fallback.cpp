@@ -1,4 +1,4 @@
-// RUN: %clang_cl_asan -Od %s -Fe%t
+// RUN: %clang_cl_asan %Od %s %Fe%t
 // RUN: %run %t 2>&1 | FileCheck %s
 // RUN: %run %t 2>&1 | FileCheck %s
 

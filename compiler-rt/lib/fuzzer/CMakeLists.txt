@@ -66,6 +66,7 @@ if(OS_NAME MATCHES "Linux|Fuchsia" AND
   append_list_if(COMPILER_RT_HAS_NOSTDINCXX_FLAG -nostdinc++ LIBFUZZER_CFLAGS)
 elseif(TARGET cxx-headers OR HAVE_LIBCXX)
   # libFuzzer uses C++ standard library headers.
+  list(APPEND LIBFUZZER_CFLAGS ${COMPILER_RT_CXX_CFLAGS})
   set(LIBFUZZER_DEPS cxx-headers)
 endif()
 
@@ -88,126 +89,65 @@ endif()
 
 add_compiler_rt_component(fuzzer)
 
-if(MSVC)
-  # Strip any definitions of MTd? or MDd?, these will be placed per-target
-  # to avoid definition mismatches at link time.
-  # Create a project global master list of supported windows runtimes
-  set(COMPILER_RT_WINDOWS_RT_VERSIONS_STATIC MT MTd)
-  set(COMPILER_RT_WINDOWS_RT_VERSIONS_DYNAMIC MD MDd)
-  set(COMPILER_RT_WINDOWS_RT_VERSIONS ${COMPILER_RT_WINDOWS_RT_VERSIONS_DYNAMIC} ${COMPILER_RT_WINDOWS_RT_VERSIONS_STATIC})
-  if(COMPILER_RT_HAS_MT_FLAG)
-    foreach(flag_var
-      CMAKE_C_FLAGS CMAKE_C_FLAGS_DEBUG CMAKE_C_FLAGS_RELEASE
-      CMAKE_C_FLAGS_MINSIZEREL CMAKE_C_FLAGS_RELWITHDEBINFO
-      CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE
-      CMAKE_CXX_FLAGS_MINSIZEREL CMAKE_CXX_FLAGS_RELWITHDEBINFO)
-      string(REGEX REPLACE "[\/\-]M[TD]d?" "" ${flag_var} "${${flag_var}}")
-    endforeach()
-  endif()
+add_compiler_rt_object_libraries(RTfuzzer
+  OS ${FUZZER_SUPPORTED_OS}
+  ARCHS ${FUZZER_SUPPORTED_ARCH}
+  SOURCES ${LIBFUZZER_SOURCES}
+  ADDITIONAL_HEADERS ${LIBFUZZER_HEADERS}
+  CFLAGS ${LIBFUZZER_CFLAGS}
+  DEPS ${LIBFUZZER_DEPS})
 
-  create_multiple_windows_obj_libs(RTfuzzer
-    "${COMPILER_RT_WINDOWS_RT_VERSIONS}"
-    OS ${FUZZER_SUPPORTED_OS}
-    ARCHS ${FUZZER_SUPPORTED_ARCH}
-    SOURCES ${LIBFUZZER_SOURCES}
-    ADDITIONAL_HEADERS ${LIBFUZZER_HEADERS}
-    CFLAGS ${LIBFUZZER_CFLAGS}
-    DEPS ${LIBFUZZER_DEPS})
+add_compiler_rt_object_libraries(RTfuzzer_main
+  OS ${FUZZER_SUPPORTED_OS}
+  ARCHS ${FUZZER_SUPPORTED_ARCH}
+  SOURCES FuzzerMain.cpp
+  CFLAGS ${LIBFUZZER_CFLAGS}
+  DEPS ${LIBFUZZER_DEPS})
 
-  create_multiple_windows_obj_libs(RTfuzzer_main
-    "${COMPILER_RT_WINDOWS_RT_VERSIONS}"
-    OS ${FUZZER_SUPPORTED_OS}
-    ARCHS ${FUZZER_SUPPORTED_ARCH}
-    SOURCES FuzzerMain.cpp
-    CFLAGS ${LIBFUZZER_CFLAGS}
-    DEPS ${LIBFUZZER_DEPS})
+add_compiler_rt_object_libraries(RTfuzzer_interceptors
+  OS ${FUZZER_SUPPORTED_OS}
+  ARCHS ${FUZZER_SUPPORTED_ARCH}
+  SOURCES FuzzerInterceptors.cpp
+  CFLAGS ${LIBFUZZER_CFLAGS}
+  DEPS ${LIBFUZZER_DEPS})
 
-  set(FUZZER_COMMON_RUNTIME_OBJECT_LIBS
-    RTfuzzer
-    RTfuzzer_main)
-
-  foreach(rt_flag MT MD MDd MTd)
-    foreach(lib_name ${FUZZER_COMMON_RUNTIME_OBJECT_LIBS})
-      list(APPEND FUZZER_COMMON_RUNTIME_OBJECT_LIBS_${rt_flag} ${lib_name}_${rt_flag})
-    endforeach()
-
-    add_compiler_rt_runtime(clang_rt.fuzzer_${rt_flag}
-      STATIC
-      OS ${FUZZER_SUPPORTED_OS}
-      ARCHS ${FUZZER_SUPPORTED_ARCH}
-      OBJECT_LIBS ${FUZZER_COMMON_RUNTIME_OBJECT_LIBS_${rt_flag}}
-      CFLAGS ${LIBFUZZER_CFLAGS}
-      PARENT_TARGET fuzzer)
-
-    add_compiler_rt_runtime(clang_rt.fuzzer_no_main_${rt_flag}
-      STATIC
-      OS ${FUZZER_SUPPORTED_OS}
-      ARCHS ${FUZZER_SUPPORTED_ARCH}
-      OBJECT_LIBS RTfuzzer_${rt_flag}
-      CFLAGS ${LIBFUZZER_CFLAGS}
-      PARENT_TARGET fuzzer)
-
-  endforeach()
-else()
-  add_compiler_rt_object_libraries(RTfuzzer
-    OS ${FUZZER_SUPPORTED_OS}
-    ARCHS ${FUZZER_SUPPORTED_ARCH}
-    SOURCES ${LIBFUZZER_SOURCES}
-    ADDITIONAL_HEADERS ${LIBFUZZER_HEADERS}
-    CFLAGS ${LIBFUZZER_CFLAGS}
-    DEPS ${LIBFUZZER_DEPS})
-
-  add_compiler_rt_object_libraries(RTfuzzer_main
-    OS ${FUZZER_SUPPORTED_OS}
-    ARCHS ${FUZZER_SUPPORTED_ARCH}
-    SOURCES FuzzerMain.cpp
-    CFLAGS ${LIBFUZZER_CFLAGS}
-    DEPS ${LIBFUZZER_DEPS})
-
-  add_compiler_rt_object_libraries(RTfuzzer_interceptors
-    OS ${FUZZER_SUPPORTED_OS}
-    ARCHS ${FUZZER_SUPPORTED_ARCH}
-    SOURCES FuzzerInterceptors.cpp
-    CFLAGS ${LIBFUZZER_CFLAGS}
-    DEPS ${LIBFUZZER_DEPS})
-  add_compiler_rt_runtime(clang_rt.fuzzer
-    STATIC
-    OS ${FUZZER_SUPPORTED_OS}
-    ARCHS ${FUZZER_SUPPORTED_ARCH}
-    OBJECT_LIBS RTfuzzer RTfuzzer_main
-    CFLAGS ${LIBFUZZER_CFLAGS}
-    PARENT_TARGET fuzzer)
-
-  add_compiler_rt_runtime(clang_rt.fuzzer_no_main
-    STATIC
-    OS ${FUZZER_SUPPORTED_OS}
-    ARCHS ${FUZZER_SUPPORTED_ARCH}
-    OBJECT_LIBS RTfuzzer
+add_compiler_rt_runtime(clang_rt.fuzzer
+  STATIC
+  OS ${FUZZER_SUPPORTED_OS}
+  ARCHS ${FUZZER_SUPPORTED_ARCH}
+  OBJECT_LIBS RTfuzzer RTfuzzer_main
   CFLAGS ${LIBFUZZER_CFLAGS}
   PARENT_TARGET fuzzer)
 
-  add_compiler_rt_runtime(clang_rt.fuzzer_interceptors
-    STATIC
-    OS ${FUZZER_SUPPORTED_OS}
-    ARCHS ${FUZZER_SUPPORTED_ARCH}
-    OBJECT_LIBS RTfuzzer_interceptors
-    CFLAGS ${LIBFUZZER_CFLAGS}
-    PARENT_TARGET fuzzer)
-endif()
+add_compiler_rt_runtime(clang_rt.fuzzer_no_main
+  STATIC
+  OS ${FUZZER_SUPPORTED_OS}
+  ARCHS ${FUZZER_SUPPORTED_ARCH}
+  OBJECT_LIBS RTfuzzer
+  CFLAGS ${LIBFUZZER_CFLAGS}
+  PARENT_TARGET fuzzer)
+
+add_compiler_rt_runtime(clang_rt.fuzzer_interceptors
+  STATIC
+  OS ${FUZZER_SUPPORTED_OS}
+  ARCHS ${FUZZER_SUPPORTED_ARCH}
+  OBJECT_LIBS RTfuzzer_interceptors
+  CFLAGS ${LIBFUZZER_CFLAGS}
+  PARENT_TARGET fuzzer)
 
 if(OS_NAME MATCHES "Linux|Fuchsia" AND
    COMPILER_RT_LIBCXX_PATH AND
    COMPILER_RT_LIBCXXABI_PATH)
   macro(partially_link_libcxx name dir arch)
-    if(${arch} MATCHES "i386")
-      set(EMULATION_ARGUMENT "-m" "elf_i386")
-    else()
-      set(EMULATION_ARGUMENT "")
+    get_target_flags_for_arch(${arch} target_cflags)
+    if(CMAKE_CXX_COMPILER_ID MATCHES Clang)
+      get_compiler_rt_target(${arch} target)
+      set(target_cflags --target=${target} ${target_cflags})
     endif()
     set(cxx_${arch}_merge_dir "${CMAKE_CURRENT_BINARY_DIR}/cxx_${arch}_merge.dir")
     file(MAKE_DIRECTORY ${cxx_${arch}_merge_dir})
     add_custom_command(TARGET clang_rt.${name}-${arch} POST_BUILD
-      COMMAND ${CMAKE_LINKER} ${EMULATION_ARGUMENT} --whole-archive "$<TARGET_LINKER_FILE:clang_rt.${name}-${arch}>" --no-whole-archive ${dir}/lib/libc++.a -r -o ${name}.o
+      COMMAND ${CMAKE_CXX_COMPILER} ${target_cflags} -Wl,--whole-archive "$<TARGET_LINKER_FILE:clang_rt.${name}-${arch}>" -Wl,--no-whole-archive ${dir}/lib/libc++.a -r -o ${name}.o
       COMMAND ${CMAKE_OBJCOPY} --localize-hidden ${name}.o
       COMMAND ${CMAKE_COMMAND} -E remove "$<TARGET_LINKER_FILE:clang_rt.${name}-${arch}>"
       COMMAND ${CMAKE_AR} qcs "$<TARGET_LINKER_FILE:clang_rt.${name}-${arch}>" ${name}.o

@@ -56,26 +56,30 @@ def ACCC_Capture : Clause<"capture"> {
 
 // 2.9.1
 def ACCC_Collapse : Clause<"collapse"> {
-  let flangClass = "ScalarIntConstantExpr";
+  let flangClass = "AccCollapseArg";
 }
 
 // 2.7.6
 def ACCC_Copy : Clause<"copy"> {
   let flangClass = "AccObjectList";
+  let aliases = ["present_or_copy", "pcopy"];
 }
 // 2.7.7
 def ACCC_Copyin : Clause<"copyin"> {
   let flangClass = "AccObjectListWithModifier";
+  let aliases = ["present_or_copyin", "pcopyin"];
 }
 
 // 2.7.8
 def ACCC_Copyout : Clause<"copyout"> {
   let flangClass = "AccObjectListWithModifier";
+  let aliases = ["present_or_copyout", "pcopyout"];
 }
 
 // 2.7.9
 def ACCC_Create : Clause<"create"> {
   let flangClass = "AccObjectListWithModifier";
+  let aliases = ["present_or_create", "pcreate"];
 }
 
 // 2.5.15
@@ -128,10 +132,9 @@ def ACCC_DeviceResident : Clause<"device_resident"> {
 
 // 2.4
 def ACCC_DeviceType : Clause<"device_type"> {
-  let flangClass = "ScalarIntExpr";
+  let flangClass = "AccDeviceTypeExprList";
   let defaultValue = "*";
-  let isValueOptional = true;
-  let isValueList = true;
+  let aliases = ["dtype"];
 }
 
 // 2.6.6
@@ -144,7 +147,7 @@ def ACCC_FirstPrivate : Clause<"firstprivate"> {
 
 // 2.9.2
 def ACCC_Gang : Clause<"gang"> {
-  let flangClass = "AccGangArgument";
+  let flangClass = "AccGangArgList";
   let isValueOptional = true;
 }
 
@@ -218,6 +221,7 @@ def ACCC_Reduction : Clause<"reduction"> {
 // 2.5.6
 def ACCC_Self : Clause<"self"> {
   let flangClass = "AccSelfClause";
+  let isValueOptional = true;
 }
 
 // 2.9.5
@@ -227,6 +231,7 @@ def ACCC_Seq : Clause<"seq"> {}
 def ACCC_Vector : Clause<"vector"> {
   let flangClass = "ScalarIntExpr";
   let isValueOptional = true;
+  let prefix = "length";
 }
 
 // 2.5.11
@@ -244,6 +249,7 @@ def ACCC_Wait : Clause<"wait"> {
 def ACCC_Worker: Clause<"worker"> {
   let flangClass = "ScalarIntExpr";
   let isValueOptional = true;
+  let prefix = "num";
 }
 
 // 2.12
@@ -332,6 +338,7 @@ def ACC_Parallel : Directive<"parallel"> {
     VersionedClause<ACCC_Present>,
     VersionedClause<ACCC_Private>,
     VersionedClause<ACCC_FirstPrivate>,
+    VersionedClause<ACCC_Reduction>,
     VersionedClause<ACCC_Wait>
   ];
   let allowedOnceClauses = [
@@ -340,7 +347,6 @@ def ACC_Parallel : Directive<"parallel"> {
     VersionedClause<ACCC_If>,
     VersionedClause<ACCC_NumGangs>,
     VersionedClause<ACCC_NumWorkers>,
-    VersionedClause<ACCC_Reduction>,
     VersionedClause<ACCC_Self>,
     VersionedClause<ACCC_VectorLength>
   ];
@@ -362,13 +368,13 @@ def ACC_Serial : Directive<"serial"> {
     VersionedClause<ACCC_Present>,
     VersionedClause<ACCC_Private>,
     VersionedClause<ACCC_FirstPrivate>,
+    VersionedClause<ACCC_Reduction>,
     VersionedClause<ACCC_Wait>
   ];
   let allowedOnceClauses = [
     VersionedClause<ACCC_Async>,
     VersionedClause<ACCC_Default>,
     VersionedClause<ACCC_If>,
-    VersionedClause<ACCC_Reduction>,
     VersionedClause<ACCC_Self>
   ];
 }
@@ -377,12 +383,12 @@ def ACC_Serial : Directive<"serial"> {
 def ACC_Loop : Directive<"loop"> {
   let allowedClauses = [
     VersionedClause<ACCC_DeviceType>,
-    VersionedClause<ACCC_Private>
+    VersionedClause<ACCC_Private>,
+    VersionedClause<ACCC_Reduction>
   ];
   let allowedOnceClauses = [
     VersionedClause<ACCC_Collapse>,
     VersionedClause<ACCC_Gang>,
-    VersionedClause<ACCC_Reduction>,
     VersionedClause<ACCC_Tile>,
     VersionedClause<ACCC_Vector>,
     VersionedClause<ACCC_Worker>
@@ -529,6 +535,7 @@ def ACC_KernelsLoop : Directive<"kernels loop"> {
     VersionedClause<ACCC_NoCreate>,
     VersionedClause<ACCC_Present>,
     VersionedClause<ACCC_Private>,
+    VersionedClause<ACCC_Reduction>,
     VersionedClause<ACCC_DevicePtr>,
     VersionedClause<ACCC_Attach>,
     VersionedClause<ACCC_Wait>
@@ -541,7 +548,6 @@ def ACC_KernelsLoop : Directive<"kernels loop"> {
     VersionedClause<ACCC_If>,
     VersionedClause<ACCC_NumGangs>,
     VersionedClause<ACCC_NumWorkers>,
-    VersionedClause<ACCC_Reduction>,
     VersionedClause<ACCC_Self>,
     VersionedClause<ACCC_Tile>,
     VersionedClause<ACCC_Vector>,
@@ -569,6 +575,7 @@ def ACC_ParallelLoop : Directive<"parallel loop"> {
     VersionedClause<ACCC_NoCreate>,
     VersionedClause<ACCC_Present>,
     VersionedClause<ACCC_Private>,
+    VersionedClause<ACCC_Reduction>,
     VersionedClause<ACCC_Tile>,
     VersionedClause<ACCC_Wait>
   ];
@@ -580,7 +587,6 @@ def ACC_ParallelLoop : Directive<"parallel loop"> {
     VersionedClause<ACCC_If>,
     VersionedClause<ACCC_NumGangs>,
     VersionedClause<ACCC_NumWorkers>,
-    VersionedClause<ACCC_Reduction>,
     VersionedClause<ACCC_Self>,
     VersionedClause<ACCC_Vector>,
     VersionedClause<ACCC_VectorLength>,
@@ -607,6 +613,7 @@ def ACC_SerialLoop : Directive<"serial loop"> {
     VersionedClause<ACCC_NoCreate>,
     VersionedClause<ACCC_Present>,
     VersionedClause<ACCC_Private>,
+    VersionedClause<ACCC_Reduction>,
     VersionedClause<ACCC_Wait>
   ];
   let allowedOnceClauses = [
@@ -615,7 +622,6 @@ def ACC_SerialLoop : Directive<"serial loop"> {
     VersionedClause<ACCC_Default>,
     VersionedClause<ACCC_Gang>,
     VersionedClause<ACCC_If>,
-    VersionedClause<ACCC_Reduction>,
     VersionedClause<ACCC_Self>,
     VersionedClause<ACCC_Tile>,
     VersionedClause<ACCC_Vector>,

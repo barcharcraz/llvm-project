@@ -1,4 +1,5 @@
 _GLOBAL_OFFSET_TABLE_ U
+_ZN11__sanitizer13internal_mmapEPvjiiiy U
 _ZN11__sanitizer13internal_mmapEPvmiiiy U
 _ZN11__sanitizer13internal_openEPKcij U
 _ZN11__sanitizer13internal_statEPKcPv U
@@ -6,7 +7,9 @@ _ZN11__sanitizer14internal_closeEi U
 _ZN11__sanitizer14internal_fstatEiPv U
 _ZN11__sanitizer14internal_lstatEPKcPv U
 _ZN11__sanitizer15internal_strlenEPKc U
+_ZN11__sanitizer16internal_iserrorEjPi U
 _ZN11__sanitizer16internal_iserrorEmPi U
+_ZN11__sanitizer17internal_snprintfEPcjPKcz U
 _ZN11__sanitizer17internal_snprintfEPcmPKcz U
 __ctype_b_loc U
 __ctype_get_mb_cur_max U
@@ -46,6 +49,8 @@ __umoddi3 U
 _exit U
 abort U
 access U
+aligned_alloc U
+arc4random U
 bcmp U
 calloc U
 catclose U
@@ -70,6 +75,7 @@ fopen U
 fork U
 fprintf U
 fputc U
+fputwc U
 free U
 freelocale U
 fwrite U
@@ -82,6 +88,7 @@ getpwuid U
 getrlimit U
 gettimeofday U
 getuid U
+getwc U
 ioctl U
 isalnum U
 isalpha U
@@ -107,9 +114,12 @@ memcpy U
 memmove U
 memset U
 mkdir U
+modf U
 munmap U
 newlocale U
 perror U
+posix_madvise U
+posix_memalign U
 posix_spawn U
 posix_spawn_file_actions_adddup2 U
 posix_spawn_file_actions_addopen U
@@ -148,18 +158,24 @@ strncmp U
 strncpy U
 strrchr U
 strsep U
+strtod U
 strtod_l U
 strtof_l U
 strtok_r U
 strtol U
 strtold_l U
+strtoll U
 strtoll_l U
+strtoull U
 strtoull_l U
 syscall U
 sysconf U
 tcgetattr U
+tolower U
+toupper U
 uname U
 ungetc U
+ungetwc U
 unlink U
 uselocale U
 vasprintf U
@@ -171,6 +187,7 @@ waitpid U
 wcrtomb U
 wcslen U
 wcsnrtombs U
+wmemchr U
 wmemcpy U
 wmemmove U
 wmemset U

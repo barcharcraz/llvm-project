@@ -14,9 +14,10 @@
 #include "llvm/Support/Allocator.h"
 
 namespace mlir {
-
-class NestedPattern;
 class Operation;
+
+namespace affine {
+class NestedPattern;
 
 /// An NestedPattern captures nested patterns in the IR.
 /// It is used in conjunction with a scoped NestedPatternContext which is an
@@ -101,11 +102,6 @@ public:
     // them, but we should free the memory allocated by std::function outside of
     // the arena allocator.
     freeNested();
-  }
-
-  /// Returns all the top-level matches in `func`.
-  void match(FuncOp func, SmallVectorImpl<NestedMatch> *matches) {
-    func.walk([&](Operation *op) { matchOne(op, matches); });
   }
 
   /// Returns all the top-level matches in `op`.
@@ -196,6 +192,7 @@ bool isReductionLoop(Operation &op);
 bool isLoadOrStore(Operation &op);
 
 } // namespace matcher
+} // namespace affine
 } // namespace mlir
 
 #endif // MLIR_DIALECT_AFFINE_ANALYSIS_NESTEDMATCHER_H

@@ -232,8 +232,6 @@ bool SymbolizerProcess::StartSymbolizerSubprocess() {
     // Check that tool command lines are simple and that complete escaping is
     // unnecessary.
     CHECK(!internal_strchr(arg, '"') && "quotes in args unsupported");
-    CHECK(!internal_strstr(arg, "\\\\") &&
-          "double backslashes in args unsupported");
     CHECK(arglen > 0 && arg[arglen - 1] != '\\' &&
           "args ending in backslash and empty args unsupported");
     command_line.append("\"%s\" ", arg);
@@ -295,15 +293,15 @@ static void ChooseSymbolizerTools(IntrusiveList<SymbolizerTool> *list,
   const char *path =
       user_path ? user_path : FindPathToBinary("llvm-symbolizer.exe");
   if (path) {
-    VReport(2, "Using llvm-symbolizer at %spath: %s\n",
-            user_path ? "user-specified " : "", path);
-    list->push_back(new(*allocator) LLVMSymbolizer(path, allocator));
-  } else {
     if (user_path && user_path[0] == '\0') {
       VReport(2, "External symbolizer is explicitly disabled.\n");
     } else {
-      VReport(2, "External symbolizer is not present.\n");
+      VReport(2, "Using llvm-symbolizer at %spath: %s\n",
+              user_path ? "user-specified " : "", path);
+      list->push_back(new (*allocator) LLVMSymbolizer(path, allocator));
     }
+  } else {
+    VReport(2, "External symbolizer is not present.\n");
   }
 
   // Add the dbghelp based symbolizer.

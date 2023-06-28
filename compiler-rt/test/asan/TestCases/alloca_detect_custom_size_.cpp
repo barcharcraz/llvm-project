@@ -6,7 +6,8 @@
 
 #include "defines.h"
 #include <assert.h>
-#include <cstdint>
+#include <stdint.h>
+
 struct A {
   char a[3];
   int b[3];
@@ -17,7 +18,7 @@ ATTRIBUTE_NOINLINE void foo(int index, int len) {
 #ifdef MSVC
   volatile struct A *str = (volatile struct A *)_alloca(len * sizeof(struct A));
 #else
-  volatile struct A str[len];
+  volatile struct A str[len] __attribute__((aligned(32)));
 #endif
   assert(!(reinterpret_cast<uintptr_t>(str) & 31L));
   str[index].a[0] = '1'; // BOOM

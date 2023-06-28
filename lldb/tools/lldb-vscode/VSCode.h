@@ -15,6 +15,7 @@
 #include <cstdio>
 #include <iosfwd>
 #include <map>
+#include <optional>
 #include <set>
 #include <thread>
 
@@ -141,10 +142,18 @@ struct VSCode {
   std::vector<std::string> exit_commands;
   std::vector<std::string> stop_commands;
   std::vector<std::string> terminate_commands;
+  // A copy of the last LaunchRequest or AttachRequest so we can reuse its
+  // arguments if we get a RestartRequest.
+  std::optional<llvm::json::Object> last_launch_or_attach_request;
   lldb::tid_t focus_tid;
   bool sent_terminated_event;
   bool stop_at_entry;
   bool is_attach;
+  // The process event thread normally responds to process exited events by
+  // shutting down the entire adapter. When we're restarting, we keep the id of
+  // the old process here so we can detect this case and keep running.
+  lldb::pid_t restarting_process_id;
+  bool configuration_done_sent;
   uint32_t reverse_request_seq;
   std::map<std::string, RequestCallback> request_handlers;
   bool waiting_for_run_in_terminal;
@@ -242,6 +251,27 @@ struct VSCode {
 
   /// Debuggee will continue from stopped state.
   void WillContinue() { variables.Clear(); }
+
+  /// Poll the process to wait for it to reach the eStateStopped state.
+  ///
+  /// Wait for the process hit a stopped state. When running a launch with
+  /// "launchCommands", or attach with  "attachCommands", the calls might take
+  /// some time to stop at the entry point since the command is asynchronous. We
+  /// need to sync up with the process and make sure it is stopped before we
+  /// proceed to do anything else as we will soon be asked to set breakpoints
+  /// and other things that require the process to be stopped. We must use
+  /// polling because "attachCommands" or "launchCommands" may or may not send
+  /// process state change events depending on if the user modifies the async
+  /// setting in the debugger. Since both "attachCommands" and "launchCommands"
+  /// could end up using any combination of LLDB commands, we must ensure we can
+  /// also catch when the process stops, so we must poll the process to make
+  /// sure we handle all cases.
+  ///
+  /// \param[in] seconds
+  ///   The number of seconds to poll the process to wait until it is stopped.
+  ///
+  /// \return Error if waiting for the process fails, no error if succeeds.
+  lldb::SBError WaitForProcessToStop(uint32_t seconds);
 
 private:
   // Send the JSON in "json_str" to the "out" stream. Correctly send the

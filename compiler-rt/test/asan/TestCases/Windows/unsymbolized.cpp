@@ -4,8 +4,10 @@
 
 // RUN: rm -f %t.pdb
 // RUN: %clangxx_asan -c -O2 %s -o %t.obj
-// RUN: link /nologo /OUT:%t.exe %t.obj %asan_lib %asan_cxx_lib
+// RUN: lld-link /nologo /OUT:%t.exe %t.obj %asan_lib %asan_cxx_lib
 // RUN: not %run %t.exe 2>&1 | FileCheck %s
+// REQUIRES: lld-available
+
 #include "defines.h"
 #include <stdio.h>
 #include <stdlib.h>

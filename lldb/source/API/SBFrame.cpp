@@ -16,9 +16,11 @@
 
 #include "Utils.h"
 #include "lldb/Core/Address.h"
+#include "lldb/Core/Debugger.h"
 #include "lldb/Core/StreamFile.h"
 #include "lldb/Core/ValueObjectRegister.h"
 #include "lldb/Core/ValueObjectVariable.h"
+#include "lldb/Core/ValueObjectConstResult.h"
 #include "lldb/Expression/ExpressionVariable.h"
 #include "lldb/Expression/UserExpression.h"
 #include "lldb/Host/Host.h"
@@ -38,6 +40,7 @@
 #include "lldb/Target/Thread.h"
 #include "lldb/Utility/ConstString.h"
 #include "lldb/Utility/Instrumentation.h"
+#include "lldb/Utility/LLDBLog.h"
 #include "lldb/Utility/Stream.h"
 
 #include "lldb/API/SBAddress.h"
@@ -599,9 +602,11 @@ SBValue SBFrame::FindValue(const char *name, ValueType value_type,
                 stop_if_block_is_inlined_function,
                 [frame](Variable *v) { return v->IsInScope(frame); },
                 &variable_list);
-          if (value_type == eValueTypeVariableGlobal) {
+          if (value_type == eValueTypeVariableGlobal 
+              || value_type == eValueTypeVariableStatic) {
             const bool get_file_globals = true;
-            VariableList *frame_vars = frame->GetVariableList(get_file_globals);
+            VariableList *frame_vars = frame->GetVariableList(get_file_globals,
+                                                              nullptr);
             if (frame_vars)
               frame_vars->AppendVariablesIfUnique(variable_list);
           }
@@ -636,9 +641,9 @@ SBValue SBFrame::FindValue(const char *name, ValueType value_type,
             for (uint32_t set_idx = 0; set_idx < num_sets; ++set_idx) {
               const RegisterSet *reg_set = reg_ctx->GetRegisterSet(set_idx);
               if (reg_set &&
-                  ((reg_set->name && strcasecmp(reg_set->name, name) == 0) ||
-                   (reg_set->short_name &&
-                    strcasecmp(reg_set->short_name, name) == 0))) {
+                  (llvm::StringRef(reg_set->name).equals_insensitive(name) ||
+                   llvm::StringRef(reg_set->short_name)
+                       .equals_insensitive(name))) {
                 value_sp =
                     ValueObjectRegisterSet::Create(frame, reg_ctx, set_idx);
                 sb_value.SetSP(value_sp);
@@ -704,24 +709,20 @@ SBThread SBFrame::GetThread() const {
 const char *SBFrame::Disassemble() const {
   LLDB_INSTRUMENT_VA(this);
 
-  const char *disassembly = nullptr;
   std::unique_lock<std::recursive_mutex> lock;
   ExecutionContext exe_ctx(m_opaque_sp.get(), lock);
-
-  StackFrame *frame = nullptr;
   Target *target = exe_ctx.GetTargetPtr();
   Process *process = exe_ctx.GetProcessPtr();
-  if (target && process) {
-    Process::StopLocker stop_locker;
-    if (stop_locker.TryLock(&process->GetRunLock())) {
-      frame = exe_ctx.GetFramePtr();
-      if (frame) {
-        disassembly = frame->Disassemble();
-      }
-    }
+  if (!target || !process)
+    return nullptr;
+
+  Process::StopLocker stop_locker;
+  if (stop_locker.TryLock(&process->GetRunLock())) {
+    if (auto *frame = exe_ctx.GetFramePtr())
+      return ConstString(frame->Disassemble()).GetCString();
   }
 
-  return disassembly;
+  return nullptr;
 }
 
 SBValueList SBFrame::GetVariables(bool arguments, bool locals, bool statics,
@@ -738,7 +739,7 @@ SBValueList SBFrame::GetVariables(bool arguments, bool locals, bool statics,
     lldb::DynamicValueType use_dynamic =
         frame->CalculateTarget()->GetPreferDynamicValue();
     const bool include_runtime_support_values =
-        target ? target->GetDisplayRuntimeSupportValues() : false;
+        target->GetDisplayRuntimeSupportValues();
 
     SBVariablesOptions options;
     options.SetIncludeArguments(arguments);
@@ -803,12 +804,21 @@ SBValueList SBFrame::GetVariables(const lldb::SBVariablesOptions &options) {
     if (stop_locker.TryLock(&process->GetRunLock())) {
       frame = exe_ctx.GetFramePtr();
       if (frame) {
+        Debugger &dbg = process->GetTarget().GetDebugger();
         VariableList *variable_list = nullptr;
-        variable_list = frame->GetVariableList(true);
+        Status var_error;
+        variable_list = frame->GetVariableList(true, &var_error);
+        if (var_error.Fail())
+          value_list.SetError(var_error);
         if (variable_list) {
           const size_t num_variables = variable_list->GetSize();
           if (num_variables) {
             for (const VariableSP &variable_sp : *variable_list) {
+              if (dbg.InterruptRequested()) {
+                Log *log = GetLog(LLDBLog::Host);
+                LLDB_LOG(log, "Interrupted SBFrame::GetVariables");
+                return {};
+              }
               if (variable_sp) {
                 bool add_variable = false;
                 switch (variable_sp->GetScope()) {
@@ -983,6 +993,12 @@ SBValue SBFrame::EvaluateExpression(const char *expr) {
     else
       options.SetLanguage(frame->GetLanguage());
     return EvaluateExpression(expr, options);
+  } else {
+    Status error;
+    error.SetErrorString("can't evaluate expressions when the "
+                           "process is running.");
+    ValueObjectSP error_val_sp = ValueObjectConstResult::Create(nullptr, error);
+    result.SetSP(error_val_sp, false);
   }
   return result;
 }
@@ -1033,7 +1049,7 @@ lldb::SBValue SBFrame::EvaluateExpression(const char *expr,
                                           const SBExpressionOptions &options) {
   LLDB_INSTRUMENT_VA(this, expr, options);
 
-  Log *expr_log(GetLogIfAllCategoriesSet(LIBLLDB_LOG_EXPRESSIONS));
+  Log *expr_log = GetLog(LLDBLog::Expressions);
 
   SBValue expr_result;
 
@@ -1045,7 +1061,6 @@ lldb::SBValue SBFrame::EvaluateExpression(const char *expr,
 
   std::unique_lock<std::recursive_mutex> lock;
   ExecutionContext exe_ctx(m_opaque_sp.get(), lock);
-
 
   StackFrame *frame = nullptr;
   Target *target = exe_ctx.GetTargetPtr();
@@ -1070,13 +1085,30 @@ lldb::SBValue SBFrame::EvaluateExpression(const char *expr,
         target->EvaluateExpression(expr, frame, expr_value_sp, options.ref());
         expr_result.SetSP(expr_value_sp, options.GetFetchDynamicValue());
       }
+    } else {
+      Status error;
+      error.SetErrorString("can't evaluate expressions when the "
+                           "process is running.");
+      expr_value_sp = ValueObjectConstResult::Create(nullptr, error);
+      expr_result.SetSP(expr_value_sp, false);
     }
+  } else {
+      Status error;
+      error.SetErrorString("sbframe object is not valid.");
+      expr_value_sp = ValueObjectConstResult::Create(nullptr, error);
+      expr_result.SetSP(expr_value_sp, false);
   }
 
-  LLDB_LOGF(expr_log,
-            "** [SBFrame::EvaluateExpression] Expression result is "
-            "%s, summary %s **",
-            expr_result.GetValue(), expr_result.GetSummary());
+  if (expr_result.GetError().Success())
+    LLDB_LOGF(expr_log,
+              "** [SBFrame::EvaluateExpression] Expression result is "
+              "%s, summary %s **",
+              expr_result.GetValue(), expr_result.GetSummary());
+  else
+    LLDB_LOGF(expr_log,
+              "** [SBFrame::EvaluateExpression] Expression evaluation failed: "
+              "%s **",
+              expr_result.GetError().GetCString());
 
   return expr_result;
 }

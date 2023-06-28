@@ -22,7 +22,7 @@
 
 #if TEST_STD_VER > 17
 TEST_CONSTEXPR bool test_constexpr() {
-    const size_t N = 5;
+    const std::size_t N = 5;
     int ib[] = {0, 0, 0, 0, 0, 0}; // one bigger than N
 
     auto it = std::fill_n(std::begin(ib), N, 5);
@@ -147,13 +147,13 @@ void test6()
 
 int main(int, char**)
 {
-    test_char<output_iterator<char*> >();
+    test_char<cpp17_output_iterator<char*> >();
     test_char<forward_iterator<char*> >();
     test_char<bidirectional_iterator<char*> >();
     test_char<random_access_iterator<char*> >();
     test_char<char*>();
 
-    test_int<output_iterator<int*> >();
+    test_int<cpp17_output_iterator<int*> >();
     test_int<forward_iterator<int*> >();
     test_int<bidirectional_iterator<int*> >();
     test_int<random_access_iterator<int*> >();

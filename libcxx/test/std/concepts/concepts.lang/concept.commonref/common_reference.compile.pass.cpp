@@ -7,7 +7,6 @@
 //===----------------------------------------------------------------------===//
 
 // UNSUPPORTED: c++03, c++11, c++14, c++17
-// UNSUPPORTED: libcpp-no-concepts
 
 // template<class From, class To>
 // concept common_reference_with;
@@ -344,5 +343,3 @@ struct basic_common_reference<int, HasCommonReference, X, Y> {
 } // namespace std
 static_assert(!std::common_reference_with<HasCommonReference, int>);
 static_assert(std::common_reference_with<HasCommonReference, int&>);
-
-int main(int, char**) { return 0; }

@@ -1,4 +1,5 @@
-//===-- asan_win.cpp ------------------------------------------------------===//
+//===-- asan_win.cpp
+//------------------------------------------------------===//>
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -425,6 +426,8 @@ INTERCEPTOR_WINAPI(ULONG, RemoveVectoredExceptionHandler, PVOID Handler) {
 namespace __asan {
 
 void InitializePlatformInterceptors() {
+  __interception::SetErrorReportCallback(Report);
+
   // The interceptors were not designed to be removable, so we have to keep this
   // module alive for the life of the process.
   HMODULE pinned;
@@ -521,6 +524,8 @@ void RemoveFromSystemHeapAllocationsMap(void *oldPtr) {
                                 reinterpret_cast<uptr>(oldPtr), true, false);
 }
 
+void InstallAtExitCheckLeaks() {}
+
 void AsanApplyToGlobals(globals_op_fptr op, const void *needle) {
   UNIMPLEMENTED();
 }
@@ -608,10 +613,6 @@ uptr FindDynamicShadowStart() {
 void AsanCheckDynamicRTPrereqs() {}
 
 void AsanCheckIncompatibleRT() {}
-
-void ReadContextStack(void *context, uptr *stack, uptr *ssize) {
-  UNIMPLEMENTED();
-}
 
 void AsanOnDeadlySignal(int, void *siginfo, void *context) { UNIMPLEMENTED(); }
 

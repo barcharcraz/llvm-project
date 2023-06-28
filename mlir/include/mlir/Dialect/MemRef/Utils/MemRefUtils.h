@@ -16,14 +16,17 @@
 #ifndef MLIR_DIALECT_MEMREF_UTILS_MEMREFUTILS_H
 #define MLIR_DIALECT_MEMREF_UTILS_MEMREFUTILS_H
 
-#include "mlir/Dialect/MemRef/IR/MemRef.h"
-
 namespace mlir {
 
-/// Finds a single dealloc operation for the given allocated value. If there
-/// are > 1 deallocates for `allocValue`, returns None, else returns the single
-/// deallocate if it exists or nullptr.
-llvm::Optional<Operation *> findDealloc(Value allocValue);
+class MemRefType;
+
+namespace memref {
+
+/// Returns true, if the memref type has static shapes and represents a
+/// contiguous chunk of memory.
+bool isStaticShapeAndContiguousRowMajor(MemRefType type);
+
+} // namespace memref
 } // namespace mlir
 
 #endif // MLIR_DIALECT_MEMREF_UTILS_MEMREFUTILS_H

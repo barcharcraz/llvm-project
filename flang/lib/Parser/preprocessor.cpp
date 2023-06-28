@@ -273,7 +273,7 @@ std::optional<TokenSequence> Preprocessor::MacroReplacement(
   }
   TokenSequence result{input, 0, j};
   for (; j < tokens; ++j) {
-    const CharBlock &token{input.TokenAt(j)};
+    CharBlock token{input.TokenAt(j)};
     if (token.IsBlank() || !IsLegalIdentifierStart(token[0])) {
       result.Put(input, j);
       continue;
@@ -283,14 +283,15 @@ std::optional<TokenSequence> Preprocessor::MacroReplacement(
       result.Put(input, j);
       continue;
     }
-    Definition &def{it->second};
-    if (def.isDisabled()) {
+    Definition *def{&it->second};
+    if (def->isDisabled()) {
       result.Put(input, j);
       continue;
     }
-    if (!def.isFunctionLike()) {
-      if (def.isPredefined()) {
-        std::string name{def.replacement().TokenAt(0).ToString()};
+    if (!def->isFunctionLike()) {
+      bool isRenaming{false};
+      if (def->isPredefined()) {
+        std::string name{def->replacement().TokenAt(0).ToString()};
         std::string repl;
         if (name == "__FILE__") {
           repl = "\""s +
@@ -309,18 +310,38 @@ std::optional<TokenSequence> Preprocessor::MacroReplacement(
           continue;
         }
       }
-      def.set_isDisabled(true);
+      def->set_isDisabled(true);
       TokenSequence replaced{
-          TokenPasting(ReplaceMacros(def.replacement(), prescanner))};
-      def.set_isDisabled(false);
-      if (!replaced.empty()) {
-        ProvenanceRange from{def.replacement().GetProvenanceRange()};
-        ProvenanceRange use{input.GetTokenProvenanceRange(j)};
-        ProvenanceRange newRange{
-            allSources_.AddMacroCall(from, use, replaced.ToString())};
-        result.Put(replaced, newRange);
+          TokenPasting(ReplaceMacros(def->replacement(), prescanner))};
+      def->set_isDisabled(false);
+      // Allow a keyword-like macro replacement to be the name of
+      // a function-like macro, possibly surrounded by blanks.
+      std::size_t k{0}, repTokens{replaced.SizeInTokens()};
+      for (; k < repTokens && replaced.TokenAt(k).IsBlank(); ++k) {
       }
-      continue;
+      if (k < repTokens) {
+        token = replaced.TokenAt(k);
+        for (++k; k < repTokens && replaced.TokenAt(k).IsBlank(); ++k) {
+        }
+        if (k == repTokens && IsLegalIdentifierStart(token[0])) {
+          auto it{definitions_.find(token)};
+          if (it != definitions_.end() && !it->second.isDisabled() &&
+              it->second.isFunctionLike()) {
+            def = &it->second;
+            isRenaming = true;
+          }
+        }
+      }
+      if (!isRenaming) {
+        if (!replaced.empty()) {
+          ProvenanceRange from{def->replacement().GetProvenanceRange()};
+          ProvenanceRange use{input.GetTokenProvenanceRange(j)};
+          ProvenanceRange newRange{
+              allSources_.AddMacroCall(from, use, replaced.ToString())};
+          result.Put(replaced, newRange);
+        }
+        continue;
+      }
     }
     // Possible function-like macro call.  Skip spaces and newlines to see
     // whether '(' is next.
@@ -354,13 +375,13 @@ std::optional<TokenSequence> Preprocessor::MacroReplacement(
         }
       }
     }
-    if (argStart.size() == 1 && k == argStart[0] && def.argumentCount() == 0) {
+    if (argStart.size() == 1 && k == argStart[0] && def->argumentCount() == 0) {
       // Subtle: () is zero arguments, not one empty argument,
       // unless one argument was expected.
       argStart.clear();
     }
-    if (k >= tokens || argStart.size() < def.argumentCount() ||
-        (argStart.size() > def.argumentCount() && !def.isVariadic())) {
+    if (k >= tokens || argStart.size() < def->argumentCount() ||
+        (argStart.size() > def->argumentCount() && !def->isVariadic())) {
       result.Put(input, j);
       continue;
     }
@@ -371,12 +392,12 @@ std::optional<TokenSequence> Preprocessor::MacroReplacement(
           (n + 1 == argStart.size() ? k : argStart[n + 1] - 1) - at};
       args.emplace_back(TokenSequence(input, at, count));
     }
-    def.set_isDisabled(true);
+    def->set_isDisabled(true);
     TokenSequence replaced{
-        ReplaceMacros(def.Apply(args, prescanner), prescanner)};
-    def.set_isDisabled(false);
+        ReplaceMacros(def->Apply(args, prescanner), prescanner)};
+    def->set_isDisabled(false);
     if (!replaced.empty()) {
-      ProvenanceRange from{def.replacement().GetProvenanceRange()};
+      ProvenanceRange from{def->replacement().GetProvenanceRange()};
       ProvenanceRange use{input.GetIntervalProvenanceRange(j, k - j)};
       ProvenanceRange newRange{
           allSources_.AddMacroCall(from, use, replaced.ToString())};
@@ -495,7 +516,7 @@ void Preprocessor::Directive(const TokenSequence &dir, Prescanner &prescanner) {
     } else {
       if (dir.IsAnythingLeft(++j)) {
         prescanner.Say(dir.GetIntervalProvenanceRange(j, tokens - j),
-            "#undef: excess tokens at end of directive"_en_US);
+            "#undef: excess tokens at end of directive"_port_en_US);
       } else {
         definitions_.erase(nameToken);
       }
@@ -509,7 +530,7 @@ void Preprocessor::Directive(const TokenSequence &dir, Prescanner &prescanner) {
     } else {
       if (dir.IsAnythingLeft(++j)) {
         prescanner.Say(dir.GetIntervalProvenanceRange(j, tokens - j),
-            "#%s: excess tokens at end of directive"_en_US, dirName);
+            "#%s: excess tokens at end of directive"_port_en_US, dirName);
       }
       doThen = IsNameDefined(nameToken) == (dirName == "ifdef");
     }
@@ -529,7 +550,7 @@ void Preprocessor::Directive(const TokenSequence &dir, Prescanner &prescanner) {
   } else if (dirName == "else") {
     if (dir.IsAnythingLeft(j)) {
       prescanner.Say(dir.GetIntervalProvenanceRange(j, tokens - j),
-          "#else: excess tokens at end of directive"_en_US);
+          "#else: excess tokens at end of directive"_port_en_US);
     } else if (ifStack_.empty()) {
       prescanner.Say(dir.GetTokenProvenanceRange(dirOffset),
           "#else: not nested within #if, #ifdef, or #ifndef"_err_en_US);
@@ -556,7 +577,7 @@ void Preprocessor::Directive(const TokenSequence &dir, Prescanner &prescanner) {
   } else if (dirName == "endif") {
     if (dir.IsAnythingLeft(j)) {
       prescanner.Say(dir.GetIntervalProvenanceRange(j, tokens - j),
-          "#endif: excess tokens at end of directive"_en_US);
+          "#endif: excess tokens at end of directive"_port_en_US);
     } else if (ifStack_.empty()) {
       prescanner.Say(dir.GetTokenProvenanceRange(dirOffset),
           "#endif: no #if, #ifdef, or #ifndef"_err_en_US);
@@ -567,8 +588,11 @@ void Preprocessor::Directive(const TokenSequence &dir, Prescanner &prescanner) {
     prescanner.Say(
         dir.GetIntervalProvenanceRange(dirOffset, tokens - dirOffset),
         "%s"_err_en_US, dir.ToString());
-  } else if (dirName == "warning" || dirName == "comment" ||
-      dirName == "note") {
+  } else if (dirName == "warning") {
+    prescanner.Say(
+        dir.GetIntervalProvenanceRange(dirOffset, tokens - dirOffset),
+        "%s"_warn_en_US, dir.ToString());
+  } else if (dirName == "comment" || dirName == "note") {
     prescanner.Say(
         dir.GetIntervalProvenanceRange(dirOffset, tokens - dirOffset),
         "%s"_en_US, dir.ToString());
@@ -593,16 +617,17 @@ void Preprocessor::Directive(const TokenSequence &dir, Prescanner &prescanner) {
       }
       if (k >= tokens) {
         prescanner.Say(dir.GetIntervalProvenanceRange(j, tokens - j),
-            "#include: expected '>' at end of included file"_en_US);
+            "#include: expected '>' at end of included file"_port_en_US);
       }
       TokenSequence braced{dir, j + 1, k - j - 1};
-      include = ReplaceMacros(braced, prescanner).ToString();
+      include = braced.ToString();
       j = k;
-    } else if ((include = dir.TokenAt(j).ToString()).substr(0, 1) == "\"" &&
-        include.substr(include.size() - 1, 1) == "\"") { // #include "foo"
+    } else if (((include = dir.TokenAt(j).ToString()).substr(0, 1) == "\"" ||
+                   include.substr(0, 1) == "'") &&
+        include.substr(include.size() - 1, 1) == include.substr(0, 1)) {
+      // #include "foo" and #include 'foo'
       include = include.substr(1, include.size() - 2);
-      // #include "foo" starts search in directory of file containing
-      // the directive
+      // Start search in directory of file containing the directive
       auto prov{dir.GetTokenProvenanceRange(dirOffset).start()};
       if (const auto *currentFile{allSources_.GetSourceFile(prov)}) {
         prependPath = DirectoryName(currentFile->path());
@@ -620,7 +645,7 @@ void Preprocessor::Directive(const TokenSequence &dir, Prescanner &prescanner) {
     j = dir.SkipBlanks(j + 1);
     if (j < tokens && dir.TokenAt(j).ToString() != "!") {
       prescanner.Say(dir.GetIntervalProvenanceRange(j, tokens - j),
-          "#include: extra stuff ignored after file name"_en_US);
+          "#include: extra stuff ignored after file name"_port_en_US);
     }
     std::string buf;
     llvm::raw_string_ostream error{buf};

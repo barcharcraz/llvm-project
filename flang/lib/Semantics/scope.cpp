@@ -8,6 +8,7 @@
 
 #include "flang/Semantics/scope.h"
 #include "flang/Parser/characters.h"
+#include "flang/Semantics/semantics.h"
 #include "flang/Semantics/symbol.h"
 #include "flang/Semantics/type.h"
 #include "llvm/Support/raw_ostream.h"
@@ -88,8 +89,11 @@ Symbol *Scope::FindSymbol(const SourceName &name) const {
   auto it{find(name)};
   if (it != end()) {
     return &*it->second;
+  } else if (IsSubmodule()) {
+    const Scope *parent{symbol_->get<ModuleDetails>().parent()};
+    return parent ? parent->FindSymbol(name) : nullptr;
   } else if (CanImport(name)) {
-    return parent_.FindSymbol(name);
+    return parent_->FindSymbol(name);
   } else {
     return nullptr;
   }
@@ -272,7 +276,7 @@ std::optional<parser::MessageFixedText> Scope::SetImportKind(ImportKind kind) {
         ? "IMPORT,NONE must be the only IMPORT statement in a scope"_err_en_US
         : "IMPORT,ALL must be the only IMPORT statement in a scope"_err_en_US;
   } else if (kind != *importKind_ &&
-      (kind != ImportKind::Only || kind != ImportKind::Only)) {
+      (kind != ImportKind::Only && *importKind_ != ImportKind::Only)) {
     return "Every IMPORT must have ONLY specifier if one of them does"_err_en_US;
   } else {
     return std::nullopt;
@@ -285,7 +289,7 @@ void Scope::add_importName(const SourceName &name) {
 
 // true if name can be imported or host-associated from parent scope.
 bool Scope::CanImport(const SourceName &name) const {
-  if (IsTopLevel() || parent_.IsTopLevel()) {
+  if (IsTopLevel() || parent_->IsTopLevel()) {
     return false;
   }
   switch (GetImportKind()) {
@@ -306,7 +310,7 @@ const Scope *Scope::FindScope(parser::CharBlock source) const {
 
 Scope *Scope::FindScope(parser::CharBlock source) {
   bool isContained{sourceRange_.Contains(source)};
-  if (!isContained && !IsTopLevel() && !IsModuleFile()) {
+  if (!isContained && !IsTopLevel() && kind_ != Kind::Module) {
     return nullptr;
   }
   for (auto &child : children_) {
@@ -317,9 +321,49 @@ Scope *Scope::FindScope(parser::CharBlock source) {
   return isContained && !IsTopLevel() ? this : nullptr;
 }
 
-void Scope::AddSourceRange(const parser::CharBlock &source) {
-  for (auto *scope{this}; !scope->IsGlobal(); scope = &scope->parent()) {
-    scope->sourceRange_.ExtendToCover(source);
+void Scope::AddSourceRange(parser::CharBlock source) {
+  if (source.empty()) {
+    return;
+  }
+  const parser::AllCookedSources &allCookedSources{context_.allCookedSources()};
+  const parser::CookedSource *cooked{allCookedSources.Find(source)};
+  if (!cooked) {
+    CHECK(context_.IsTempName(source.ToString()));
+    return;
+  }
+  for (auto *scope{this}; !scope->IsTopLevel(); scope = &scope->parent()) {
+    CHECK(scope->sourceRange_.empty() == (scope->cookedSource_ == nullptr));
+    if (!scope->cookedSource_) {
+      scope->cookedSource_ = cooked;
+      scope->sourceRange_ = source;
+    } else if (scope->cookedSource_ == cooked) {
+      scope->sourceRange_.ExtendToCover(source);
+    } else {
+      // There's a bug that will be hard to fix; crash informatively
+      const parser::AllSources &allSources{allCookedSources.allSources()};
+      const auto describe{[&](parser::CharBlock src) {
+        if (auto range{allCookedSources.GetProvenanceRange(src)}) {
+          std::size_t offset;
+          if (const parser::SourceFile *
+              file{allSources.GetSourceFile(range->start(), &offset)}) {
+            return "'"s + file->path() + "' at " + std::to_string(offset) +
+                " for " + std::to_string(range->size());
+          } else {
+            return "(GetSourceFile failed)"s;
+          }
+        } else {
+          return "(GetProvenanceRange failed)"s;
+        }
+      }};
+      std::string scopeDesc{describe(scope->sourceRange_)};
+      std::string newDesc{describe(source)};
+      common::die("AddSourceRange would have combined ranges from distinct "
+                  "source files \"%s\" and \"%s\"",
+          scopeDesc.c_str(), newDesc.c_str());
+    }
+    if (scope->IsSubmodule()) {
+      break; // Submodules are child scopes but not contained ranges
+    }
   }
 }
 
@@ -357,21 +401,47 @@ bool Scope::IsStmtFunction() const {
   return symbol_ && symbol_->test(Symbol::Flag::StmtFunction);
 }
 
-bool Scope::IsParameterizedDerivedType() const {
-  if (!IsDerivedType()) {
+template <common::TypeParamAttr... ParamAttr> struct IsTypeParamHelper {
+  static_assert(sizeof...(ParamAttr) == 0, "must have one or zero template");
+  static bool IsParam(const Symbol &symbol) {
+    return symbol.has<TypeParamDetails>();
+  }
+};
+
+template <common::TypeParamAttr ParamAttr> struct IsTypeParamHelper<ParamAttr> {
+  static bool IsParam(const Symbol &symbol) {
+    if (const auto *typeParam{symbol.detailsIf<TypeParamDetails>()}) {
+      return typeParam->attr() == ParamAttr;
+    }
     return false;
   }
-  if (const Scope * parent{GetDerivedTypeParent()}) {
-    if (parent->IsParameterizedDerivedType()) {
-      return true;
+};
+
+template <common::TypeParamAttr... ParamAttr>
+static bool IsParameterizedDerivedTypeHelper(const Scope &scope) {
+  if (scope.IsDerivedType()) {
+    if (const Scope * parent{scope.GetDerivedTypeParent()}) {
+      if (IsParameterizedDerivedTypeHelper<ParamAttr...>(*parent)) {
+        return true;
+      }
     }
-  }
-  for (const auto &pair : symbols_) {
-    if (pair.second->has<TypeParamDetails>()) {
-      return true;
+    for (const auto &nameAndSymbolPair : scope) {
+      if (IsTypeParamHelper<ParamAttr...>::IsParam(*nameAndSymbolPair.second)) {
+        return true;
+      }
     }
   }
   return false;
+}
+
+bool Scope::IsParameterizedDerivedType() const {
+  return IsParameterizedDerivedTypeHelper<>(*this);
+}
+bool Scope::IsDerivedTypeWithLengthParameter() const {
+  return IsParameterizedDerivedTypeHelper<common::TypeParamAttr::Len>(*this);
+}
+bool Scope::IsDerivedTypeWithKindParameter() const {
+  return IsParameterizedDerivedTypeHelper<common::TypeParamAttr::Kind>(*this);
 }
 
 const DeclTypeSpec *Scope::FindInstantiatedDerivedType(

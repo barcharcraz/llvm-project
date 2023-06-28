@@ -44,9 +44,10 @@ namespace {
 ///     d) infer the shape of its output from the argument types.
 ///   3) If the worklist is empty, the algorithm succeeded.
 ///
-class ShapeInferencePass
-    : public mlir::PassWrapper<ShapeInferencePass, OperationPass<FuncOp>> {
-public:
+struct ShapeInferencePass
+    : public mlir::PassWrapper<ShapeInferencePass, OperationPass<toy::FuncOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ShapeInferencePass)
+
   void runOnOperation() override {
     auto f = getOperation();
 
@@ -93,7 +94,7 @@ public:
   /// operands inferred.
   static bool allOperandsInferred(Operation *op) {
     return llvm::all_of(op->getOperandTypes(), [](Type operandType) {
-      return operandType.isa<RankedTensorType>();
+      return llvm::isa<RankedTensorType>(operandType);
     });
   }
 
@@ -101,7 +102,7 @@ public:
   /// shaped result.
   static bool returnsDynamicShape(Operation *op) {
     return llvm::any_of(op->getResultTypes(), [](Type resultType) {
-      return !resultType.isa<RankedTensorType>();
+      return !llvm::isa<RankedTensorType>(resultType);
     });
   }
 };

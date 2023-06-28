@@ -13,11 +13,11 @@
 
 #include "llvm/ProfileData/InstrProf.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/ADT/Triple.h"
 #include "llvm/Config/config.h"
 #include "llvm/IR/Constant.h"
 #include "llvm/IR/Constants.h"
@@ -39,10 +39,11 @@
 #include "llvm/Support/Error.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/LEB128.h"
-#include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/SwapByteOrder.h"
+#include "llvm/Support/VirtualFileSystem.h"
+#include "llvm/TargetParser/Triple.h"
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
@@ -51,6 +52,7 @@
 #include <memory>
 #include <string>
 #include <system_error>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -152,6 +154,9 @@ static std::string getInstrProfErrString(instrprof_error Err,
     OS << "profile uses zlib compression but the profile reader was built "
           "without zlib support";
     break;
+  case instrprof_error::raw_profile_version_mismatch:
+    OS << "raw profile version mismatch";
+    break;
   }
 
   // If optional error message is not empty, append it to the message.
@@ -176,10 +181,9 @@ class InstrProfErrorCategoryType : public std::error_category {
 
 } // end anonymous namespace
 
-static ManagedStatic<InstrProfErrorCategoryType> ErrorCategory;
-
 const std::error_category &llvm::instrprof_category() {
-  return *ErrorCategory;
+  static InstrProfErrorCategoryType ErrorCategory;
+  return ErrorCategory;
 }
 
 namespace {
@@ -227,31 +231,6 @@ std::string getInstrProfSectionName(InstrProfSectKind IPSK,
     SectName += ",regular,live_support";
 
   return SectName;
-}
-
-void SoftInstrProfErrors::addError(instrprof_error IE) {
-  if (IE == instrprof_error::success)
-    return;
-
-  if (FirstError == instrprof_error::success)
-    FirstError = IE;
-
-  switch (IE) {
-  case instrprof_error::hash_mismatch:
-    ++NumHashMismatches;
-    break;
-  case instrprof_error::count_mismatch:
-    ++NumCountMismatches;
-    break;
-  case instrprof_error::counter_overflow:
-    ++NumCounterOverflows;
-    break;
-  case instrprof_error::value_site_count_mismatch:
-    ++NumValueSiteCountMismatches;
-    break;
-  default:
-    llvm_unreachable("Not a soft error");
-  }
 }
 
 std::string InstrProfError::message() const {
@@ -465,16 +444,13 @@ Error collectPGOFuncNameStrings(ArrayRef<std::string> NameStrs,
     return WriteStringToResult(0, UncompressedNameStrings);
   }
 
-  SmallString<128> CompressedNameStrings;
-  Error E = zlib::compress(StringRef(UncompressedNameStrings),
-                           CompressedNameStrings, zlib::BestSizeCompression);
-  if (E) {
-    consumeError(std::move(E));
-    return make_error<InstrProfError>(instrprof_error::compress_failed);
-  }
+  SmallVector<uint8_t, 128> CompressedNameStrings;
+  compression::zlib::compress(arrayRefFromStringRef(UncompressedNameStrings),
+                              CompressedNameStrings,
+                              compression::zlib::BestSizeCompression);
 
   return WriteStringToResult(CompressedNameStrings.size(),
-                             CompressedNameStrings);
+                             toStringRef(CompressedNameStrings));
 }
 
 StringRef getPGOFuncNameVarInitializer(GlobalVariable *NameVar) {
@@ -491,7 +467,7 @@ Error collectPGOFuncNameStrings(ArrayRef<GlobalVariable *> NameVars,
     NameStrs.push_back(std::string(getPGOFuncNameVarInitializer(NameVar)));
   }
   return collectPGOFuncNameStrings(
-      NameStrs, zlib::isAvailable() && doCompression, Result);
+      NameStrs, compression::zlib::isAvailable() && doCompression, Result);
 }
 
 Error readPGOFuncNameStrings(StringRef NameStrings, InstrProfSymtab &Symtab) {
@@ -504,23 +480,20 @@ Error readPGOFuncNameStrings(StringRef NameStrings, InstrProfSymtab &Symtab) {
     uint64_t CompressedSize = decodeULEB128(P, &N);
     P += N;
     bool isCompressed = (CompressedSize != 0);
-    SmallString<128> UncompressedNameStrings;
+    SmallVector<uint8_t, 128> UncompressedNameStrings;
     StringRef NameStrings;
     if (isCompressed) {
-      if (!llvm::zlib::isAvailable())
+      if (!llvm::compression::zlib::isAvailable())
         return make_error<InstrProfError>(instrprof_error::zlib_unavailable);
 
-      StringRef CompressedNameStrings(reinterpret_cast<const char *>(P),
-                                      CompressedSize);
-      if (Error E =
-              zlib::uncompress(CompressedNameStrings, UncompressedNameStrings,
-                               UncompressedSize)) {
+      if (Error E = compression::zlib::decompress(ArrayRef(P, CompressedSize),
+                                                  UncompressedNameStrings,
+                                                  UncompressedSize)) {
         consumeError(std::move(E));
         return make_error<InstrProfError>(instrprof_error::uncompress_failed);
       }
       P += CompressedSize;
-      NameStrings = StringRef(UncompressedNameStrings.data(),
-                              UncompressedNameStrings.size());
+      NameStrings = toStringRef(UncompressedNameStrings);
     } else {
       NameStrings =
           StringRef(reinterpret_cast<const char *>(P), UncompressedSize);
@@ -721,10 +694,33 @@ void InstrProfRecord::merge(InstrProfRecord &Other, uint64_t Weight,
     return;
   }
 
+  // Special handling of the first count as the PseudoCount.
+  CountPseudoKind OtherKind = Other.getCountPseudoKind();
+  CountPseudoKind ThisKind = getCountPseudoKind();
+  if (OtherKind != NotPseudo || ThisKind != NotPseudo) {
+    // We don't allow the merge of a profile with pseudo counts and
+    // a normal profile (i.e. without pesudo counts).
+    // Profile supplimenation should be done after the profile merge.
+    if (OtherKind == NotPseudo || ThisKind == NotPseudo) {
+      Warn(instrprof_error::count_mismatch);
+      return;
+    }
+    if (OtherKind == PseudoHot || ThisKind == PseudoHot)
+      setPseudoCount(PseudoHot);
+    else
+      setPseudoCount(PseudoWarm);
+    return;
+  }
+
   for (size_t I = 0, E = Other.Counts.size(); I < E; ++I) {
     bool Overflowed;
-    Counts[I] =
+    uint64_t Value =
         SaturatingMultiplyAdd(Other.Counts[I], Weight, Counts[I], &Overflowed);
+    if (Value > getInstrMaxCountValue()) {
+      Value = getInstrMaxCountValue();
+      Overflowed = true;
+    }
+    Counts[I] = Value;
     if (Overflowed)
       Warn(instrprof_error::counter_overflow);
   }
@@ -746,6 +742,10 @@ void InstrProfRecord::scale(uint64_t N, uint64_t D,
   for (auto &Count : this->Counts) {
     bool Overflowed;
     Count = SaturatingMultiply(Count, N, &Overflowed) / D;
+    if (Count > getInstrMaxCountValue()) {
+      Count = getInstrMaxCountValue();
+      Overflowed = true;
+    }
     if (Overflowed)
       Warn(instrprof_error::counter_overflow);
   }
@@ -777,6 +777,48 @@ void InstrProfRecord::addValueData(uint32_t ValueKind, uint32_t Site,
     ValueSites.emplace_back();
   else
     ValueSites.emplace_back(VData, VData + N);
+}
+
+std::vector<BPFunctionNode> TemporalProfTraceTy::createBPFunctionNodes(
+    ArrayRef<TemporalProfTraceTy> Traces) {
+  using IDT = BPFunctionNode::IDT;
+  using UtilityNodeT = BPFunctionNode::UtilityNodeT;
+  // Collect all function IDs ordered by their smallest timestamp. This will be
+  // used as the initial FunctionNode order.
+  SetVector<IDT> FunctionIds;
+  size_t LargestTraceSize = 0;
+  for (auto &Trace : Traces)
+    LargestTraceSize =
+        std::max(LargestTraceSize, Trace.FunctionNameRefs.size());
+  for (size_t Timestamp = 0; Timestamp < LargestTraceSize; Timestamp++)
+    for (auto &Trace : Traces)
+      if (Timestamp < Trace.FunctionNameRefs.size())
+        FunctionIds.insert(Trace.FunctionNameRefs[Timestamp]);
+
+  int N = std::ceil(std::log2(LargestTraceSize));
+
+  // TODO: We need to use the Trace.Weight field to give more weight to more
+  // important utilities
+  DenseMap<IDT, SmallVector<UtilityNodeT, 4>> FuncGroups;
+  for (size_t TraceIdx = 0; TraceIdx < Traces.size(); TraceIdx++) {
+    auto &Trace = Traces[TraceIdx].FunctionNameRefs;
+    for (size_t Timestamp = 0; Timestamp < Trace.size(); Timestamp++) {
+      for (int I = std::floor(std::log2(Timestamp + 1)); I < N; I++) {
+        auto &FunctionId = Trace[Timestamp];
+        UtilityNodeT GroupId = TraceIdx * N + I;
+        FuncGroups[FunctionId].push_back(GroupId);
+      }
+    }
+  }
+
+  std::vector<BPFunctionNode> Nodes;
+  for (auto &Id : FunctionIds) {
+    auto &UNs = FuncGroups[Id];
+    llvm::sort(UNs);
+    UNs.erase(std::unique(UNs.begin(), UNs.end()), UNs.end());
+    Nodes.emplace_back(Id, UNs);
+  }
+  return Nodes;
 }
 
 #define INSTR_PROF_COMMON_API_IMPL
@@ -1190,6 +1232,7 @@ void createProfileFileNameVar(Module &M, StringRef InstrProfileOutput) {
   GlobalVariable *ProfileNameVar = new GlobalVariable(
       M, ProfileNameConst->getType(), true, GlobalValue::WeakAnyLinkage,
       ProfileNameConst, INSTR_PROF_QUOTE(INSTR_PROF_PROFILE_NAME_VAR));
+  ProfileNameVar->setVisibility(GlobalValue::HiddenVisibility);
   Triple TT(M.getTargetTriple());
   if (TT.supportsCOMDAT()) {
     ProfileNameVar->setLinkage(GlobalValue::ExternalLinkage);
@@ -1203,7 +1246,10 @@ Error OverlapStats::accumulateCounts(const std::string &BaseFilename,
                                      bool IsCS) {
   auto getProfileSum = [IsCS](const std::string &Filename,
                               CountSumOrPercent &Sum) -> Error {
-    auto ReaderOrErr = InstrProfReader::create(Filename);
+    // This function is only used from llvm-profdata that doesn't use any kind
+    // of VFS. Just create a default RealFileSystem to read profiles.
+    auto FS = vfs::getRealFileSystem();
+    auto ReaderOrErr = InstrProfReader::create(Filename, *FS);
     if (Error E = ReaderOrErr.takeError()) {
       return E;
     }
@@ -1310,5 +1356,89 @@ void OverlapStats::dump(raw_fd_ostream &OS) const {
        << "\n";
   }
 }
+
+namespace IndexedInstrProf {
+// A C++14 compatible version of the offsetof macro.
+template <typename T1, typename T2>
+inline size_t constexpr offsetOf(T1 T2::*Member) {
+  constexpr T2 Object{};
+  return size_t(&(Object.*Member)) - size_t(&Object);
+}
+
+static inline uint64_t read(const unsigned char *Buffer, size_t Offset) {
+  return *reinterpret_cast<const uint64_t *>(Buffer + Offset);
+}
+
+uint64_t Header::formatVersion() const {
+  using namespace support;
+  return endian::byte_swap<uint64_t, little>(Version);
+}
+
+Expected<Header> Header::readFromBuffer(const unsigned char *Buffer) {
+  using namespace support;
+  static_assert(std::is_standard_layout_v<Header>,
+                "The header should be standard layout type since we use offset "
+                "of fields to read.");
+  Header H;
+
+  H.Magic = read(Buffer, offsetOf(&Header::Magic));
+  // Check the magic number.
+  uint64_t Magic = endian::byte_swap<uint64_t, little>(H.Magic);
+  if (Magic != IndexedInstrProf::Magic)
+    return make_error<InstrProfError>(instrprof_error::bad_magic);
+
+  // Read the version.
+  H.Version = read(Buffer, offsetOf(&Header::Version));
+  if (GET_VERSION(H.formatVersion()) >
+      IndexedInstrProf::ProfVersion::CurrentVersion)
+    return make_error<InstrProfError>(instrprof_error::unsupported_version);
+
+  switch (GET_VERSION(H.formatVersion())) {
+    // When a new field is added in the header add a case statement here to
+    // populate it.
+    static_assert(
+        IndexedInstrProf::ProfVersion::CurrentVersion == Version10,
+        "Please update the reading code below if a new field has been added, "
+        "if not add a case statement to fall through to the latest version.");
+  case 10ull:
+    H.TemporalProfTracesOffset =
+        read(Buffer, offsetOf(&Header::TemporalProfTracesOffset));
+    [[fallthrough]];
+  case 9ull:
+    H.BinaryIdOffset = read(Buffer, offsetOf(&Header::BinaryIdOffset));
+    [[fallthrough]];
+  case 8ull:
+    H.MemProfOffset = read(Buffer, offsetOf(&Header::MemProfOffset));
+    [[fallthrough]];
+  default: // Version7 (when the backwards compatible header was introduced).
+    H.HashType = read(Buffer, offsetOf(&Header::HashType));
+    H.HashOffset = read(Buffer, offsetOf(&Header::HashOffset));
+  }
+
+  return H;
+}
+
+size_t Header::size() const {
+  switch (GET_VERSION(formatVersion())) {
+    // When a new field is added to the header add a case statement here to
+    // compute the size as offset of the new field + size of the new field. This
+    // relies on the field being added to the end of the list.
+    static_assert(IndexedInstrProf::ProfVersion::CurrentVersion == Version10,
+                  "Please update the size computation below if a new field has "
+                  "been added to the header, if not add a case statement to "
+                  "fall through to the latest version.");
+  case 10ull:
+    return offsetOf(&Header::TemporalProfTracesOffset) +
+           sizeof(Header::TemporalProfTracesOffset);
+  case 9ull:
+    return offsetOf(&Header::BinaryIdOffset) + sizeof(Header::BinaryIdOffset);
+  case 8ull:
+    return offsetOf(&Header::MemProfOffset) + sizeof(Header::MemProfOffset);
+  default: // Version7 (when the backwards compatible header was introduced).
+    return offsetOf(&Header::HashOffset) + sizeof(Header::HashOffset);
+  }
+}
+
+} // namespace IndexedInstrProf
 
 } // end namespace llvm

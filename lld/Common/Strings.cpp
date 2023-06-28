@@ -19,8 +19,8 @@ using namespace llvm;
 using namespace lld;
 
 SingleStringMatcher::SingleStringMatcher(StringRef Pattern) {
-  if (Pattern.size() > 2 && Pattern.startswith("\"") &&
-      Pattern.endswith("\"")) {
+  if (Pattern.size() > 2 && Pattern.starts_with("\"") &&
+      Pattern.ends_with("\"")) {
     ExactMatch = true;
     ExactPattern = Pattern.substr(1, Pattern.size() - 2);
   } else {
@@ -46,8 +46,8 @@ bool StringMatcher::match(StringRef s) const {
 }
 
 // Converts a hex string (e.g. "deadbeef") to a vector.
-std::vector<uint8_t> lld::parseHex(StringRef s) {
-  std::vector<uint8_t> hex;
+SmallVector<uint8_t, 0> lld::parseHex(StringRef s) {
+  SmallVector<uint8_t, 0> hex;
   while (!s.empty()) {
     StringRef b = s.substr(0, 2);
     s = s.substr(2);

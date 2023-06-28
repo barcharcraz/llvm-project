@@ -29,6 +29,7 @@
 #include "lldb/Target/Thread.h"
 #include "lldb/Target/ThreadList.h"
 #include "lldb/Utility/DataBufferHeap.h"
+#include "lldb/Utility/LLDBLog.h"
 #include "lldb/Utility/RegisterValue.h"
 #include "lldb/Utility/StreamString.h"
 #include "lldb/Utility/StructuredData.h"
@@ -115,7 +116,7 @@ DynamicRegisterInfo *OperatingSystemPython::GetDynamicRegisterInfo() {
   if (m_register_info_up == nullptr) {
     if (!m_interpreter || !m_python_object_sp)
       return nullptr;
-    Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_OS));
+    Log *log = GetLog(LLDBLog::OS);
 
     LLDB_LOGF(log,
               "OperatingSystemPython::GetDynamicRegisterInfo() fetching "
@@ -127,8 +128,9 @@ DynamicRegisterInfo *OperatingSystemPython::GetDynamicRegisterInfo() {
     if (!dictionary)
       return nullptr;
 
-    m_register_info_up = std::make_unique<DynamicRegisterInfo>(
+    m_register_info_up = DynamicRegisterInfo::Create(
         *dictionary, m_process->GetTarget().GetArchitecture());
+    assert(m_register_info_up);
     assert(m_register_info_up->GetNumRegisters() > 0);
     assert(m_register_info_up->GetNumRegisterSets() > 0);
   }
@@ -141,7 +143,7 @@ bool OperatingSystemPython::UpdateThreadList(ThreadList &old_thread_list,
   if (!m_interpreter || !m_python_object_sp)
     return false;
 
-  Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_OS));
+  Log *log = GetLog(LLDBLog::OS);
 
   // First thing we have to do is to try to get the API lock, and the
   // interpreter lock. We're going to change the thread content of the process,
@@ -301,7 +303,7 @@ OperatingSystemPython::CreateRegisterContextForThread(Thread *thread,
   (void)api_lock.try_lock(); // See above.
   auto interpreter_lock = m_interpreter->AcquireInterpreterLock();
 
-  Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_THREAD));
+  Log *log = GetLog(LLDBLog::Thread);
 
   if (reg_data_addr != LLDB_INVALID_ADDRESS) {
     // The registers data is in contiguous memory, just create the register
@@ -363,7 +365,7 @@ OperatingSystemPython::CreateThreadStopReason(lldb_private::Thread *thread) {
 
 lldb::ThreadSP OperatingSystemPython::CreateThread(lldb::tid_t tid,
                                                    addr_t context) {
-  Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_THREAD));
+  Log *log = GetLog(LLDBLog::Thread);
 
   LLDB_LOGF(log,
             "OperatingSystemPython::CreateThread (tid = 0x%" PRIx64

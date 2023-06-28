@@ -650,7 +650,7 @@ serializeValueProfDataFrom(ValueProfRecordClosure *Closure,
 /* Raw profile format version (start from 1). */
 #define INSTR_PROF_RAW_VERSION 8
 /* Indexed profile format version (start from 1). */
-#define INSTR_PROF_INDEX_VERSION 7
+#define INSTR_PROF_INDEX_VERSION 10
 /* Coverage mapping format version (start from 0). */
 #define INSTR_PROF_COVMAP_VERSION 5
 
@@ -662,6 +662,8 @@ serializeValueProfDataFrom(ValueProfRecordClosure *Closure,
  * The 59th bit indicates whether to use debug info to correlate profiles.
  * The 60th bit indicates single byte coverage instrumentation.
  * The 61st bit indicates function entry instrumentation only.
+ * The 62nd bit indicates whether memory profile information is present.
+ * The 63rd bit indicates if this is a temporal profile.
  */
 #define VARIANT_MASKS_ALL 0xff00000000000000ULL
 #define GET_VERSION(V) ((V) & ~VARIANT_MASKS_ALL)
@@ -671,9 +673,12 @@ serializeValueProfDataFrom(ValueProfRecordClosure *Closure,
 #define VARIANT_MASK_DBG_CORRELATE (0x1ULL << 59)
 #define VARIANT_MASK_BYTE_COVERAGE (0x1ULL << 60)
 #define VARIANT_MASK_FUNCTION_ENTRY_ONLY (0x1ULL << 61)
+#define VARIANT_MASK_MEMPROF (0x1ULL << 62)
+#define VARIANT_MASK_TEMPORAL_PROF (0x1ULL << 63)
 #define INSTR_PROF_RAW_VERSION_VAR __llvm_profile_raw_version
 #define INSTR_PROF_PROFILE_RUNTIME_VAR __llvm_profile_runtime
 #define INSTR_PROF_PROFILE_COUNTER_BIAS_VAR __llvm_profile_counter_bias
+#define INSTR_PROF_PROFILE_SET_TIMESTAMP __llvm_profile_set_timestamp
 
 /* The variable that holds the name of the profile data
  * specified via command line. */

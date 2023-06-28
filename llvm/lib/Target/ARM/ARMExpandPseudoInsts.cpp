@@ -23,6 +23,7 @@
 #include "llvm/CodeGen/LivePhysRegs.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
+#include "llvm/MC/MCAsmInfo.h"
 #include "llvm/Support/Debug.h"
 
 using namespace llvm;
@@ -952,6 +953,7 @@ static bool IsAnAddressOperand(const MachineOperand &MO) {
   case MachineOperand::MO_Metadata:
   case MachineOperand::MO_MCSymbol:
     return true;
+  case MachineOperand::MO_DbgInstrRef:
   case MachineOperand::MO_CFIIndex:
     return false;
   case MachineOperand::MO_IntrinsicID:
@@ -1218,7 +1220,7 @@ ARMExpandPseudo::CMSEClearFPRegsV8(MachineBasicBlock &MBB,
       Register Reg = Op.getReg();
       if (Reg == ARM::NoRegister || Reg == ARM::LR)
         continue;
-      assert(Register::isPhysicalRegister(Reg) && "Unallocated register");
+      assert(Reg.isPhysical() && "Unallocated register");
       ClearBB->addLiveIn(Reg);
       DoneBB->addLiveIn(Reg);
     }
@@ -1719,6 +1721,7 @@ bool ARMExpandPseudo::ExpandCMP_SWAP(MachineBasicBlock &MBB,
                                      unsigned UxtOp,
                                      MachineBasicBlock::iterator &NextMBBI) {
   bool IsThumb = STI->isThumb();
+  bool IsThumb1Only = STI->isThumb1Only();
   MachineInstr &MI = *MBBI;
   DebugLoc DL = MI.getDebugLoc();
   const MachineOperand &Dest = MI.getOperand(0);
@@ -1793,7 +1796,8 @@ bool ARMExpandPseudo::ExpandCMP_SWAP(MachineBasicBlock &MBB,
     MIB.addImm(0); // a 32-bit Thumb strex (only) allows an offset.
   MIB.add(predOps(ARMCC::AL));
 
-  unsigned CMPri = IsThumb ? ARM::t2CMPri : ARM::CMPri;
+  unsigned CMPri =
+      IsThumb ? (IsThumb1Only ? ARM::tCMPi8 : ARM::t2CMPri) : ARM::CMPri;
   BuildMI(StoreBB, DL, TII->get(CMPri))
       .addReg(TempReg, RegState::Kill)
       .addImm(0)
@@ -1847,6 +1851,7 @@ bool ARMExpandPseudo::ExpandCMP_SWAP_64(MachineBasicBlock &MBB,
                                         MachineBasicBlock::iterator MBBI,
                                         MachineBasicBlock::iterator &NextMBBI) {
   bool IsThumb = STI->isThumb();
+  assert(!STI->isThumb1Only() && "CMP_SWAP_64 unsupported under Thumb1!");
   MachineInstr &MI = *MBBI;
   DebugLoc DL = MI.getDebugLoc();
   MachineOperand &Dest = MI.getOperand(0);
@@ -2107,6 +2112,10 @@ bool ARMExpandPseudo::ExpandMI(MachineBasicBlock &MBB,
     case ARM::TCRETURNdi:
     case ARM::TCRETURNri: {
       MachineBasicBlock::iterator MBBI = MBB.getLastNonDebugInstr();
+      if (MBBI->getOpcode() == ARM::SEH_EpilogEnd)
+        MBBI--;
+      if (MBBI->getOpcode() == ARM::SEH_Nop_Ret)
+        MBBI--;
       assert(MBBI->isReturn() &&
              "Can only insert epilog into returning blocks");
       unsigned RetOpcode = MBBI->getOpcode();
@@ -2116,13 +2125,21 @@ bool ARMExpandPseudo::ExpandMI(MachineBasicBlock &MBB,
 
       // Tail call return: adjust the stack pointer and jump to callee.
       MBBI = MBB.getLastNonDebugInstr();
+      if (MBBI->getOpcode() == ARM::SEH_EpilogEnd)
+        MBBI--;
+      if (MBBI->getOpcode() == ARM::SEH_Nop_Ret)
+        MBBI--;
       MachineOperand &JumpTarget = MBBI->getOperand(0);
 
       // Jump to label or value in register.
       if (RetOpcode == ARM::TCRETURNdi) {
+        MachineFunction *MF = MBB.getParent();
+        bool NeedsWinCFI = MF->getTarget().getMCAsmInfo()->usesWindowsCFI() &&
+                           MF->getFunction().needsUnwindTableEntry();
         unsigned TCOpcode =
             STI->isThumb()
-                ? (STI->isTargetMachO() ? ARM::tTAILJMPd : ARM::tTAILJMPdND)
+                ? ((STI->isTargetMachO() || NeedsWinCFI) ? ARM::tTAILJMPd
+                                                         : ARM::tTAILJMPdND)
                 : ARM::TAILJMPd;
         MachineInstrBuilder MIB = BuildMI(MBB, MBBI, dl, TII.get(TCOpcode));
         if (JumpTarget.isGlobal())
@@ -2154,6 +2171,9 @@ bool ARMExpandPseudo::ExpandMI(MachineBasicBlock &MBB,
       // Update call site info and delete the pseudo instruction TCRETURN.
       if (MI.isCandidateForCallSiteEntry())
         MI.getMF()->moveCallSiteInfo(&MI, &*NewMI);
+      // Copy nomerge flag over to new instruction.
+      if (MI.getFlag(MachineInstr::NoMerge))
+        NewMI->setFlag(MachineInstr::NoMerge);
       MBB.erase(MBBI);
 
       MBBI = NewMI;
@@ -2437,14 +2457,14 @@ bool ARMExpandPseudo::ExpandMI(MachineBasicBlock &MBB,
       return true;
     }
 
-    case ARM::MOVsrl_flag:
-    case ARM::MOVsra_flag: {
+    case ARM::MOVsrl_glue:
+    case ARM::MOVsra_glue: {
       // These are just fancy MOVs instructions.
       BuildMI(MBB, MBBI, MI.getDebugLoc(), TII->get(ARM::MOVsi),
               MI.getOperand(0).getReg())
           .add(MI.getOperand(1))
           .addImm(ARM_AM::getSORegOpc(
-              (Opcode == ARM::MOVsrl_flag ? ARM_AM::lsr : ARM_AM::asr), 1))
+              (Opcode == ARM::MOVsrl_glue ? ARM_AM::lsr : ARM_AM::asr), 1))
           .add(predOps(ARMCC::AL))
           .addReg(ARM::CPSR, RegState::Define);
       MI.eraseFromParent();
@@ -3031,6 +3051,9 @@ bool ARMExpandPseudo::ExpandMI(MachineBasicBlock &MBB,
       assert(STI->isThumb());
       return ExpandCMP_SWAP(MBB, MBBI, ARM::t2LDREXH, ARM::t2STREXH, ARM::tUXTH,
                             NextMBBI);
+    case ARM::tCMP_SWAP_32:
+      assert(STI->isThumb());
+      return ExpandCMP_SWAP(MBB, MBBI, ARM::t2LDREX, ARM::t2STREX, 0, NextMBBI);
 
     case ARM::CMP_SWAP_8:
       assert(!STI->isThumb());
@@ -3041,11 +3064,8 @@ bool ARMExpandPseudo::ExpandMI(MachineBasicBlock &MBB,
       return ExpandCMP_SWAP(MBB, MBBI, ARM::LDREXH, ARM::STREXH, ARM::UXTH,
                             NextMBBI);
     case ARM::CMP_SWAP_32:
-      if (STI->isThumb())
-        return ExpandCMP_SWAP(MBB, MBBI, ARM::t2LDREX, ARM::t2STREX, 0,
-                              NextMBBI);
-      else
-        return ExpandCMP_SWAP(MBB, MBBI, ARM::LDREX, ARM::STREX, 0, NextMBBI);
+      assert(!STI->isThumb());
+      return ExpandCMP_SWAP(MBB, MBBI, ARM::LDREX, ARM::STREX, 0, NextMBBI);
 
     case ARM::CMP_SWAP_64:
       return ExpandCMP_SWAP_64(MBB, MBBI, NextMBBI);
@@ -3132,7 +3152,7 @@ bool ARMExpandPseudo::ExpandMBB(MachineBasicBlock &MBB) {
 }
 
 bool ARMExpandPseudo::runOnMachineFunction(MachineFunction &MF) {
-  STI = &static_cast<const ARMSubtarget &>(MF.getSubtarget());
+  STI = &MF.getSubtarget<ARMSubtarget>();
   TII = STI->getInstrInfo();
   TRI = STI->getRegisterInfo();
   AFI = MF.getInfo<ARMFunctionInfo>();

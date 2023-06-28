@@ -12,7 +12,7 @@ ATTRIBUTE_NOINLINE void foo(int index, int len) {
 #ifdef MSVC
   volatile char ATTRIBUTE_ALIGNED(32) *str = (volatile char *)_alloca(len);
 #else
-  volatile char ATTRIBUTE_ALIGNED(32) str[len];
+  volatile char str[len] __attribute__((aligned(32)));
 #endif
 assert(!(reinterpret_cast<long>(str) & 31L));
   char *q = (char *)__asan_region_is_poisoned((char *)str, 64);

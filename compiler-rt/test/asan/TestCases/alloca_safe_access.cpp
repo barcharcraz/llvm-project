@@ -6,6 +6,7 @@
 
 #include "defines.h"
 #include <assert.h>
+#include <stdint.h>
 ATTRIBUTE_NOINLINE void foo(int index, int len) {
 ATTRIBUTE_ALIGNED(32)
 #ifdef MSVC
@@ -13,7 +14,7 @@ ATTRIBUTE_ALIGNED(32)
 #else
   volatile char str[len];
 #endif
-  assert(!(reinterpret_cast<long>(str) & 31L));
+  assert(!(reinterpret_cast<uintptr_t>(str) & 31L));
   str[index] = '1';
 }
 

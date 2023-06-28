@@ -21,16 +21,7 @@
 
 using namespace clang::ast_matchers;
 
-namespace clang {
-namespace tidy {
-namespace cppcoreguidelines {
-namespace {
-auto hasAnyListedName(const std::string &Names) {
-  const std::vector<std::string> NameList =
-      utils::options::parseStringList(Names);
-  return hasAnyName(std::vector<StringRef>(NameList.begin(), NameList.end()));
-}
-} // namespace
+namespace clang::tidy::cppcoreguidelines {
 
 NarrowingConversionsCheck::NarrowingConversionsCheck(StringRef Name,
                                                      ClangTidyContext *Context)
@@ -79,8 +70,8 @@ void NarrowingConversionsCheck::registerMatchers(MatchFinder *Finder) {
   // We may want to exclude other types from the checks, such as `size_type`
   // and `difference_type`. These are often used to count elements, represented
   // in 64 bits and assigned to `int`. Rarely are people counting >2B elements.
-  const auto IsConversionFromIgnoredType =
-      hasType(namedDecl(hasAnyListedName(IgnoreConversionFromTypes)));
+  const auto IsConversionFromIgnoredType = hasType(namedDecl(
+      hasAnyName(utils::options::parseStringList(IgnoreConversionFromTypes))));
 
   // `IsConversionFromIgnoredType` will ignore narrowing calls from those types,
   // but not expressions that are promoted to an ignored type as a result of a
@@ -519,6 +510,8 @@ void NarrowingConversionsCheck::handleBinaryOperator(const ASTContext &Context,
   const BuiltinType *RhsType = getBuiltinType(Rhs);
   if (RhsType == nullptr || LhsType == nullptr)
     return;
+  if (LhsType == RhsType)
+    return;
   if (RhsType->getKind() == BuiltinType::Bool && LhsType->isSignedInteger())
     return handleBooleanToSignedIntegral(Context, SourceLoc, Lhs, Rhs);
   if (RhsType->isInteger() && LhsType->getKind() == BuiltinType::Bool)
@@ -557,6 +550,8 @@ void NarrowingConversionsCheck::handleImplicitCast(
   const Expr &Lhs = Cast;
   const Expr &Rhs = *Cast.getSubExpr();
   if (Lhs.isInstantiationDependent() || Rhs.isInstantiationDependent())
+    return;
+  if (getBuiltinType(Lhs) == getBuiltinType(Rhs))
     return;
   if (handleConditionalOperator(Context, Lhs, Rhs))
     return;
@@ -601,6 +596,4 @@ void NarrowingConversionsCheck::check(const MatchFinder::MatchResult &Result) {
     return handleImplicitCast(*Result.Context, *Cast);
   llvm_unreachable("must be binary operator or cast expression");
 }
-} // namespace cppcoreguidelines
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::cppcoreguidelines

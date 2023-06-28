@@ -1289,7 +1289,7 @@ int __kmp_dispatch_next_algorithm(int gtid,
               break;
             }
           }
-          if (KMP_ATOMIC_LD_RLX(&v->steal_flag) != READY ||
+          if (KMP_ATOMIC_LD_ACQ(&v->steal_flag) != READY ||
               v->u.p.count >= (UT)v->u.p.ub) {
             pr->u.p.parm4 = (victimId + 1) % nproc; // shift start victim tid
             continue; // no chunks to steal, try next victim
@@ -1964,9 +1964,22 @@ int __kmp_dispatch_next_algorithm(int gtid,
           &(task_info->task_data), 0, codeptr);                                \
     }                                                                          \
   }
+#define OMPT_LOOP_DISPATCH(lb, ub, st, status)                                 \
+  if (ompt_enabled.ompt_callback_dispatch && status) {                         \
+    ompt_team_info_t *team_info = __ompt_get_teaminfo(0, NULL);                \
+    ompt_task_info_t *task_info = __ompt_get_task_info_object(0);              \
+    ompt_dispatch_chunk_t chunk;                                               \
+    ompt_data_t instance = ompt_data_none;                                     \
+    OMPT_GET_DISPATCH_CHUNK(chunk, lb, ub, st);                                \
+    instance.ptr = &chunk;                                                     \
+    ompt_callbacks.ompt_callback(ompt_callback_dispatch)(                      \
+        &(team_info->parallel_data), &(task_info->task_data),                  \
+        ompt_dispatch_ws_loop_chunk, instance);                                \
+  }
 // TODO: implement count
 #else
 #define OMPT_LOOP_END // no-op
+#define OMPT_LOOP_DISPATCH(lb, ub, st, status) // no-op
 #endif
 
 #if KMP_STATS_ENABLED
@@ -2142,6 +2155,7 @@ static int __kmp_dispatch_next(ident_t *loc, int gtid, kmp_int32 *p_last,
 #if INCLUDE_SSC_MARKS
     SSC_MARK_DISPATCH_NEXT();
 #endif
+    OMPT_LOOP_DISPATCH(*p_lb, *p_ub, pr->u.p.st, status);
     OMPT_LOOP_END;
     KMP_STATS_LOOP_END;
     return status;
@@ -2265,6 +2279,7 @@ static int __kmp_dispatch_next(ident_t *loc, int gtid, kmp_int32 *p_last,
 #if INCLUDE_SSC_MARKS
   SSC_MARK_DISPATCH_NEXT();
 #endif
+  OMPT_LOOP_DISPATCH(*p_lb, *p_ub, pr->u.p.st, status);
   OMPT_LOOP_END;
   KMP_STATS_LOOP_END;
   return status;
@@ -2372,7 +2387,7 @@ thread
 kmp_int32 __kmpc_next_section(ident_t *loc, kmp_int32 gtid,
                               kmp_int32 numberOfSections) {
 
-  KMP_TIME_PARTITIONED_BLOCK(OMP_sections);
+  KMP_TIME_PARTITIONED_BLOCK(OMP_sections_overhead);
 
   kmp_info_t *th = __kmp_threads[gtid];
 #ifdef KMP_DEBUG
@@ -2445,7 +2460,6 @@ kmp_int32 __kmpc_next_section(ident_t *loc, kmp_int32 gtid,
           ompt_dispatch_section, instance);
     }
 #endif
-    KMP_POP_PARTITIONED_TIMER();
   }
 
   return sectionIndex;
@@ -2477,9 +2491,9 @@ void __kmpc_end_sections(ident_t *loc, kmp_int32 gtid) {
           &(task_info->task_data), 0, OMPT_GET_RETURN_ADDRESS(0));
     }
 #endif
-    KMP_POP_PARTITIONED_TIMER();
   }
 
+  KMP_POP_PARTITIONED_TIMER();
   KD_TRACE(100, ("__kmpc_end_sections: T#%d returned\n", gtid));
 }
 

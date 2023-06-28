@@ -25,18 +25,16 @@
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineLoopInfo.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
-#include "llvm/CodeGen/Passes.h"
 #include "llvm/CodeGen/RegisterClassInfo.h"
 #include "llvm/CodeGen/ScheduleDAGInstrs.h"
+#include "llvm/CodeGen/ScheduleDAGMutation.h"
 #include "llvm/CodeGen/ScheduleHazardRecognizer.h"
-#include "llvm/CodeGen/SchedulerRegistry.h"
 #include "llvm/CodeGen/TargetInstrInfo.h"
-#include "llvm/CodeGen/TargetLowering.h"
 #include "llvm/CodeGen/TargetPassConfig.h"
-#include "llvm/CodeGen/TargetRegisterInfo.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
 #include "llvm/Config/llvm-config.h"
 #include "llvm/InitializePasses.h"
+#include "llvm/Pass.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -72,7 +70,7 @@ DebugMod("postra-sched-debugmod",
                       cl::desc("Debug control MBBs that are scheduled"),
                       cl::init(0), cl::Hidden);
 
-AntiDepBreaker::~AntiDepBreaker() { }
+AntiDepBreaker::~AntiDepBreaker() = default;
 
 namespace {
   class PostRAScheduler : public MachineFunctionPass {
@@ -184,7 +182,7 @@ namespace {
 
   private:
     /// Apply each ScheduleDAGMutation step in order.
-    void postprocessDAG();
+    void postProcessDAG();
 
     void ReleaseSucc(SUnit *SU, SDep *SuccEdge);
     void ReleaseSuccessors(SUnit *SU);
@@ -409,7 +407,7 @@ void SchedulePostRATDList::schedule() {
     }
   }
 
-  postprocessDAG();
+  postProcessDAG();
 
   LLVM_DEBUG(dbgs() << "********** List Scheduling **********\n");
   LLVM_DEBUG(dump());
@@ -438,7 +436,7 @@ void SchedulePostRATDList::finishBlock() {
 }
 
 /// Apply each ScheduleDAGMutation step in order.
-void SchedulePostRATDList::postprocessDAG() {
+void SchedulePostRATDList::postProcessDAG() {
   for (auto &M : Mutations)
     M->apply(this);
 }

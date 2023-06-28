@@ -45,13 +45,9 @@ CGCallee CGCXXABI::EmitLoadOfMemberFunctionPointer(
   ErrorUnsupportedABI(CGF, "calls through member pointers");
 
   ThisPtrForCall = This.getPointer();
-  const FunctionProtoType *FPT =
-    MPT->getPointeeType()->getAs<FunctionProtoType>();
-  const auto *RD =
-      cast<CXXRecordDecl>(MPT->getClass()->castAs<RecordType>()->getDecl());
-  llvm::FunctionType *FTy = CGM.getTypes().GetFunctionType(
-      CGM.getTypes().arrangeCXXMethodType(RD, FPT, /*FD=*/nullptr));
-  llvm::Constant *FnPtr = llvm::Constant::getNullValue(FTy->getPointerTo());
+  const auto *FPT = MPT->getPointeeType()->castAs<FunctionProtoType>();
+  llvm::Constant *FnPtr = llvm::Constant::getNullValue(
+      llvm::PointerType::getUnqual(CGM.getLLVMContext()));
   return CGCallee::forDirect(FnPtr, FPT);
 }
 
@@ -60,8 +56,8 @@ CGCXXABI::EmitMemberDataPointerAddress(CodeGenFunction &CGF, const Expr *E,
                                        Address Base, llvm::Value *MemPtr,
                                        const MemberPointerType *MPT) {
   ErrorUnsupportedABI(CGF, "loads of member pointers");
-  llvm::Type *Ty = CGF.ConvertType(MPT->getPointeeType())
-                         ->getPointerTo(Base.getAddressSpace());
+  llvm::Type *Ty =
+      llvm::PointerType::get(CGF.getLLVMContext(), Base.getAddressSpace());
   return llvm::Constant::getNullValue(Ty);
 }
 

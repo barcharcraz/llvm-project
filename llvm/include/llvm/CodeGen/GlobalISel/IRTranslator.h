@@ -22,11 +22,10 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/CodeGen/CodeGenCommonISel.h"
 #include "llvm/CodeGen/FunctionLoweringInfo.h"
-#include "llvm/CodeGen/GlobalISel/CSEMIRBuilder.h"
+#include "llvm/CodeGen/GlobalISel/MachineIRBuilder.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/SwiftErrorValueTracking.h"
 #include "llvm/CodeGen/SwitchLoweringUtils.h"
-#include "llvm/IR/Intrinsics.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/CodeGen.h"
 #include <memory>
@@ -35,12 +34,15 @@
 namespace llvm {
 
 class AllocaInst;
+class AssumptionCache;
 class BasicBlock;
 class CallInst;
 class CallLowering;
 class Constant;
 class ConstrainedFPIntrinsic;
 class DataLayout;
+class DbgDeclareInst;
+class DbgValueInst;
 class Instruction;
 class MachineBasicBlock;
 class MachineFunction;
@@ -48,6 +50,7 @@ class MachineInstr;
 class MachineRegisterInfo;
 class OptimizationRemarkEmitter;
 class PHINode;
+class TargetLibraryInfo;
 class TargetPassConfig;
 class User;
 class Value;
@@ -66,7 +69,7 @@ public:
 
 private:
   /// Interface used to lower the everything related to calls.
-  const CallLowering *CLI;
+  const CallLowering *CLI = nullptr;
 
   /// This class contains the mapping between the Values to vreg related data.
   class ValueToVRegInfo {
@@ -103,9 +106,7 @@ private:
       return ValToVRegs.find(&V);
     }
 
-    bool contains(const Value &V) const {
-      return ValToVRegs.find(&V) != ValToVRegs.end();
-    }
+    bool contains(const Value &V) const { return ValToVRegs.contains(&V); }
 
     void reset() {
       ValToVRegs.clear();
@@ -116,7 +117,7 @@ private:
 
   private:
     VRegListT *insertVRegs(const Value &V) {
-      assert(ValToVRegs.find(&V) == ValToVRegs.end() && "Value already exists");
+      assert(!ValToVRegs.contains(&V) && "Value already exists");
 
       // We placement new using our fast allocator since we never try to free
       // the vectors until translation is finished.
@@ -126,8 +127,7 @@ private:
     }
 
     OffsetListT *insertOffsets(const Value &V) {
-      assert(TypeToOffsets.find(V.getType()) == TypeToOffsets.end() &&
-             "Type already exists");
+      assert(!TypeToOffsets.contains(V.getType()) && "Type already exists");
 
       auto *OffsetList = new (OffsetAlloc.Allocate()) OffsetListT();
       TypeToOffsets[V.getType()] = OffsetList;
@@ -246,13 +246,21 @@ private:
   bool translateKnownIntrinsic(const CallInst &CI, Intrinsic::ID ID,
                                MachineIRBuilder &MIRBuilder);
 
-  bool translateInlineAsm(const CallBase &CB, MachineIRBuilder &MIRBuilder);
+  /// Returns the single livein physical register Arg was lowered to, if
+  /// possible.
+  std::optional<MCRegister> getArgPhysReg(Argument &Arg);
 
-  /// Returns true if the value should be split into multiple LLTs.
-  /// If \p Offsets is given then the split type's offsets will be stored in it.
-  /// If \p Offsets is not empty it will be cleared first.
-  bool valueIsSplit(const Value &V,
-                    SmallVectorImpl<uint64_t> *Offsets = nullptr);
+  /// If DebugInst targets an Argument and its expression is an EntryValue,
+  /// lower it as an entry in the MF debug table.
+  bool translateIfEntryValueArgument(const DbgDeclareInst &DebugInst);
+
+  /// If DebugInst targets an Argument and its expression is an EntryValue,
+  /// lower as a DBG_VALUE targeting the corresponding livein register for that
+  /// Argument.
+  bool translateIfEntryValueArgument(const DbgValueInst &DebugInst,
+                                     MachineIRBuilder &MIRBuilder);
+
+  bool translateInlineAsm(const CallBase &CB, MachineIRBuilder &MIRBuilder);
 
   /// Common code for translating normal calls or invokes.
   bool translateCallBase(const CallBase &CB, MachineIRBuilder &MIRBuilder);
@@ -561,21 +569,24 @@ private:
   std::unique_ptr<MachineIRBuilder> EntryBuilder;
 
   // The MachineFunction currently being translated.
-  MachineFunction *MF;
+  MachineFunction *MF = nullptr;
 
   /// MachineRegisterInfo used to create virtual registers.
   MachineRegisterInfo *MRI = nullptr;
 
-  const DataLayout *DL;
+  const DataLayout *DL = nullptr;
 
   /// Current target configuration. Controls how the pass handles errors.
-  const TargetPassConfig *TPC;
+  const TargetPassConfig *TPC = nullptr;
 
   CodeGenOpt::Level OptLevel;
 
   /// Current optimization remark emitter. Used to report failures.
   std::unique_ptr<OptimizationRemarkEmitter> ORE;
 
+  AAResults *AA = nullptr;
+  AssumptionCache *AC = nullptr;
+  const TargetLibraryInfo *LibInfo = nullptr;
   FunctionLoweringInfo FuncInfo;
 
   // True when either the Target Machine specifies no optimizations or the
@@ -596,7 +607,7 @@ private:
       assert(irt && "irt is null!");
     }
 
-    virtual void addSuccessorWithProb(
+    void addSuccessorWithProb(
         MachineBasicBlock *Src, MachineBasicBlock *Dst,
         BranchProbability Prob = BranchProbability::getUnknown()) override {
       IRT->addSuccessorWithProb(Src, Dst, Prob);

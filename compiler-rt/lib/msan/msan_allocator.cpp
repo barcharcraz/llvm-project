@@ -59,8 +59,7 @@ struct AP32 {
 };
 typedef SizeClassAllocator32<AP32> PrimaryAllocator;
 #elif defined(__x86_64__)
-#if SANITIZER_NETBSD || \
-    (SANITIZER_LINUX && !defined(MSAN_LINUX_X86_64_OLD_MAPPING))
+#if SANITIZER_NETBSD || SANITIZER_LINUX
 static const uptr kAllocatorSpace = 0x700000000000ULL;
 #else
 static const uptr kAllocatorSpace = 0x600000000000ULL;
@@ -108,19 +107,18 @@ struct AP64 {  // Allocator64 parameters. Deliberately using a short name.
 
 typedef SizeClassAllocator64<AP64> PrimaryAllocator;
 #elif defined(__aarch64__)
-static const uptr kMaxAllowedMallocSize = 2UL << 30;  // 2G
+static const uptr kMaxAllowedMallocSize = 8UL << 30;
 
-struct AP32 {
-  static const uptr kSpaceBeg = 0;
-  static const u64 kSpaceSize = SANITIZER_MMAP_RANGE_SIZE;
+struct AP64 {
+  static const uptr kSpaceBeg = 0xE00000000000ULL;
+  static const uptr kSpaceSize = 0x40000000000;  // 4T.
   static const uptr kMetadataSize = sizeof(Metadata);
-  typedef __sanitizer::CompactSizeClassMap SizeClassMap;
-  static const uptr kRegionSizeLog = 20;
-  using AddressSpaceView = LocalAddressSpaceView;
+  typedef DefaultSizeClassMap SizeClassMap;
   typedef MsanMapUnmapCallback MapUnmapCallback;
   static const uptr kFlags = 0;
+  using AddressSpaceView = LocalAddressSpaceView;
 };
-typedef SizeClassAllocator32<AP32> PrimaryAllocator;
+typedef SizeClassAllocator64<AP64> PrimaryAllocator;
 #endif
 typedef CombinedAllocator<PrimaryAllocator> Allocator;
 typedef Allocator::AllocatorCache AllocatorCache;
@@ -147,8 +145,13 @@ AllocatorCache *GetAllocatorCache(MsanThreadLocalMallocStorage *ms) {
   return reinterpret_cast<AllocatorCache *>(ms->allocator_cache);
 }
 
+void MsanThreadLocalMallocStorage::Init() {
+  allocator.InitCache(GetAllocatorCache(this));
+}
+
 void MsanThreadLocalMallocStorage::CommitBack() {
   allocator.SwallowCache(GetAllocatorCache(this));
+  allocator.DestroyCache(GetAllocatorCache(this));
 }
 
 static void *MsanAllocate(StackTrace *stack, uptr size, uptr alignment,
@@ -194,13 +197,16 @@ static void *MsanAllocate(StackTrace *stack, uptr size, uptr alignment,
       __msan_set_origin(allocated, size, o.raw_id());
     }
   }
-  MSAN_MALLOC_HOOK(allocated, size);
+  UnpoisonParam(2);
+  RunMallocHooks(allocated, size);
   return allocated;
 }
 
 void MsanDeallocate(StackTrace *stack, void *p) {
   CHECK(p);
-  MSAN_FREE_HOOK(p);
+  UnpoisonParam(1);
+  RunFreeHooks(p);
+
   Metadata *meta = reinterpret_cast<Metadata *>(allocator.GetMetaData(p));
   uptr size = meta->requested_size;
   meta->requested_size = 0;
@@ -259,12 +265,31 @@ static void *MsanCalloc(StackTrace *stack, uptr nmemb, uptr size) {
   return MsanAllocate(stack, nmemb * size, sizeof(u64), true);
 }
 
+static const void *AllocationBegin(const void *p) {
+  if (!p)
+    return nullptr;
+  void *beg = allocator.GetBlockBegin(p);
+  if (!beg)
+    return nullptr;
+  Metadata *b = (Metadata *)allocator.GetMetaData(beg);
+  if (!b)
+    return nullptr;
+  if (b->requested_size == 0)
+    return nullptr;
+
+  return (const void *)beg;
+}
+
 static uptr AllocationSize(const void *p) {
   if (!p) return 0;
   const void *beg = allocator.GetBlockBegin(p);
   if (beg != p) return 0;
   Metadata *b = (Metadata *)allocator.GetMetaData(p);
   return b->requested_size;
+}
+
+static uptr AllocationSizeFast(const void *p) {
+  return reinterpret_cast<Metadata *>(allocator.GetMetaData(p))->requested_size;
 }
 
 void *msan_malloc(uptr size, StackTrace *stack) {
@@ -372,4 +397,17 @@ uptr __sanitizer_get_estimated_allocated_size(uptr size) { return size; }
 
 int __sanitizer_get_ownership(const void *p) { return AllocationSize(p) != 0; }
 
+const void *__sanitizer_get_allocated_begin(const void *p) {
+  return AllocationBegin(p);
+}
+
 uptr __sanitizer_get_allocated_size(const void *p) { return AllocationSize(p); }
+
+uptr __sanitizer_get_allocated_size_fast(const void *p) {
+  DCHECK_EQ(p, __sanitizer_get_allocated_begin(p));
+  uptr ret = AllocationSizeFast(p);
+  DCHECK_EQ(ret, __sanitizer_get_allocated_size(p));
+  return ret;
+}
+
+void __sanitizer_purge_allocator() { allocator.ForceReleaseToOS(); }

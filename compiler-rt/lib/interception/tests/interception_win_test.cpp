@@ -17,6 +17,8 @@
 #if !SANITIZER_DEBUG
 #if SANITIZER_WINDOWS
 
+#include <stdarg.h>
+
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
@@ -82,7 +84,16 @@ const u8 kIdentityCodeWithJump[] = {
     0xC3,                                // ret
 };
 
-#else
+const u8 kIdentityCodeWithJumpBackwards[] = {
+    0x89, 0xC8,  // mov         eax, ecx
+    0xC3,        // ret
+    0xE9, 0xF8, 0xFF, 0xFF,
+    0xFF,  // jmp - 8
+    0xCC, 0xCC, 0xCC, 0xCC,
+};
+const u8 kIdentityCodeWithJumpBackwardsOffset = 3;
+
+#    else
 
 const u8 kIdentityCodeWithPrologue[] = {
     0x55,              // push        ebp
@@ -131,6 +142,15 @@ const u8 kIdentityCodeWithJump[] = {
     0xC3,                    // ret
 };
 
+const u8 kIdentityCodeWithJumpBackwards[] = {
+    0x8B, 0x44, 0x24, 0x04,  // mov         eax,dword ptr [esp + 4]
+    0xC3,                    // ret
+    0xE9, 0xF6, 0xFF, 0xFF,
+    0xFF,  // jmp - 10
+    0xCC, 0xCC, 0xCC, 0xCC,
+};
+const u8 kIdentityCodeWithJumpBackwardsOffset = 5;
+
 const u8 kPatchableLikeAlignedOffsetRecalloc[] = {
   0x55,                    // push ebp
   0x8B, 0xEC,              // mov ebp, esp
@@ -141,6 +161,7 @@ const u8 kPatchableLikeAlignedOffsetRecalloc[] = {
   0x85, 0xF6               // test esi, esi
 };
 #endif
+
 
 const u8 kPatchableCode1[] = {
     0xB8, 0x4B, 0x00, 0x00, 0x00,  // mov eax,4B
@@ -271,21 +292,35 @@ const u8 kPatchableCode11[] = {
     0x83, 0x64, 0x24, 0x28, 0x00,   // and     dword ptr [rsp+28h],0
 };
 
-const u8 kPatchableCode9[] = {
-    0x8a, 0x01,        // al,byte ptr [rcx]
-    0x45, 0x33, 0xc0,  // xor     r8d,r8d
-    0x84, 0xc0,        // test    al,al
+const u8 kPatchableCode12[] = {
+    0x55,                           // push    ebp
+    0x53,                           // push    ebx
+    0x57,                           // push    edi
+    0x56,                           // push    esi
+    0x8b, 0x6c, 0x24, 0x18,         // mov     ebp,dword ptr[esp+18h]
 };
 
-const u8 kPatchableCode10[] = {
-    0x45, 0x33, 0xc0,  // xor     r8d,r8d
-    0x41, 0x8b, 0xc0,  // mov     eax,r8d
-    0x48, 0x85, 0xd2,  // test    rdx,rdx
+const u8 kPatchableCode13[] = {
+    0x55,                           // push    ebp
+    0x53,                           // push    ebx
+    0x57,                           // push    edi
+    0x56,                           // push    esi
+    0x8b, 0x5c, 0x24, 0x14,         // mov     ebx,dword ptr[esp+14h]
 };
 
-const u8 kPatchableCode11[] = {
-    0x48, 0x83, 0xec, 0x38,        // sub     rsp,38h
-    0x83, 0x64, 0x24, 0x28, 0x00,  // and     dword ptr [rsp+28h],0
+const u8 kPatchableCode14[] = {
+    0x55,                           // push    ebp
+    0x89, 0xe5,                     // mov     ebp,esp
+    0x53,                           // push    ebx
+    0x57,                           // push    edi
+    0x56,                           // push    esi
+};
+
+const u8 kUnsupportedCode1[] = {
+    0x0f, 0x0b,                     // ud2
+    0x0f, 0x0b,                     // ud2
+    0x0f, 0x0b,                     // ud2
+    0x0f, 0x0b,                     // ud2
 };
 
 // A buffer holding the dynamically generated code under test.
@@ -390,9 +425,11 @@ TEST(Interception, InternalGetProcAddress) {
 template <class T>
 static void TestIdentityFunctionPatching(
     const T &code, TestOverrideFunction override,
-    FunctionPrefixKind prefix_kind = FunctionPrefixNone) {
+    FunctionPrefixKind prefix_kind = FunctionPrefixNone,
+    int function_start_offset = 0) {
   uptr identity_address;
   LoadActiveCode(code, &identity_address, prefix_kind);
+  identity_address += function_start_offset;
   IdentityFunction identity = (IdentityFunction)identity_address;
 
   // Validate behavior before dynamic patching.
@@ -429,7 +466,7 @@ static void TestIdentityFunctionPatching(
   TestOnlyReleaseTrampolineRegions();
 }
 
-#if !SANITIZER_WINDOWS64
+#    if !SANITIZER_WINDOWS64
 TEST(Interception, OverrideFunctionWithDetour) {
   TestOverrideFunction override = OverrideFunctionWithDetour;
   FunctionPrefixKind prefix = FunctionPrefixDetour;
@@ -443,6 +480,9 @@ TEST(Interception, OverrideFunctionWithDetour) {
 TEST(Interception, OverrideFunctionWithRedirectJump) {
   TestOverrideFunction override = OverrideFunctionWithRedirectJump;
   TestIdentityFunctionPatching(kIdentityCodeWithJump, override);
+  TestIdentityFunctionPatching(kIdentityCodeWithJumpBackwards, override,
+                               FunctionPrefixNone,
+                               kIdentityCodeWithJumpBackwardsOffset);
 }
 
 TEST(Interception, OverrideFunctionWithHotPatch) {
@@ -670,9 +710,11 @@ TEST(Interception, PatchableFunctionWithTrampoline) {
   EXPECT_FALSE(TestFunctionPatching(kUnpatchableCode9, override, prefix));
 #else
   EXPECT_TRUE(TestFunctionPatching(kPatchableCode3, override, prefix));
-  //EXPECT_TRUE(TestFunctionPatching(kPatchableLikeAlignedOffsetRecalloc, override, prefix));
+  EXPECT_TRUE(TestFunctionPatching(kPatchableCode12, override, prefix));
+  EXPECT_TRUE(TestFunctionPatching(kPatchableCode13, override, prefix));
 #endif
   EXPECT_FALSE(TestFunctionPatching(kPatchableCode4, override, prefix));
+  EXPECT_TRUE(TestFunctionPatching(kPatchableCode14, override, prefix));
 
   EXPECT_FALSE(TestFunctionPatching(kUnpatchableCode1, override, prefix));
   EXPECT_FALSE(TestFunctionPatching(kUnpatchableCode2, override, prefix));
@@ -680,6 +722,43 @@ TEST(Interception, PatchableFunctionWithTrampoline) {
   EXPECT_FALSE(TestFunctionPatching(kUnpatchableCode4, override, prefix));
   EXPECT_FALSE(TestFunctionPatching(kUnpatchableCode5, override, prefix));
   EXPECT_FALSE(TestFunctionPatching(kUnpatchableCode6, override, prefix));
+}
+
+TEST(Interception, UnsupportedInstructionWithTrampoline) {
+  TestOverrideFunction override = OverrideFunctionWithTrampoline;
+  FunctionPrefixKind prefix = FunctionPrefixPadding;
+
+  static bool reportCalled;
+  reportCalled = false;
+
+  struct Local {
+    static void Report(const char *format, ...) {
+      if (reportCalled)
+        FAIL() << "Report called more times than expected";
+      reportCalled = true;
+      ASSERT_STREQ(
+          "interception_win: unhandled instruction at %p: %02x %02x %02x %02x "
+          "%02x %02x %02x %02x\n",
+          format);
+      va_list args;
+      va_start(args, format);
+      u8 *ptr = va_arg(args, u8 *);
+      for (int i = 0; i < 8; i++) EXPECT_EQ(kUnsupportedCode1[i], ptr[i]);
+      int bytes[8];
+      for (int i = 0; i < 8; i++) {
+        bytes[i] = va_arg(args, int);
+        EXPECT_EQ(kUnsupportedCode1[i], bytes[i]);
+      }
+      va_end(args);
+    }
+  };
+
+  SetErrorReportCallback(Local::Report);
+  EXPECT_FALSE(TestFunctionPatching(kUnsupportedCode1, override, prefix));
+  SetErrorReportCallback(nullptr);
+
+  if (!reportCalled)
+    ADD_FAILURE() << "Report not called";
 }
 
 TEST(Interception, PatchableFunctionPadding) {

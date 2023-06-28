@@ -145,6 +145,25 @@ static const int kBranchLength =
     FIRST_32_SECOND_64(kJumpInstructionLength, kIndirectJumpInstructionLength);
 static const int kDirectBranchLength = kBranchLength + kAddressLength;
 
+#  if defined(_MSC_VER)
+#    define INTERCEPTION_FORMAT(f, a)
+#  else
+#    define INTERCEPTION_FORMAT(f, a) __attribute__((format(printf, f, a)))
+#  endif
+
+static void (*ErrorReportCallback)(const char *format, ...)
+    INTERCEPTION_FORMAT(1, 2);
+
+void SetErrorReportCallback(void (*callback)(const char *format, ...)) {
+  ErrorReportCallback = callback;
+}
+
+#  define ReportError(...)                \
+    do {                                  \
+      if (ErrorReportCallback)            \
+        ErrorReportCallback(__VA_ARGS__); \
+    } while (0)
+
 static void InterceptionFailed() {
   /* If the user wants to continue past an interception failure, they can set
    * this variable. If not, these failures should be fatal, prompting them to
@@ -283,8 +302,13 @@ static void WritePadding(uptr from, uptr size) {
 }
 
 static void WriteJumpInstruction(uptr from, uptr target) {
-  if (!DistanceIsWithin2Gig(from + kJumpInstructionLength, target))
+  if (!DistanceIsWithin2Gig(from + kJumpInstructionLength, target)) {
+    ReportError(
+        "interception_win: cannot write jmp further than 2GB away, from %p to "
+        "%p.\n",
+        (void *)from, (void *)target);
     InterceptionFailed();
+  }
   ptrdiff_t offset = target - from - kJumpInstructionLength;
   *(u8 *)from = 0xE9;
   *(u32 *)(from + 1) = offset;
@@ -308,6 +332,10 @@ static void WriteIndirectJumpInstruction(uptr from, uptr indirect_target) {
   int offset = indirect_target - from - kIndirectJumpInstructionLength;
   if (!DistanceIsWithin2Gig(from + kIndirectJumpInstructionLength,
                             indirect_target)) {
+    ReportError(
+        "interception_win: cannot write indirect jmp with target further than "
+        "2GB away, from %p to %p.\n",
+        (void *)from, (void *)indirect_target);
     InterceptionFailed();
   }
   *(u16 *)from = 0x25FF;
@@ -527,6 +555,7 @@ static size_t GetInstructionSize(uptr address, size_t *rel_offset = nullptr) {
     case 0xFF8B:  // 8B FF : mov edi, edi
     case 0xEC8B:  // 8B EC : mov ebp, esp
     case 0xc889:  // 89 C8 : mov eax, ecx
+    case 0xE589:  // 89 E5 : mov ebp, esp
     case 0xC18B:  // 8B C1 : mov eax, ecx
     case 0xC033:  // 33 C0 : xor eax, eax
     case 0x8bec:  // EC 8B : mov ebp, esp
@@ -774,6 +803,8 @@ static size_t GetInstructionSize(uptr address, size_t *rel_offset = nullptr) {
     case 0x24448B:  // 8B 44 24 XX : mov eax, dword ptr [esp + XX]
     case 0x244C8B:  // 8B 4C 24 XX : mov ecx, dword ptr [esp + XX]
     case 0x24548B:  // 8B 54 24 XX : mov edx, dword ptr [esp + XX]
+    case 0x245C8B:  // 8B 5C 24 XX : mov ebx, dword ptr [esp + XX]
+    case 0x246C8B:  // 8B 6C 24 XX : mov ebp, dword ptr [esp + XX]
     case 0x24748B:  // 8B 74 24 XX : mov esi, dword ptr [esp + XX]
     case 0x247C8B:  // 8B 7C 24 XX : mov edi, dword ptr [esp + XX]
       return 4;
@@ -813,7 +844,9 @@ static bool CopyInstructions(uptr to, uptr from, size_t size) {
   while (cursor != size) {
     size_t rel_offset = 0;
     size_t instruction_size = GetInstructionSize(from + cursor, &rel_offset);
-    _memcpy((void *)(to + cursor), (void *)(from + cursor),
+    if (!instruction_size)
+      return false;
+    _memcpy((void*)(to + cursor), (void*)(from + cursor),
             (size_t)instruction_size);
     if (rel_offset) {
       uptr delta = to - from;
@@ -872,7 +905,7 @@ bool OverrideFunctionWithRedirectJump(uptr old_func, uptr new_func,
     return false;
 
   if (orig_old_func) {
-    int relative_offset = *(u32 *)(old_func + 1);
+    sptr relative_offset = *(s32 *)(old_func + 1);
     uptr absolute_target = old_func + relative_offset + kJumpInstructionLength;
     *orig_old_func = absolute_target;
   }
@@ -1197,6 +1230,10 @@ static dll_info *InterestingDLLsAvailable() {
       // NTDLL should go last as it exports some functions that we should
       // override in the CRT [presumably only used internally].
       {"ntdll.dll", SANITIZER_WINDOWS64},
+#if (defined(__MINGW32__) && defined(__i386__))
+      {"libc++.dll", false},        // libc++
+      {"libunwind.dll". false},     // libunwind
+#endif
       {nullptr, false}};
   static dll_info result[ARRAY_SIZE(InterestingDLLs)] = {0};
 
@@ -1382,4 +1419,5 @@ bool OverrideImportedFunction(const char *module_to_patch,
 }
 
 }  // namespace __interception
-#endif  // SANITIZER_MAC
+
+#endif  // SANITIZER_APPLE

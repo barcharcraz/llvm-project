@@ -12,19 +12,19 @@
 //===----------------------------------------------------------------------===//
 
 #include "flang/Optimizer/CodeGen/CodeGen.h"
-#include "flang/Optimizer/Support/FIRContext.h"
+#include "flang/Optimizer/Dialect/Support/FIRContext.h"
+#include "flang/Optimizer/Dialect/Support/KindMapping.h"
 #include "flang/Optimizer/Support/InitFIR.h"
 #include "flang/Optimizer/Support/InternalNames.h"
-#include "flang/Optimizer/Support/KindMapping.h"
 #include "flang/Optimizer/Transforms/Passes.h"
-#include "mlir/Conversion/SCFToStandard/SCFToStandard.h"
 #include "mlir/IR/AsmState.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
-#include "mlir/Parser.h"
+#include "mlir/Parser/Parser.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
+#include "llvm/Passes/OptimizationLevel.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorOr.h"
 #include "llvm/Support/FileSystem.h"
@@ -53,6 +53,11 @@ static cl::opt<std::string> targetTriple("target",
                                          cl::desc("specify a target triple"),
                                          cl::init("native"));
 
+static cl::opt<bool> codeGenLLVM(
+    "code-gen-llvm",
+    cl::desc("Run only CodeGen passes and translate FIR to LLVM IR"),
+    cl::init(false));
+
 #include "flang/Tools/CLOptions.inc"
 
 static void printModuleBody(mlir::ModuleOp mod, raw_ostream &output) {
@@ -80,13 +85,13 @@ compileFIR(const mlir::PassPipelineCLParser &passPipeline) {
   mlir::MLIRContext context(registry);
   fir::support::loadDialects(context);
   fir::support::registerLLVMTranslation(context);
-  auto owningRef = mlir::parseSourceFile(sourceMgr, &context);
+  auto owningRef = mlir::parseSourceFile<mlir::ModuleOp>(sourceMgr, &context);
 
   if (!owningRef) {
     errs() << "Error can't load file " << inputFilename << '\n';
     return mlir::failure();
   }
-  if (mlir::failed(owningRef->verify())) {
+  if (mlir::failed(owningRef->verifyInvariants())) {
     errs() << "Error verifying FIR module\n";
     return mlir::failure();
   }
@@ -98,9 +103,10 @@ compileFIR(const mlir::PassPipelineCLParser &passPipeline) {
   fir::KindMapping kindMap{&context};
   fir::setTargetTriple(*owningRef, targetTriple);
   fir::setKindMapping(*owningRef, kindMap);
-  mlir::PassManager pm(&context, mlir::OpPassManager::Nesting::Implicit);
+  mlir::PassManager pm((*owningRef)->getName(),
+                       mlir::OpPassManager::Nesting::Implicit);
   pm.enableVerifier(/*verifyPasses=*/true);
-  mlir::applyPassManagerCLOptions(pm);
+  (void)mlir::applyPassManagerCLOptions(pm);
   if (emitFir) {
     // parse the input and pretty-print it back out
     // -emit-fir intentionally disables all the passes
@@ -112,14 +118,20 @@ compileFIR(const mlir::PassPipelineCLParser &passPipeline) {
     if (mlir::failed(passPipeline.addToPipeline(pm, errorHandler)))
       return mlir::failure();
   } else {
-    fir::createMLIRToLLVMPassPipeline(pm);
+    if (codeGenLLVM) {
+      // Run only CodeGen passes.
+      fir::createDefaultFIRCodeGenPassPipeline(pm);
+    } else {
+      // Run tco with O2 by default.
+      fir::createMLIRToLLVMPassPipeline(pm, llvm::OptimizationLevel::O2);
+    }
     fir::addLLVMDialectToLLVMPass(pm, out.os());
   }
 
   // run the pass manager
   if (mlir::succeeded(pm.run(*owningRef))) {
     // passes ran successfully, so keep the output
-    if (emitFir || passPipeline.hasAnyOccurrences())
+    if ((emitFir || passPipeline.hasAnyOccurrences()) && !codeGenLLVM)
       printModuleBody(*owningRef, out.os());
     out.keep();
     return mlir::success();
@@ -132,6 +144,10 @@ compileFIR(const mlir::PassPipelineCLParser &passPipeline) {
 }
 
 int main(int argc, char **argv) {
+  // Disable the ExternalNameConversion pass by default until all the tests have
+  // been updated to pass with it enabled.
+  disableExternalNameConversion = true;
+
   [[maybe_unused]] InitLLVM y(argc, argv);
   fir::support::registerMLIRPassesForFortranTools();
   fir::registerOptCodeGenPasses();

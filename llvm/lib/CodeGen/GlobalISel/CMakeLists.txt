@@ -22,8 +22,6 @@ add_llvm_component_library(LLVMGlobalISel
   LostDebugLocObserver.cpp
   MachineIRBuilder.cpp
   RegBankSelect.cpp
-  RegisterBank.cpp
-  RegisterBankInfo.cpp
   Utils.cpp
 
   ADDITIONAL_HEADER_DIRS
@@ -35,6 +33,7 @@ add_llvm_component_library(LLVMGlobalISel
   LINK_COMPONENTS
   Analysis
   CodeGen
+  CodeGenTypes
   Core
   MC
   SelectionDAG

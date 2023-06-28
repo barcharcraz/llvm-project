@@ -18,7 +18,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Verifier.h"
-#include "mlir/Parser.h"
+#include "mlir/Parser/Parser.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
@@ -93,7 +93,7 @@ int loadMLIR(llvm::SourceMgr &sourceMgr, mlir::MLIRContext &context,
 
   // Parse the input mlir.
   sourceMgr.AddNewSourceBuffer(std::move(*fileOrErr), llvm::SMLoc());
-  module = mlir::parseSourceFile(sourceMgr, &context);
+  module = mlir::parseSourceFile<mlir::ModuleOp>(sourceMgr, &context);
   if (!module) {
     llvm::errs() << "Error can't load file " << inputFilename << "\n";
     return 3;
@@ -113,12 +113,13 @@ int dumpMLIR() {
     return error;
 
   if (enableOpt) {
-    mlir::PassManager pm(&context);
+    mlir::PassManager pm(module.get()->getName());
     // Apply any generic pass manager command line options and run the pipeline.
-    applyPassManagerCLOptions(pm);
+    if (mlir::failed(mlir::applyPassManagerCLOptions(pm)))
+      return 4;
 
     // Add a run of the canonicalizer to optimize the mlir module.
-    pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+    pm.addNestedPass<mlir::toy::FuncOp>(mlir::createCanonicalizerPass());
     if (mlir::failed(pm.run(*module)))
       return 4;
   }

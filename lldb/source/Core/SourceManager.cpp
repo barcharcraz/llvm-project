@@ -25,7 +25,6 @@
 #include "lldb/Utility/AnsiTerminal.h"
 #include "lldb/Utility/ConstString.h"
 #include "lldb/Utility/DataBuffer.h"
-#include "lldb/Utility/DataBufferLLVM.h"
 #include "lldb/Utility/RegularExpression.h"
 #include "lldb/Utility/Stream.h"
 #include "lldb/lldb-enumerations.h"
@@ -33,6 +32,7 @@
 #include "llvm/ADT/Twine.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include <cassert>
@@ -49,6 +49,14 @@ using namespace lldb;
 using namespace lldb_private;
 
 static inline bool is_newline_char(char ch) { return ch == '\n' || ch == '\r'; }
+
+static void resolve_tilde(FileSpec &file_spec) {
+  if (!FileSystem::Instance().Exists(file_spec) &&
+      file_spec.GetDirectory() &&
+      file_spec.GetDirectory().GetCString()[0] == '~') {
+    FileSystem::Instance().Resolve(file_spec);
+  }
+}
 
 // SourceManager constructor
 SourceManager::SourceManager(const TargetSP &target_sp)
@@ -67,10 +75,13 @@ SourceManager::FileSP SourceManager::GetFile(const FileSpec &file_spec) {
   if (!file_spec)
     return nullptr;
 
+  FileSpec resolved_fspec = file_spec;
+  resolve_tilde(resolved_fspec);
+
   DebuggerSP debugger_sp(m_debugger_wp.lock());
   FileSP file_sp;
   if (debugger_sp && debugger_sp->GetUseSourceCache())
-    file_sp = debugger_sp->GetSourceFileCache().FindSourceFile(file_spec);
+    file_sp = debugger_sp->GetSourceFileCache().FindSourceFile(resolved_fspec);
 
   TargetSP target_sp(m_target_wp.lock());
 
@@ -88,9 +99,9 @@ SourceManager::FileSP SourceManager::GetFile(const FileSpec &file_spec) {
   // If file_sp is no good or it points to a non-existent file, reset it.
   if (!file_sp || !FileSystem::Instance().Exists(file_sp->GetFileSpec())) {
     if (target_sp)
-      file_sp = std::make_shared<File>(file_spec, target_sp.get());
+      file_sp = std::make_shared<File>(resolved_fspec, target_sp.get());
     else
-      file_sp = std::make_shared<File>(file_spec, debugger_sp);
+      file_sp = std::make_shared<File>(resolved_fspec, debugger_sp);
 
     if (debugger_sp && debugger_sp->GetUseSourceCache())
       debugger_sp->GetSourceFileCache().AddSourceFile(file_sp);
@@ -194,7 +205,8 @@ size_t SourceManager::DisplaySourceLinesWithLineNumbersUsingLastFile(
       }
 
       char buffer[3];
-      sprintf(buffer, "%2.2s", (line == curr_line) ? current_line_cstr : "");
+      snprintf(buffer, sizeof(buffer), "%2.2s",
+               (line == curr_line) ? current_line_cstr : "");
       std::string current_line_highlight(buffer);
 
       auto debugger_sp = m_debugger_wp.lock();
@@ -212,7 +224,7 @@ size_t SourceManager::DisplaySourceLinesWithLineNumbersUsingLastFile(
       // So far we treated column 0 as a special 'no column value', but
       // DisplaySourceLines starts counting columns from 0 (and no column is
       // expressed by passing an empty optional).
-      llvm::Optional<size_t> columnToHighlight;
+      std::optional<size_t> columnToHighlight;
       if (line == curr_line && column)
         columnToHighlight = column - 1;
 
@@ -347,10 +359,7 @@ bool SourceManager::GetDefaultFileAndLine(FileSpec &file_spec, uint32_t &line) {
         executable_ptr->FindFunctions(main_name, CompilerDeclContext(),
                                       lldb::eFunctionNameTypeBase,
                                       function_options, sc_list);
-        size_t num_matches = sc_list.GetSize();
-        for (size_t idx = 0; idx < num_matches; idx++) {
-          SymbolContext sc;
-          sc_list.GetContextAtIndex(idx, sc);
+        for (const SymbolContext &sc : sc_list) {
           if (sc.function) {
             lldb_private::LineEntry line_entry;
             if (sc.function->GetAddressRange()
@@ -418,11 +427,8 @@ void SourceManager::File::CommonInitializer(const FileSpec &file_spec,
         bool got_multiple = false;
         if (num_matches != 0) {
           if (num_matches > 1) {
-            SymbolContext sc;
             CompileUnit *test_cu = nullptr;
-
-            for (unsigned i = 0; i < num_matches; i++) {
-              sc_list.GetContextAtIndex(i, sc);
+            for (const SymbolContext &sc : sc_list) {
               if (sc.comp_unit) {
                 if (test_cu) {
                   if (test_cu != sc.comp_unit)
@@ -442,6 +448,7 @@ void SourceManager::File::CommonInitializer(const FileSpec &file_spec,
           }
         }
       }
+      resolve_tilde(m_file_spec);
       // Try remapping if m_file_spec does not correspond to an existing file.
       if (!FileSystem::Instance().Exists(m_file_spec)) {
         // Check target specific source remappings (i.e., the
@@ -546,7 +553,7 @@ void SourceManager::File::UpdateIfNeeded() {
 }
 
 size_t SourceManager::File::DisplaySourceLines(uint32_t line,
-                                               llvm::Optional<size_t> column,
+                                               std::optional<size_t> column,
                                                uint32_t context_before,
                                                uint32_t context_after,
                                                Stream *s) {
@@ -645,7 +652,7 @@ bool SourceManager::File::CalculateLineOffsets(uint32_t line) {
       if (m_data_sp.get() == nullptr)
         return false;
 
-      const char *start = (char *)m_data_sp->GetBytes();
+      const char *start = (const char *)m_data_sp->GetBytes();
       if (start) {
         const char *end = start + m_data_sp->GetByteSize();
 
@@ -695,7 +702,7 @@ bool SourceManager::File::GetLine(uint32_t line_no, std::string &buffer) {
   if (end_offset == UINT32_MAX) {
     end_offset = m_data_sp->GetByteSize();
   }
-  buffer.assign((char *)m_data_sp->GetBytes() + start_offset,
+  buffer.assign((const char *)m_data_sp->GetBytes() + start_offset,
                 end_offset - start_offset);
 
   return true;

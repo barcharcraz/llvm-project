@@ -17,7 +17,7 @@ void *sel_registerName(const char *);
 }
 @end
 
-// CHECK: call %struct.objc_class* @class_getSuperclass
+// CHECK: call ptr @class_getSuperclass
 
 @class NSZone;
 

@@ -13,11 +13,12 @@
 #ifndef BUILTIN_LOCATION_ATTRIBUTES_TD
 #define BUILTIN_LOCATION_ATTRIBUTES_TD
 
+include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/BuiltinDialect.td"
 
 // Base class for Builtin dialect location attributes.
-class Builtin_LocationAttr<string name>
-    : AttrDef<Builtin_Dialect, name, [], "::mlir::LocationAttr"> {
+class Builtin_LocationAttr<string name, list<Trait> traits = []>
+    : AttrDef<Builtin_Dialect, name, traits, "::mlir::LocationAttr"> {
   let cppClassName = name;
   let mnemonic = ?;
 }

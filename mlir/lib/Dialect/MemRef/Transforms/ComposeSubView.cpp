@@ -36,7 +36,7 @@ struct ComposeSubViewOpPattern : public OpRewritePattern<memref::SubViewOp> {
     // produces the input of the op we're rewriting (for 'SubViewOp' the input
     // is called the "source" value). We can only combine them if both 'op' and
     // 'sourceOp' are 'SubViewOp'.
-    auto sourceOp = op.source().getDefiningOp<memref::SubViewOp>();
+    auto sourceOp = op.getSource().getDefiningOp<memref::SubViewOp>();
     if (!sourceOp)
       return failure();
 
@@ -56,8 +56,8 @@ struct ComposeSubViewOpPattern : public OpRewritePattern<memref::SubViewOp> {
     // Because we only support input strides of 1, the output stride is also
     // always 1.
     if (llvm::all_of(strides, [](OpFoldResult &valueOrAttr) {
-          Attribute attr = valueOrAttr.dyn_cast<Attribute>();
-          return attr && attr.cast<IntegerAttr>().getInt() == 1;
+          Attribute attr = llvm::dyn_cast_if_present<Attribute>(valueOrAttr);
+          return attr && cast<IntegerAttr>(attr).getInt() == 1;
         })) {
       strides = SmallVector<OpFoldResult>(sourceOp.getMixedStrides().size(),
                                           rewriter.getI64IntegerAttr(1));
@@ -86,23 +86,24 @@ struct ComposeSubViewOpPattern : public OpRewritePattern<memref::SubViewOp> {
       }
 
       sizes.push_back(opSize);
-      Attribute opOffsetAttr = opOffset.dyn_cast<Attribute>(),
-                sourceOffsetAttr = sourceOffset.dyn_cast<Attribute>();
+      Attribute opOffsetAttr = llvm::dyn_cast_if_present<Attribute>(opOffset),
+                sourceOffsetAttr =
+                    llvm::dyn_cast_if_present<Attribute>(sourceOffset);
 
       if (opOffsetAttr && sourceOffsetAttr) {
         // If both offsets are static we can simply calculate the combined
         // offset statically.
         offsets.push_back(rewriter.getI64IntegerAttr(
-            opOffsetAttr.cast<IntegerAttr>().getInt() +
-            sourceOffsetAttr.cast<IntegerAttr>().getInt()));
+            cast<IntegerAttr>(opOffsetAttr).getInt() +
+            cast<IntegerAttr>(sourceOffsetAttr).getInt()));
       } else {
         // When either offset is dynamic, we must emit an additional affine
         // transformation to add the two offsets together dynamically.
         AffineExpr expr = rewriter.getAffineConstantExpr(0);
         SmallVector<Value> affineApplyOperands;
         for (auto valueOrAttr : {opOffset, sourceOffset}) {
-          if (auto attr = valueOrAttr.dyn_cast<Attribute>()) {
-            expr = expr + attr.cast<IntegerAttr>().getInt();
+          if (auto attr = llvm::dyn_cast_if_present<Attribute>(valueOrAttr)) {
+            expr = expr + cast<IntegerAttr>(attr).getInt();
           } else {
             expr =
                 expr + rewriter.getAffineSymbolExpr(affineApplyOperands.size());
@@ -111,15 +112,15 @@ struct ComposeSubViewOpPattern : public OpRewritePattern<memref::SubViewOp> {
         }
 
         AffineMap map = AffineMap::get(0, affineApplyOperands.size(), expr);
-        Value result = rewriter.create<AffineApplyOp>(op.getLoc(), map,
-                                                      affineApplyOperands);
+        Value result = rewriter.create<affine::AffineApplyOp>(
+            op.getLoc(), map, affineApplyOperands);
         offsets.push_back(result);
       }
     }
 
     // This replaces 'op' but leaves 'sourceOp' alone; if it no longer has any
     // uses it can be removed by a (separate) dead code elimination pass.
-    rewriter.replaceOpWithNewOp<memref::SubViewOp>(op, sourceOp.source(),
+    rewriter.replaceOpWithNewOp<memref::SubViewOp>(op, sourceOp.getSource(),
                                                    offsets, sizes, strides);
     return success();
   }
@@ -127,7 +128,7 @@ struct ComposeSubViewOpPattern : public OpRewritePattern<memref::SubViewOp> {
 
 } // namespace
 
-void mlir::memref::populateComposeSubViewPatterns(
-    RewritePatternSet &patterns, MLIRContext *context) {
-  patterns.insert<ComposeSubViewOpPattern>(context);
+void mlir::memref::populateComposeSubViewPatterns(RewritePatternSet &patterns,
+                                                  MLIRContext *context) {
+  patterns.add<ComposeSubViewOpPattern>(context);
 }

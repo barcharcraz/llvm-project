@@ -22,7 +22,7 @@ How to report a security issue?
 
 To report a security issue in the LLVM Project, please `open a new issue`_ in the LLVM project page, on the chromium issue tracker.  Be sure to use the "Security bug report" template.
 
-We aim to acknowledge your report within two business days since you first reach out. If you do not receive any response by then, you can escalate by sending a message to the `llvm-dev mailing list`_ asking to get in touch with someone from the LLVM Security Group. **The escalation mailing list is public**: avoid discussing or mentioning the specific issue when posting on it.
+We aim to acknowledge your report within two business days since you first reach out. If you do not receive any response by then, you can escalate by posting on the `Discourse forums`_ asking to get in touch with someone from the LLVM Security Group. **The escalation mailing list is public**: avoid discussing or mentioning the specific issue when posting on it.
 
 
 Group Composition
@@ -36,9 +36,11 @@ The members of the group represent a wide cross-section of the community, and me
 * Ahmed Bougacha (Apple) [ab]
 * Andy Kaylor (Intel) [andykaylor]
 * Artur Pilipenko (Azul Systems Inc) [apilipenko]
+* Boovaragavan Dasarathan (Nvidia) [mrragava]
 * Dimitry Andric (individual; FreeBSD) [dim]
 * Ed Maste (individual; FreeBSD) [emaste]
 * George Burgess IV (Google) [george.burgess.iv]
+* Josh Stone (RedHat; Rust) [cuviper]
 * Kate McInnes (Apple) []
 * Kristof Beyls (ARM) [kristof.beyls]
 * Matthew Riley (Google) [mattdr]
@@ -47,10 +49,9 @@ The members of the group represent a wide cross-section of the community, and me
 * Paul Robinson (Sony) [probinson]
 * Peter Smith (ARM) [peter.smith]
 * Pietro Albini (Ferrous Systems; Rust) [pietroalbini]
-* Serge Guelton (RedHat) [serge-sans-paille]
+* Serge Guelton (Mozilla) [serge-sans-paille]
 * Sergey Maslov (Intel) [smaslov-intel]
 * Shayne Hiet-Block (Microsoft) [Shayne]
-* Steve Klabnik (Oxide Computer Company; Rust) [steveklabnik]
 * Tim Penge (Sony) [tpenge]
 
 Criteria
@@ -177,7 +178,7 @@ We also occasionally need to discuss logistics of the LLVM Security Group itself
 * Propose member removal.
 * Suggest policy changes.
 
-We often have these discussions publicly, in our :ref:`monthly public sync-up call <online-sync-ups>` and on public LLVM mailing lists.  For internal or confidential discussions, we also use a private mailing list.
+We often have these discussions publicly, in our :ref:`monthly public sync-up call <online-sync-ups>` and on the Discourse forums.  For internal or confidential discussions, we also use a private mailing list.
 
 Process
 =======
@@ -222,7 +223,7 @@ The security-sensitive parts of the LLVM Project currently are:
 
 The parts of the LLVM Project which are currently treated as non-security sensitive are:
 
-* Language front-ends, such as clang, for which a malicious input file can cause undesirable behavior. For example, a maliciously-crafter C or Rust source file can cause arbitrary code to execute in LLVM. These parts of LLVM haven't been hardened, and compiling untrusted code usually also includes running utilities such as `make` which can more readily perform malicious things.
+* Language front-ends, such as clang, for which a malicious input file can cause undesirable behavior. For example, a maliciously crafted C or Rust source file can cause arbitrary code to execute in LLVM. These parts of LLVM haven't been hardened, and compiling untrusted code usually also includes running utilities such as `make` which can more readily perform malicious things.
 * *FUTURE*: this section will be expanded.
 
 
@@ -230,6 +231,6 @@ The parts of the LLVM Project which are currently treated as non-security sensit
 .. _open a new issue: https://bugs.chromium.org/p/llvm/issues/entry
 .. _chromium issue tracker: https://crbug.com
 .. _GitHub security: https://help.github.com/en/articles/about-maintainer-security-advisories
-.. _llvm-dev mailing list: https://lists.llvm.org/mailman/listinfo/llvm-dev
+.. _Discourse forums: https://discourse.llvm.org
 .. _MITRE: https://cve.mitre.org
 .. _example nomination is available here: https://reviews.llvm.org/D99232

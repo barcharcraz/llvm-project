@@ -11,11 +11,14 @@
 
 #include "ClangTidyOptions.h"
 #include "ClangTidyProfiling.h"
+#include "FileExtensionsSet.h"
 #include "NoLintDirectiveHandler.h"
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Tooling/Core/Diagnostic.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/Support/Regex.h"
+#include <optional>
 
 namespace clang {
 
@@ -158,6 +161,14 @@ public:
   /// \c CurrentFile.
   ClangTidyOptions getOptionsForFile(StringRef File) const;
 
+  const FileExtensionsSet &getHeaderFileExtensions() const {
+    return HeaderFileExtensions;
+  }
+
+  const FileExtensionsSet &getImplementationFileExtensions() const {
+    return ImplementationFileExtensions;
+  }
+
   /// Returns \c ClangTidyStats containing issued and ignored diagnostic
   /// counters.
   const ClangTidyStats &getStats() const { return Stats; }
@@ -168,7 +179,7 @@ public:
 
   /// Control storage of profile date.
   void setProfileStoragePrefix(StringRef ProfilePrefix);
-  llvm::Optional<ClangTidyProfiling::StorageParams>
+  std::optional<ClangTidyProfiling::StorageParams>
   getProfileStorageParams() const;
 
   /// Should be called when starting to process new translation unit.
@@ -187,6 +198,10 @@ public:
     return AllowEnablingAnalyzerAlphaCheckers;
   }
 
+  void setSelfContainedDiags(bool Value) { SelfContainedDiags = Value; }
+
+  bool areDiagsSelfContained() const { return SelfContainedDiags; }
+
   using DiagLevelAndFormatString = std::pair<DiagnosticIDs::Level, std::string>;
   DiagLevelAndFormatString getDiagLevelAndFormatString(unsigned DiagnosticID,
                                                        SourceLocation Loc) {
@@ -196,6 +211,11 @@ public:
         std::string(
             DiagEngine->getDiagnosticIDs()->getDescription(DiagnosticID)));
   }
+
+  void setOptionsCollector(llvm::StringSet<> *Collector) {
+    OptionsCollector = Collector;
+  }
+  llvm::StringSet<> *getOptionsCollector() const { return OptionsCollector; }
 
 private:
   // Writes to Stats.
@@ -210,6 +230,9 @@ private:
   std::unique_ptr<CachedGlobList> CheckFilter;
   std::unique_ptr<CachedGlobList> WarningAsErrorFilter;
 
+  FileExtensionsSet HeaderFileExtensions;
+  FileExtensionsSet ImplementationFileExtensions;
+
   LangOptions LangOpts;
 
   ClangTidyStats Stats;
@@ -223,7 +246,10 @@ private:
 
   bool AllowEnablingAnalyzerAlphaCheckers;
 
+  bool SelfContainedDiags;
+
   NoLintDirectiveHandler NoLintHandler;
+  llvm::StringSet<> *OptionsCollector = nullptr;
 };
 
 /// Gets the Fix attached to \p Diagnostic.

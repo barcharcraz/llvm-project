@@ -12,8 +12,7 @@ from stats import has_enough_measurements
 
 
 def main(top_level_path, stop_on_error):
-    """Top level function called when the CLI is invoked.
-    """
+    """Top level function called when the CLI is invoked."""
     if "::" in top_level_path:
         if top_level_path.count("::") > 1:
             raise AssertionError(f"Invalid path {top_level_path}")
@@ -22,30 +21,29 @@ def main(top_level_path, stop_on_error):
         benchmark_function_name = None
 
     if not os.path.exists(top_level_path):
-        raise AssertionError(
-            f"The top-level path {top_level_path} doesn't exist"
-        )
+        raise AssertionError(f"The top-level path {top_level_path} doesn't exist")
 
     modules = [module for module in discover_benchmark_modules(top_level_path)]
     benchmark_dicts = []
     for module in modules:
         benchmark_functions = [
-            function for function in
-            get_benchmark_functions(module, benchmark_function_name)
+            function
+            for function in get_benchmark_functions(module, benchmark_function_name)
         ]
         for benchmark_function in benchmark_functions:
             try:
                 compiler, runner = benchmark_function()
-            except (TypeError, ValueError):
+            except (TypeError, ValueError) as e:
                 error_message = (
-                    f"benchmark_function '{benchmark_function.__name__}'"
-                    f" must return a two tuple value (compiler, runner)."
+                    f"Obtaining compiler and runner failed because of {e}."
+                    f" Benchmark function '{benchmark_function.__name__}'"
+                    f" must return a two-tuple value (compiler, runner)."
                 )
                 if stop_on_error is False:
                     print(error_message, file=sys.stderr)
                     continue
                 else:
-                    raise AssertionError(error_message)
+                    raise AssertionError(error_message) from e
             measurements_ns = np.array([])
             if compiler:
                 start_compile_time_s = time.time()
@@ -60,7 +58,7 @@ def main(top_level_path, stop_on_error):
                         print(error_message, file=sys.stderr)
                         continue
                     else:
-                        raise AssertionError(error_message)
+                        raise AssertionError(error_message) from e
                 total_compile_time_s = time.time() - start_compile_time_s
                 runner_args = (compiled_callable,)
             else:
@@ -80,7 +78,7 @@ def main(top_level_path, stop_on_error):
                         # and continuing forward.
                         break
                     else:
-                        raise AssertionError(error_message)
+                        raise AssertionError(error_message) from e
                 if not isinstance(measurement_ns, int):
                     error_message = (
                         f"Expected benchmark runner function"
@@ -95,10 +93,9 @@ def main(top_level_path, stop_on_error):
 
             if len(measurements_ns) > 0:
                 measurements_s = [t * 1e-9 for t in measurements_ns]
-                benchmark_identifier = ":".join([
-                    module.__name__,
-                    benchmark_function.__name__
-                ])
+                benchmark_identifier = ":".join(
+                    [module.__name__, benchmark_function.__name__]
+                )
                 benchmark_dicts.append(
                     {
                         "name": benchmark_identifier,

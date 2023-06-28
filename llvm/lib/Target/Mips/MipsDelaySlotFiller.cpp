@@ -321,8 +321,7 @@ static void insertDelayFiller(Iter Filler, const BB2BrMap &BrMap) {
 
 /// This function adds registers Filler defines to MBB's live-in register list.
 static void addLiveInRegs(Iter Filler, MachineBasicBlock &MBB) {
-  for (unsigned I = 0, E = Filler->getNumOperands(); I != E; ++I) {
-    const MachineOperand &MO = Filler->getOperand(I);
+  for (const MachineOperand &MO : Filler->operands()) {
     unsigned R;
 
     if (!MO.isReg() || !MO.isDef() || !(R = MO.getReg()))
@@ -677,7 +676,7 @@ bool MipsDelaySlotFiller::runOnMachineBasicBlock(MachineBasicBlock &MBB) {
     // Bundle the NOP to the instruction with the delay slot.
     LLVM_DEBUG(dbgs() << DEBUG_TYPE << ": could not fill delay slot for ";
                I->dump());
-    BuildMI(MBB, std::next(I), I->getDebugLoc(), TII->get(Mips::NOP));
+    TII->insertNop(MBB, std::next(I), I->getDebugLoc());
     MIBundleBuilder(MBB, I, std::next(I, 2));
     ++FilledSlots;
     Changed = true;

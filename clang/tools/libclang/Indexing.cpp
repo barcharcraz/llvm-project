@@ -255,15 +255,16 @@ public:
 
     if (Loc == MainFileLoc && Reason == PPCallbacks::EnterFile) {
       IsMainFileEntered = true;
-      DataConsumer.enteredMainFile(SM.getFileEntryForID(SM.getMainFileID()));
+      DataConsumer.enteredMainFile(
+          *SM.getFileEntryRefForID(SM.getMainFileID()));
     }
   }
 
   void InclusionDirective(SourceLocation HashLoc, const Token &IncludeTok,
                           StringRef FileName, bool IsAngled,
-                          CharSourceRange FilenameRange, const FileEntry *File,
-                          StringRef SearchPath, StringRef RelativePath,
-                          const Module *Imported,
+                          CharSourceRange FilenameRange,
+                          OptionalFileEntryRef File, StringRef SearchPath,
+                          StringRef RelativePath, const Module *Imported,
                           SrcMgr::CharacteristicKind FileType) override {
     bool isImport = (IncludeTok.is(tok::identifier) &&
             IncludeTok.getIdentifierInfo()->getPPKeywordID() == tok::pp_import);
@@ -350,8 +351,8 @@ public:
     PreprocessorOptions &PPOpts = CI.getPreprocessorOpts();
 
     if (!PPOpts.ImplicitPCHInclude.empty()) {
-      auto File = CI.getFileManager().getFile(PPOpts.ImplicitPCHInclude);
-      if (File)
+      if (auto File =
+              CI.getFileManager().getOptionalFileRef(PPOpts.ImplicitPCHInclude))
         DataConsumer->importedPCH(*File);
     }
 
@@ -508,8 +509,11 @@ static CXErrorCode clang_indexSourceFile_Impl(
   if (source_filename)
     Args->push_back(source_filename);
 
+  CreateInvocationOptions CIOpts;
+  CIOpts.Diags = Diags;
+  CIOpts.ProbePrecompiled = true; // FIXME: historical default. Needed?
   std::shared_ptr<CompilerInvocation> CInvok =
-      createInvocationFromCommandLine(*Args, Diags);
+      createInvocation(*Args, std::move(CIOpts));
 
   if (!CInvok)
     return CXError_Failure;
@@ -549,7 +553,7 @@ static CXErrorCode clang_indexSourceFile_Impl(
 
   // Make sure to use the raw module format.
   CInvok->getHeaderSearchOpts().ModuleFormat = std::string(
-      CXXIdx->getPCHContainerOperations()->getRawReader().getFormat());
+      CXXIdx->getPCHContainerOperations()->getRawReader().getFormats().front());
 
   auto Unit = ASTUnit::create(CInvok, Diags, CaptureDiagnostics,
                               /*UserFilesAreVolatile=*/true);
@@ -691,17 +695,18 @@ static CXErrorCode clang_indexTranslationUnit_Impl(
 
   ASTUnit::ConcurrencyCheck Check(*Unit);
 
-  if (const FileEntry *PCHFile = Unit->getPCHFile())
-    DataConsumer.importedPCH(PCHFile);
+  if (OptionalFileEntryRef PCHFile = Unit->getPCHFile())
+    DataConsumer.importedPCH(*PCHFile);
 
   FileManager &FileMgr = Unit->getFileManager();
 
   if (Unit->getOriginalSourceFileName().empty())
-    DataConsumer.enteredMainFile(nullptr);
-  else if (auto MainFile = FileMgr.getFile(Unit->getOriginalSourceFileName()))
+    DataConsumer.enteredMainFile(std::nullopt);
+  else if (auto MainFile =
+               FileMgr.getFileRef(Unit->getOriginalSourceFileName()))
     DataConsumer.enteredMainFile(*MainFile);
   else
-    DataConsumer.enteredMainFile(nullptr);
+    DataConsumer.enteredMainFile(std::nullopt);
 
   DataConsumer.setASTContext(Unit->getASTContext());
   DataConsumer.startedTranslationUnit();
@@ -900,9 +905,8 @@ int clang_indexSourceFileFullArgv(
     result = clang_indexSourceFile_Impl(
         idxAction, client_data, index_callbacks, index_callbacks_size,
         index_options, source_filename, command_line_args,
-        num_command_line_args,
-        llvm::makeArrayRef(unsaved_files, num_unsaved_files), out_TU,
-        TU_options);
+        num_command_line_args, llvm::ArrayRef(unsaved_files, num_unsaved_files),
+        out_TU, TU_options);
   };
 
   llvm::CrashRecoveryContext CRC;

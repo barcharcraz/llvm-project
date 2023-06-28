@@ -11,10 +11,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/ExecutionEngine/JITLink/MachO_x86_64.h"
+#include "llvm/ExecutionEngine/JITLink/DWARFRecordSectionSplitter.h"
 #include "llvm/ExecutionEngine/JITLink/x86_64.h"
 
 #include "MachOLinkGraphBuilder.h"
-#include "PerGraphGOTAndPLTStubsBuilder.h"
 
 #define DEBUG_TYPE "jitlink"
 
@@ -25,9 +25,10 @@ namespace {
 
 class MachOLinkGraphBuilder_x86_64 : public MachOLinkGraphBuilder {
 public:
-  MachOLinkGraphBuilder_x86_64(const object::MachOObjectFile &Obj)
+  MachOLinkGraphBuilder_x86_64(const object::MachOObjectFile &Obj,
+                               LinkGraph::FeatureVector Features)
       : MachOLinkGraphBuilder(Obj, Triple("x86_64-apple-darwin"),
-                              x86_64::getEdgeKindName) {}
+                              std::move(Features), x86_64::getEdgeKindName) {}
 
 private:
   enum MachONormalizedRelocationType : unsigned {
@@ -204,7 +205,7 @@ private:
 
     LLVM_DEBUG(dbgs() << "Processing relocations:\n");
 
-    for (auto &S : Obj.sections()) {
+    for (const auto &S : Obj.sections()) {
 
       orc::ExecutorAddr SectionAddress(S.getAddress());
 
@@ -466,7 +467,13 @@ createLinkGraphFromMachOObject_x86_64(MemoryBufferRef ObjectBuffer) {
   auto MachOObj = object::ObjectFile::createMachOObjectFile(ObjectBuffer);
   if (!MachOObj)
     return MachOObj.takeError();
-  return MachOLinkGraphBuilder_x86_64(**MachOObj).buildGraph();
+
+  auto Features = (*MachOObj)->getFeatures();
+  if (!Features)
+    return Features.takeError();
+
+  return MachOLinkGraphBuilder_x86_64(**MachOObj, Features->getFeatures())
+      .buildGraph();
 }
 
 void link_MachO_x86_64(std::unique_ptr<LinkGraph> G,
@@ -504,12 +511,13 @@ void link_MachO_x86_64(std::unique_ptr<LinkGraph> G,
 }
 
 LinkGraphPassFunction createEHFrameSplitterPass_MachO_x86_64() {
-  return EHFrameSplitter("__TEXT,__eh_frame");
+  return DWARFRecordSectionSplitter("__TEXT,__eh_frame");
 }
 
 LinkGraphPassFunction createEHFrameEdgeFixerPass_MachO_x86_64() {
   return EHFrameEdgeFixer("__TEXT,__eh_frame", x86_64::PointerSize,
-                          x86_64::Delta64, x86_64::Delta32, x86_64::NegDelta32);
+                          x86_64::Pointer32, x86_64::Pointer64, x86_64::Delta32,
+                          x86_64::Delta64, x86_64::NegDelta32);
 }
 
 } // end namespace jitlink

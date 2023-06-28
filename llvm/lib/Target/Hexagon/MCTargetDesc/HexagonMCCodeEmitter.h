@@ -49,11 +49,11 @@ public:
   HexagonMCCodeEmitter(MCInstrInfo const &MII, MCContext &MCT)
     : MCT(MCT), MCII(MII) {}
 
-  void encodeInstruction(MCInst const &MI, raw_ostream &OS,
+  void encodeInstruction(MCInst const &MI, SmallVectorImpl<char> &CB,
                          SmallVectorImpl<MCFixup> &Fixups,
                          MCSubtargetInfo const &STI) const override;
 
-  void EncodeSingleInstruction(const MCInst &MI, raw_ostream &OS,
+  void encodeSingleInstruction(const MCInst &MI, SmallVectorImpl<char> &CB,
                                SmallVectorImpl<MCFixup> &Fixups,
                                const MCSubtargetInfo &STI,
                                uint32_t Parse) const;
@@ -81,11 +81,6 @@ private:
 
   // Return parse bits for instruction `MCI' inside bundle `MCB'
   uint32_t parseBits(size_t Last, MCInst const &MCB, MCInst const &MCI) const;
-
-  FeatureBitset computeAvailableFeatures(const FeatureBitset &FB) const;
-  void
-  verifyInstructionPredicates(const MCInst &MI,
-                              const FeatureBitset &AvailableFeatures) const;
 };
 
 } // end namespace llvm

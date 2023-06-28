@@ -10,11 +10,11 @@
 #define LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_UTILS_MATCHERS_H
 
 #include "TypeTraits.h"
+#include "clang/AST/ExprConcepts.h"
 #include "clang/ASTMatchers/ASTMatchers.h"
+#include <optional>
 
-namespace clang {
-namespace tidy {
-namespace matchers {
+namespace clang::tidy::matchers {
 
 AST_MATCHER(BinaryOperator, isRelationalOperator) {
   return Node.isRelationalOp();
@@ -23,7 +23,7 @@ AST_MATCHER(BinaryOperator, isRelationalOperator) {
 AST_MATCHER(BinaryOperator, isEqualityOperator) { return Node.isEqualityOp(); }
 
 AST_MATCHER(QualType, isExpensiveToCopy) {
-  llvm::Optional<bool> IsExpensive =
+  std::optional<bool> IsExpensive =
       utils::type_traits::isExpensiveToCopy(Node, Finder->getASTContext());
   return IsExpensive && *IsExpensive;
 }
@@ -49,13 +49,30 @@ AST_MATCHER_FUNCTION(ast_matchers::TypeMatcher, isPointerToConst) {
   return pointerType(pointee(qualType(isConstQualified())));
 }
 
+AST_MATCHER(Expr, hasUnevaluatedContext) {
+  if (isa<CXXNoexceptExpr>(Node) || isa<RequiresExpr>(Node))
+    return true;
+  if (const auto *UnaryExpr = dyn_cast<UnaryExprOrTypeTraitExpr>(&Node)) {
+    switch (UnaryExpr->getKind()) {
+    case UETT_SizeOf:
+    case UETT_AlignOf:
+      return true;
+    default:
+      return false;
+    }
+  }
+  if (const auto *TypeIDExpr = dyn_cast<CXXTypeidExpr>(&Node))
+    return !TypeIDExpr->isPotentiallyEvaluated();
+  return false;
+}
+
 // A matcher implementation that matches a list of type name regular expressions
 // against a NamedDecl. If a regular expression contains the substring "::"
 // matching will occur against the qualified name, otherwise only the typename.
 class MatchesAnyListedNameMatcher
     : public ast_matchers::internal::MatcherInterface<NamedDecl> {
 public:
-  explicit MatchesAnyListedNameMatcher(llvm::ArrayRef<std::string> NameList) {
+  explicit MatchesAnyListedNameMatcher(llvm::ArrayRef<StringRef> NameList) {
     std::transform(
         NameList.begin(), NameList.end(), std::back_inserter(NameMatchers),
         [](const llvm::StringRef Name) { return NameMatcher(Name); });
@@ -116,13 +133,11 @@ private:
 // expressions. If a regular expression contains starts ':' the NamedDecl's
 // qualified name will be used for matching, otherwise its name will be used.
 inline ::clang::ast_matchers::internal::Matcher<NamedDecl>
-matchesAnyListedName(llvm::ArrayRef<std::string> NameList) {
+matchesAnyListedName(llvm::ArrayRef<StringRef> NameList) {
   return ::clang::ast_matchers::internal::makeMatcher(
       new MatchesAnyListedNameMatcher(NameList));
 }
 
-} // namespace matchers
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::matchers
 
 #endif // LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_UTILS_MATCHERS_H

@@ -1,8 +1,5 @@
 set(LLVM_LINK_COMPONENTS
   ${LLVM_TARGETS_TO_BUILD}
-  BOLTProfile
-  BOLTRewrite
-  BOLTUtils
   MC
   Object
   Support
@@ -14,35 +11,25 @@ else()
   set(BOLT_DRIVER_DEPS "")
 endif()
 
-add_llvm_tool(llvm-bolt
+add_bolt_tool(llvm-bolt
   llvm-bolt.cpp
+
+  DISABLE_LLVM_LINK_LLVM_DYLIB
 
   DEPENDS
   ${BOLT_DRIVER_DEPS}
   )
 
-add_llvm_tool_symlink(perf2bolt llvm-bolt)
-add_llvm_tool_symlink(llvm-boltdiff llvm-bolt)
-add_llvm_tool_symlink(llvm-bolt-heatmap llvm-bolt)
-
-set(BOLT_DEPENDS
-  llvm-bolt
-  perf2bolt
-  llvm-boltdiff
-  llvm-bolt-heatmap
+target_link_libraries(llvm-bolt
+  PRIVATE
+  LLVMBOLTProfile
+  LLVMBOLTRewrite
+  LLVMBOLTUtils
   )
 
-add_custom_target(bolt DEPENDS ${BOLT_DEPENDS})
-install(PROGRAMS
-  ${CMAKE_BINARY_DIR}/bin/llvm-bolt
-  ${CMAKE_BINARY_DIR}/bin/perf2bolt
-  ${CMAKE_BINARY_DIR}/bin/llvm-boltdiff
-  ${CMAKE_BINARY_DIR}/bin/llvm-bolt-heatmap
-  DESTINATION ${CMAKE_INSTALL_BINDIR}
-  COMPONENT bolt
-  )
-add_llvm_install_targets(install-bolt DEPENDS bolt COMPONENT bolt)
-set_target_properties(bolt PROPERTIES FOLDER "BOLT")
-set_target_properties(install-bolt PROPERTIES FOLDER "BOLT")
+add_bolt_tool_symlink(perf2bolt llvm-bolt)
+add_bolt_tool_symlink(llvm-boltdiff llvm-bolt)
 
-include_directories( ${BOLT_SOURCE_DIR}/lib )
+add_dependencies(bolt llvm-bolt)
+
+include_directories(${BOLT_SOURCE_DIR}/lib)

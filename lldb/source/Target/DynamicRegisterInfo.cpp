@@ -11,6 +11,7 @@
 #include "lldb/DataFormatters/FormatManager.h"
 #include "lldb/Interpreter/OptionArgParser.h"
 #include "lldb/Utility/ArchSpec.h"
+#include "lldb/Utility/LLDBLog.h"
 #include "lldb/Utility/Log.h"
 #include "lldb/Utility/RegularExpression.h"
 #include "lldb/Utility/StringExtractor.h"
@@ -19,10 +20,17 @@
 using namespace lldb;
 using namespace lldb_private;
 
-DynamicRegisterInfo::DynamicRegisterInfo(
-    const lldb_private::StructuredData::Dictionary &dict,
-    const lldb_private::ArchSpec &arch) {
-  SetRegisterInfo(dict, arch);
+std::unique_ptr<DynamicRegisterInfo>
+DynamicRegisterInfo::Create(const StructuredData::Dictionary &dict,
+                            const ArchSpec &arch) {
+  auto dyn_reg_info = std::make_unique<DynamicRegisterInfo>();
+  if (!dyn_reg_info)
+    return nullptr;
+
+  if (dyn_reg_info->SetRegisterInfo(dict, arch) == 0)
+    return nullptr;
+
+  return dyn_reg_info;
 }
 
 DynamicRegisterInfo::DynamicRegisterInfo(DynamicRegisterInfo &&info) {
@@ -192,7 +200,7 @@ llvm::Expected<uint32_t> DynamicRegisterInfo::ByteOffsetFromRegInfoDict(
 size_t
 DynamicRegisterInfo::SetRegisterInfo(const StructuredData::Dictionary &dict,
                                      const ArchSpec &arch) {
-  Log *log = lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_OBJECT);
+  Log *log = GetLog(LLDBLog::Object);
   assert(!m_finalized);
   StructuredData::Array *sets = nullptr;
   if (dict.GetValueForKeyAsArray("sets", sets)) {
@@ -237,17 +245,20 @@ DynamicRegisterInfo::SetRegisterInfo(const StructuredData::Dictionary &dict,
     std::vector<uint32_t> invalidate_regs;
     memset(&reg_info, 0, sizeof(reg_info));
 
-    ConstString name_val;
-    ConstString alt_name_val;
-    if (!reg_info_dict->GetValueForKeyAsString("name", name_val, nullptr)) {
+    llvm::StringRef name_val;
+    if (!reg_info_dict->GetValueForKeyAsString("name", name_val)) {
       Clear();
       printf("error: registers must have valid names and offsets\n");
       reg_info_dict->DumpToStdout();
       return 0;
     }
-    reg_info.name = name_val.GetCString();
-    reg_info_dict->GetValueForKeyAsString("alt-name", alt_name_val, nullptr);
-    reg_info.alt_name = alt_name_val.GetCString();
+    reg_info.name = ConstString(name_val).GetCString();
+
+    llvm::StringRef alt_name_val;
+    if (reg_info_dict->GetValueForKeyAsString("alt-name", alt_name_val))
+      reg_info.alt_name = ConstString(alt_name_val).GetCString();
+    else
+      reg_info.alt_name = nullptr;
 
     llvm::Expected<uint32_t> byte_offset =
         ByteOffsetFromRegInfoDict(i, *reg_info_dict, byte_order);
@@ -261,7 +272,7 @@ DynamicRegisterInfo::SetRegisterInfo(const StructuredData::Dictionary &dict,
       return 0;
     }
 
-    int64_t bitsize = 0;
+    uint64_t bitsize = 0;
     if (!reg_info_dict->GetValueForKeyAsInteger("bitsize", bitsize)) {
       Clear();
       printf("error: invalid or missing 'bitsize' key/value pair in register "
@@ -295,7 +306,7 @@ DynamicRegisterInfo::SetRegisterInfo(const StructuredData::Dictionary &dict,
                                              eEncodingUint);
 
     size_t set = 0;
-    if (!reg_info_dict->GetValueForKeyAsInteger<size_t>("set", set, -1) ||
+    if (!reg_info_dict->GetValueForKeyAsInteger("set", set) ||
         set >= m_sets.size()) {
       Clear();
       printf("error: invalid 'set' value in register dictionary, valid values "
@@ -406,7 +417,7 @@ size_t DynamicRegisterInfo::SetRegisterInfo(
           {reg.regnum_ehframe, reg.regnum_dwarf, reg.regnum_generic,
            reg.regnum_remote, local_regnum},
           // value_regs and invalidate_regs are filled by Finalize()
-          nullptr, nullptr
+          nullptr, nullptr, reg.flags_type
     };
 
     m_regs.push_back(reg_info);
@@ -482,7 +493,7 @@ void DynamicRegisterInfo::Finalize(const ArchSpec &arch) {
                                  end = m_invalidate_regs_map.end();
        pos != end; ++pos) {
     if (pos->second.size() > 1) {
-      llvm::sort(pos->second.begin(), pos->second.end());
+      llvm::sort(pos->second);
       reg_num_collection::iterator unique_end =
           std::unique(pos->second.begin(), pos->second.end());
       if (unique_end != pos->second.end())

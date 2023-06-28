@@ -38,8 +38,6 @@
 #ifndef HEADER
 #define HEADER
 
-// CHECK: [[CA:%.+]] = type { i32* }
-
 // CHECK: define {{.*}}i32 @[[NNAME:.+]](i32 {{.*}}%{{.+}})
 int nested(int a){
   // CHECK: call void @__omp_offloading_[[FILEID:[0-9a-f]+_[0-9a-f]+]]_[[NNAME]]_l[[T1L:[0-9]+]](
@@ -47,7 +45,7 @@ int nested(int a){
   for (int i = 0; i < 10; ++i)
     ++a;
 
-  // CHECK: call void @"[[LNAME:.+]]"([[CA]]*
+  // CHECK: call void @"[[LNAME:.+]]"(ptr
   auto F = [&](){
     #pragma omp parallel
     {
@@ -66,7 +64,7 @@ int nested(int a){
 // TCHECK: define {{.*}}void @__omp_offloading_[[FILEID:[0-9a-f]+_[0-9a-f]+]]_[[NNAME:.+]]_l[[T1L:[0-9]+]](
 
 // CHECK: define {{.*}}void @"[[LNAME]]"(
-// CHECK: call void {{.*}}@__kmpc_fork_call{{.+}}[[PNAME:@.+]] to
+// CHECK: call void {{.*}}@__kmpc_fork_call{{.+}}[[PNAME:@[^,]+]]
 
 // CHECK: define {{.*}}void [[PNAME]](
 // CHECK: call void @__omp_offloading_[[FILEID]]_[[NNAME]]_l[[T2L:[0-9]+]](
@@ -77,10 +75,10 @@ int nested(int a){
 
 // Check metadata is properly generated:
 // CHECK:     !omp_offload.info = !{!{{[0-9]+}}, !{{[0-9]+}}}
-// CHECK-DAG: = !{i32 0, i32 {{-?[0-9]+}}, i32 {{-?[0-9]+}}, !"[[NNAME]]", i32 [[T1L]], i32 {{[0-9]+}}}
-// CHECK-DAG: = !{i32 0, i32 {{-?[0-9]+}}, i32 {{-?[0-9]+}}, !"[[NNAME]]", i32 [[T2L]], i32 {{[0-9]+}}}
+// CHECK-DAG: = !{i32 0, i32 {{-?[0-9]+}}, i32 {{-?[0-9]+}}, !"[[NNAME]]", i32 [[T1L]], i32 0, i32 {{[0-9]+}}}
+// CHECK-DAG: = !{i32 0, i32 {{-?[0-9]+}}, i32 {{-?[0-9]+}}, !"[[NNAME]]", i32 [[T2L]], i32 0, i32 {{[0-9]+}}}
 
 // TCHECK:     !omp_offload.info = !{!{{[0-9]+}}, !{{[0-9]+}}}
-// TCHECK-DAG: = !{i32 0, i32 {{-?[0-9]+}}, i32 {{-?[0-9]+}}, !"[[NNAME]]", i32 [[T1L]], i32 {{[0-9]+}}}
-// TCHECK-DAG: = !{i32 0, i32 {{-?[0-9]+}}, i32 {{-?[0-9]+}}, !"[[NNAME]]", i32 [[T2L]], i32 {{[0-9]+}}}
+// TCHECK-DAG: = !{i32 0, i32 {{-?[0-9]+}}, i32 {{-?[0-9]+}}, !"[[NNAME]]", i32 [[T1L]], i32 0, i32 {{[0-9]+}}}
+// TCHECK-DAG: = !{i32 0, i32 {{-?[0-9]+}}, i32 {{-?[0-9]+}}, !"[[NNAME]]", i32 [[T2L]], i32 0, i32 {{[0-9]+}}}
 #endif

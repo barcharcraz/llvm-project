@@ -68,6 +68,9 @@ const char *getPunctuatorSpelling(TokenKind Kind) LLVM_READNONE;
 /// tokens like 'int' and 'dynamic_cast'. Returns NULL for other token kinds.
 const char *getKeywordSpelling(TokenKind Kind) LLVM_READNONE;
 
+/// Returns the spelling of preprocessor keywords, such as "else".
+const char *getPPKeywordSpelling(PPKeywordKind Kind) LLVM_READNONE;
+
 /// Return true if this is a raw identifier or an identifier kind.
 inline bool isAnyIdentifier(TokenKind K) {
   return (K == tok::identifier) || (K == tok::raw_identifier);
@@ -95,6 +98,13 @@ bool isAnnotation(TokenKind K);
 
 /// Return true if this is an annotation token representing a pragma.
 bool isPragmaAnnotation(TokenKind K);
+
+inline constexpr bool isRegularKeywordAttribute(TokenKind K) {
+  return (false
+#define KEYWORD_ATTRIBUTE(X) || (K == tok::kw_##X)
+#include "clang/Basic/AttrTokenKinds.inc"
+  );
+}
 
 } // end namespace tok
 } // end namespace clang

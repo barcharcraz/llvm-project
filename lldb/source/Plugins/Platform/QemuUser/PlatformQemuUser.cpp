@@ -14,6 +14,7 @@
 #include "lldb/Interpreter/OptionValueProperties.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/Target.h"
+#include "lldb/Utility/LLDBLog.h"
 #include "lldb/Utility/Listener.h"
 #include "lldb/Utility/Log.h"
 
@@ -22,6 +23,7 @@ using namespace lldb_private;
 
 LLDB_PLUGIN_DEFINE(PlatformQemuUser)
 
+namespace {
 #define LLDB_PROPERTIES_platformqemuuser
 #include "PlatformQemuUserProperties.inc"
 
@@ -39,36 +41,33 @@ public:
   }
 
   llvm::StringRef GetArchitecture() {
-    return m_collection_sp->GetPropertyAtIndexAsString(
-        nullptr, ePropertyArchitecture, "");
+    return GetPropertyAtIndexAs<llvm::StringRef>(ePropertyArchitecture, "");
   }
 
   FileSpec GetEmulatorPath() {
-    return m_collection_sp->GetPropertyAtIndexAsFileSpec(nullptr,
-                                                         ePropertyEmulatorPath);
+    return GetPropertyAtIndexAs<FileSpec>(ePropertyEmulatorPath, {});
   }
 
   Args GetEmulatorArgs() {
     Args result;
-    m_collection_sp->GetPropertyAtIndexAsArgs(nullptr, ePropertyEmulatorArgs,
-                                              result);
+    m_collection_sp->GetPropertyAtIndexAsArgs(ePropertyEmulatorArgs, result);
     return result;
   }
 
   Environment GetEmulatorEnvVars() {
     Args args;
-    m_collection_sp->GetPropertyAtIndexAsArgs(nullptr, ePropertyEmulatorEnvVars,
-                                              args);
+    m_collection_sp->GetPropertyAtIndexAsArgs(ePropertyEmulatorEnvVars, args);
     return Environment(args);
   }
 
   Environment GetTargetEnvVars() {
     Args args;
-    m_collection_sp->GetPropertyAtIndexAsArgs(nullptr, ePropertyTargetEnvVars,
-                                              args);
+    m_collection_sp->GetPropertyAtIndexAsArgs(ePropertyTargetEnvVars, args);
     return Environment(args);
   }
 };
+
+} // namespace
 
 static PluginProperties &GetGlobalProperties() {
   static PluginProperties g_settings;
@@ -94,7 +93,7 @@ void PlatformQemuUser::DebuggerInitialize(Debugger &debugger) {
           debugger, ConstString(GetPluginNameStatic()))) {
     PluginManager::CreateSettingForPlatformPlugin(
         debugger, GetGlobalProperties().GetValueProperties(),
-        ConstString("Properties for the qemu-user platform plugin."),
+        "Properties for the qemu-user platform plugin.",
         /*is_global_property=*/true);
   }
 }
@@ -105,7 +104,8 @@ PlatformSP PlatformQemuUser::CreateInstance(bool force, const ArchSpec *arch) {
   return nullptr;
 }
 
-std::vector<ArchSpec> PlatformQemuUser::GetSupportedArchitectures() {
+std::vector<ArchSpec>
+PlatformQemuUser::GetSupportedArchitectures(const ArchSpec &process_host_arch) {
   llvm::Triple triple = HostInfo::GetArchitecture().GetTriple();
   triple.setEnvironment(llvm::Triple::UnknownEnvironment);
   triple.setArchName(GetGlobalProperties().GetArchitecture());
@@ -160,7 +160,7 @@ static Environment ComputeLaunchEnvironment(Environment target,
 lldb::ProcessSP PlatformQemuUser::DebugProcess(ProcessLaunchInfo &launch_info,
                                                Debugger &debugger,
                                                Target &target, Status &error) {
-  Log *log = GetLogIfAnyCategoriesSet(LIBLLDB_LOG_PLATFORM);
+  Log *log = GetLog(LLDBLog::Platform);
 
   FileSpec qemu = GetGlobalProperties().GetEmulatorPath();
   if (!qemu)
@@ -191,8 +191,8 @@ lldb::ProcessSP PlatformQemuUser::DebugProcess(ProcessLaunchInfo &launch_info,
   launch_info.SetArguments(args, true);
 
   Environment emulator_env = Host::GetEnvironment();
-  if (ConstString sysroot = GetSDKRootDirectory())
-    emulator_env["QEMU_LD_PREFIX"] = sysroot.GetStringRef().str();
+  if (const std::string &sysroot = GetSDKRootDirectory(); !sysroot.empty())
+    emulator_env["QEMU_LD_PREFIX"] = sysroot;
   for (const auto &KV : GetGlobalProperties().GetEmulatorEnvVars())
     emulator_env[KV.first()] = KV.second;
   launch_info.GetEnvironment() = ComputeLaunchEnvironment(
@@ -200,8 +200,7 @@ lldb::ProcessSP PlatformQemuUser::DebugProcess(ProcessLaunchInfo &launch_info,
 
   launch_info.SetLaunchInSeparateProcessGroup(true);
   launch_info.GetFlags().Clear(eLaunchFlagDebug);
-  launch_info.SetMonitorProcessCallback(ProcessLaunchInfo::NoOpMonitorCallback,
-                                        false);
+  launch_info.SetMonitorProcessCallback(ProcessLaunchInfo::NoOpMonitorCallback);
 
   // This is automatically done for host platform in
   // Target::FinalizeFileActions, but we're not a host platform.
@@ -216,11 +215,12 @@ lldb::ProcessSP PlatformQemuUser::DebugProcess(ProcessLaunchInfo &launch_info,
       launch_info.GetListener(),
       process_gdb_remote::ProcessGDBRemote::GetPluginNameStatic(), nullptr,
       true);
+  if (!process_sp) {
+    error.SetErrorString("Failed to create GDB process");
+    return nullptr;
+  }
 
-  ListenerSP listener_sp =
-      Listener::MakeListener("lldb.platform_qemu_user.debugprocess");
-  launch_info.SetHijackListener(listener_sp);
-  Process::ProcessEventHijacker hijacker(*process_sp, listener_sp);
+  process_sp->HijackProcessEvents(launch_info.GetHijackListener());
 
   error = process_sp->ConnectRemote(("unix-connect://" + socket_path).str());
   if (error.Fail())
@@ -231,7 +231,6 @@ lldb::ProcessSP PlatformQemuUser::DebugProcess(ProcessLaunchInfo &launch_info,
     process_sp->SetSTDIOFileDescriptor(
         launch_info.GetPTY().ReleasePrimaryFileDescriptor());
 
-  process_sp->WaitForProcessToStop(llvm::None, nullptr, false, listener_sp);
   return process_sp;
 }
 

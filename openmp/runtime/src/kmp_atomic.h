@@ -251,6 +251,9 @@ struct KMP_DO_ALIGN(4) kmp_cmplx128_a4_t {
 
   kmp_cmplx128_a4_t() : q() {}
 
+#if defined(__cplusplus) && (KMP_OS_WINDOWS)
+  kmp_cmplx128_a4_t(const std::complex<_Quad> &c128) : q(c128) {}
+#endif
   kmp_cmplx128_a4_t(const kmp_cmplx128 &c128) : q(c128) {}
 
   kmp_cmplx128_a4_t operator+(const kmp_cmplx128_a4_t &b) {
@@ -314,6 +317,9 @@ struct KMP_DO_ALIGN(16) kmp_cmplx128_a16_t {
 
   kmp_cmplx128_a16_t() : q() {}
 
+#if defined(__cplusplus) && (KMP_OS_WINDOWS)
+  kmp_cmplx128_a16_t(const std::complex<_Quad> &c128) : q(c128) {}
+#endif
   kmp_cmplx128_a16_t(const kmp_cmplx128 &c128) : q(c128) {}
 
   kmp_cmplx128_a16_t operator+(const kmp_cmplx128_a16_t &b) {
@@ -999,6 +1005,8 @@ void __kmpc_atomic_20(ident_t *id_ref, int gtid, void *lhs, void *rhs,
 void __kmpc_atomic_32(ident_t *id_ref, int gtid, void *lhs, void *rhs,
                       void (*f)(void *, void *, void *));
 
+// READ, WRITE, CAPTURE
+
 //  Below routines for atomic READ are listed
 char __kmpc_atomic_fixed1_rd(ident_t *id_ref, int gtid, char *loc);
 short __kmpc_atomic_fixed2_rd(ident_t *id_ref, int gtid, short *loc);
@@ -1328,7 +1336,6 @@ void __kmpc_atomic_cmplx4_mul_cpt(ident_t *id_ref, int gtid, kmp_cmplx32 *lhs,
                                   kmp_cmplx32 rhs, kmp_cmplx32 *out, int flag);
 void __kmpc_atomic_cmplx4_div_cpt(ident_t *id_ref, int gtid, kmp_cmplx32 *lhs,
                                   kmp_cmplx32 rhs, kmp_cmplx32 *out, int flag);
-
 kmp_cmplx64 __kmpc_atomic_cmplx8_add_cpt(ident_t *id_ref, int gtid,
                                          kmp_cmplx64 *lhs, kmp_cmplx64 rhs,
                                          int flag);
@@ -1410,7 +1417,7 @@ void __kmpc_atomic_end(void);
 
 // OpenMP 4.0: v = x = expr binop x; { v = x; x = expr binop x; } { x = expr
 // binop x; v = x; }  for non-commutative operations.
-
+#if KMP_ARCH_X86 || KMP_ARCH_X86_64
 char __kmpc_atomic_fixed1_sub_cpt_rev(ident_t *id_ref, int gtid, char *lhs,
                                       char rhs, int flag);
 char __kmpc_atomic_fixed1_div_cpt_rev(ident_t *id_ref, int gtid, char *lhs,
@@ -1835,7 +1842,7 @@ kmp_int64 __kmpc_atomic_val_8_cas_cpt(ident_t *loc, int gtid, kmp_int64 *x,
 
 // End OpenMP 5.1 compare + capture
 
-
+#endif // KMP_ARCH_X86 || KMP_ARCH_X86_64
 
 /* ------------------------------------------------------------------------ */
 

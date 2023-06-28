@@ -13,8 +13,8 @@
 #include "bolt/RuntimeLibs/InstrumentationRuntimeLibrary.h"
 #include "bolt/Core/BinaryFunction.h"
 #include "bolt/Core/JumpTable.h"
+#include "bolt/Core/Linker.h"
 #include "bolt/Utils/CommandLineOpts.h"
-#include "llvm/ExecutionEngine/RuntimeDyld.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/Support/Alignment.h"
 #include "llvm/Support/CommandLine.h"
@@ -27,7 +27,7 @@ namespace opts {
 cl::opt<std::string> RuntimeInstrumentationLib(
     "runtime-instrumentation-lib",
     cl::desc("specify file name of the runtime instrumentation library"),
-    cl::ZeroOrMore, cl::init("libbolt_rt_instr.a"), cl::cat(BoltOptCategory));
+    cl::init("libbolt_rt_instr.a"), cl::cat(BoltOptCategory));
 
 extern cl::opt<bool> InstrumentationFileAppendPID;
 extern cl::opt<bool> ConservativeInstrumentation;
@@ -87,7 +87,7 @@ void InstrumentationRuntimeLibrary::emitBinary(BinaryContext &BC,
   }
 
   Section->setAlignment(llvm::Align(BC.RegularPageSize));
-  Streamer.SwitchSection(Section);
+  Streamer.switchSection(Section);
 
   // EmitOffset is used to determine padding size for data alignment
   uint64_t EmitOffset = 0;
@@ -185,34 +185,28 @@ void InstrumentationRuntimeLibrary::emitBinary(BinaryContext &BC,
     MCSection *TablesSection = BC.Ctx->getMachOSection(
         "__BOLT", "__tables", MachO::S_REGULAR, SectionKind::getData());
     TablesSection->setAlignment(llvm::Align(BC.RegularPageSize));
-    Streamer.SwitchSection(TablesSection);
+    Streamer.switchSection(TablesSection);
     emitString("__bolt_instr_tables", buildTables(BC));
   }
 }
 
 void InstrumentationRuntimeLibrary::link(
-    BinaryContext &BC, StringRef ToolPath, RuntimeDyld &RTDyld,
-    std::function<void(RuntimeDyld &)> OnLoad) {
+    BinaryContext &BC, StringRef ToolPath, BOLTLinker &Linker,
+    BOLTLinker::SectionsMapper MapSections) {
   std::string LibPath = getLibPath(ToolPath, opts::RuntimeInstrumentationLib);
-  loadLibrary(LibPath, RTDyld);
-  OnLoad(RTDyld);
-  RTDyld.finalizeWithMemoryManagerLocking();
-  if (RTDyld.hasError()) {
-    outs() << "BOLT-ERROR: RTDyld failed: " << RTDyld.getErrorString() << "\n";
-    exit(1);
-  }
+  loadLibrary(LibPath, Linker, MapSections);
 
   if (BC.isMachO())
     return;
 
-  RuntimeFiniAddress = RTDyld.getSymbol("__bolt_instr_fini").getAddress();
+  RuntimeFiniAddress = Linker.lookupSymbol("__bolt_instr_fini").value_or(0);
   if (!RuntimeFiniAddress) {
     errs() << "BOLT-ERROR: instrumentation library does not define "
               "__bolt_instr_fini: "
            << LibPath << "\n";
     exit(1);
   }
-  RuntimeStartAddress = RTDyld.getSymbol("__bolt_instr_start").getAddress();
+  RuntimeStartAddress = Linker.lookupSymbol("__bolt_instr_start").value_or(0);
   if (!RuntimeStartAddress) {
     errs() << "BOLT-ERROR: instrumentation library does not define "
               "__bolt_instr_start: "
@@ -224,7 +218,7 @@ void InstrumentationRuntimeLibrary::link(
          << Twine::utohexstr(RuntimeFiniAddress) << "\n";
   outs() << "BOLT-INFO: clear procedure is 0x"
          << Twine::utohexstr(
-                RTDyld.getSymbol("__bolt_instr_clear_counters").getAddress())
+                Linker.lookupSymbol("__bolt_instr_clear_counters").value_or(0))
          << "\n";
 
   emitTablesAsELFNote(BC);
@@ -243,13 +237,12 @@ std::string InstrumentationRuntimeLibrary::buildTables(BinaryContext &BC) {
   };
 
   // Indirect targets need to be sorted for fast lookup during runtime
-  std::sort(Summary->IndCallTargetDescriptions.begin(),
-            Summary->IndCallTargetDescriptions.end(),
-            [&](const IndCallTargetDescription &A,
-                const IndCallTargetDescription &B) {
-              return getOutputAddress(*A.Target, A.ToLoc.Offset) <
-                     getOutputAddress(*B.Target, B.ToLoc.Offset);
-            });
+  llvm::sort(Summary->IndCallTargetDescriptions,
+             [&](const IndCallTargetDescription &A,
+                 const IndCallTargetDescription &B) {
+               return getOutputAddress(*A.Target, A.ToLoc.Offset) <
+                      getOutputAddress(*B.Target, B.ToLoc.Offset);
+             });
 
   // Start of the vector with descriptions (one CounterDescription for each
   // counter), vector size is Counters.size() CounterDescription-sized elmts

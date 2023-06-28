@@ -4,25 +4,17 @@ macro(add_pdb_impl_folder group)
 endmacro()
 
 if(LLVM_ENABLE_DIA_SDK)
-  if (FORCE_MSDIA_AVAILABILITY)
-    include_directories(${MSVC_DIA_SDK_DIR}/include)
-    set(LIBPDB_LINK_FOLDERS "${MSVC_DIA_SDK_DIR}\\lib\\i386")
-    if (CMAKE_SIZEOF_VOID_P EQUAL 8)
-      set(LIBPDB_LINK_FOLDERS "${MSVC_DIA_SDK_DIR}\\lib\\amd64")
-    endif()
-    link_directories("${LIBPDB_LINK_FOLDERS}\\diaguids.lib" LIBPDB_ADDITIONAL_LIBRARIES)
-  else()
-    include_directories(${MSVC_DIA_SDK_DIR}/include)
-    set(LIBPDB_LINK_FOLDERS "${MSVC_DIA_SDK_DIR}\\lib")
-    if ("$ENV{VSCMD_ARG_TGT_ARCH}" STREQUAL "arm64")
-      set(LIBPDB_LINK_FOLDERS "${LIBPDB_LINK_FOLDERS}\\arm64")
-    elseif ("$ENV{VSCMD_ARG_TGT_ARCH}" STREQUAL "arm")
-      set(LIBPDB_LINK_FOLDERS "${LIBPDB_LINK_FOLDERS}\\arm")
-    elseif (CMAKE_SIZEOF_VOID_P EQUAL 8)
-      set(LIBPDB_LINK_FOLDERS "${LIBPDB_LINK_FOLDERS}\\amd64")
-    endif()
-    file(TO_CMAKE_PATH "${LIBPDB_LINK_FOLDERS}\\diaguids.lib" LIBPDB_ADDITIONAL_LIBRARIES)
+  include_directories(SYSTEM ${MSVC_DIA_SDK_DIR}/include)
+  set(LIBPDB_LINK_FOLDERS "${MSVC_DIA_SDK_DIR}\\lib")
+
+  if ("$ENV{VSCMD_ARG_TGT_ARCH}" STREQUAL "arm64")
+    set(LIBPDB_LINK_FOLDERS "${LIBPDB_LINK_FOLDERS}\\arm64")
+  elseif ("$ENV{VSCMD_ARG_TGT_ARCH}" STREQUAL "arm")
+    set(LIBPDB_LINK_FOLDERS "${LIBPDB_LINK_FOLDERS}\\arm")
+  elseif (CMAKE_SIZEOF_VOID_P EQUAL 8)
+    set(LIBPDB_LINK_FOLDERS "${LIBPDB_LINK_FOLDERS}\\amd64")
   endif()
+  file(TO_CMAKE_PATH "${LIBPDB_LINK_FOLDERS}\\diaguids.lib" LIBPDB_ADDITIONAL_LIBRARIES)
 
   add_pdb_impl_folder(DIA
     DIA/DIADataStream.cpp
@@ -55,12 +47,15 @@ add_pdb_impl_folder(Native
   Native/DbiStream.cpp
   Native/DbiStreamBuilder.cpp
   Native/EnumTables.cpp
+  Native/FormatUtil.cpp
   Native/GlobalsStream.cpp
   Native/Hash.cpp
   Native/HashTable.cpp
   Native/InfoStream.cpp
   Native/InfoStreamBuilder.cpp
   Native/InjectedSourceStream.cpp
+  Native/InputFile.cpp
+  Native/LinePrinter.cpp
   Native/ModuleDebugStream.cpp
   Native/NativeCompilandSymbol.cpp
   Native/NativeEnumGlobals.cpp

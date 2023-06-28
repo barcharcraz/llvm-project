@@ -6,14 +6,14 @@
 // REQUIRES: shared_cxxabi
 
 // RUN: %clangxx_asan -fexceptions -O0 %s -o %t
-// RUN: %run %t
+// RUN: %env_asan_opts=detect_stack_use_after_return=0 %run %t
 
 // The current implementation of this functionality requires special
 // combination of libraries that are not used by default on NetBSD
 // FIXME: clang + MDd runtime on win32 calls the destructors in the wrong order.
-// XFAIL: netbsd, clang-win32-asan-mdd-runtime
+// XFAIL: target={{.*netbsd.*}}, clang-win32-asan-mdd-runtime
 // FIXME: Bug 42703
-// XFAIL: solaris
+// XFAIL: target={{.*solaris.*}}
 
 // https://reviews.llvm.org/D111703 made compiler incompatible with released NDK.
 // UNSUPPORTED: android && arm-target-arch

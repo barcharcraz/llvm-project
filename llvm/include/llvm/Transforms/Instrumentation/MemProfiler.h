@@ -12,12 +12,13 @@
 #ifndef LLVM_TRANSFORMS_INSTRUMENTATION_MEMPROFILER_H
 #define LLVM_TRANSFORMS_INSTRUMENTATION_MEMPROFILER_H
 
-#include "llvm/IR/Function.h"
-#include "llvm/IR/Module.h"
 #include "llvm/IR/PassManager.h"
-#include "llvm/Pass.h"
 
 namespace llvm {
+class Function;
+class FunctionPass;
+class Module;
+class ModulePass;
 
 /// Public interface to the memory profiler pass for instrumenting code to
 /// profile memory accesses.
@@ -41,10 +42,6 @@ public:
   PreservedAnalyses run(Module &M, ModuleAnalysisManager &AM);
   static bool isRequired() { return true; }
 };
-
-// Insert MemProfiler instrumentation
-FunctionPass *createMemProfilerFunctionPass();
-ModulePass *createModuleMemProfilerLegacyPassPass();
 
 } // namespace llvm
 

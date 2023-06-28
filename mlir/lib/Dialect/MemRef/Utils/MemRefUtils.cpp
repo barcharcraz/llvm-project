@@ -11,31 +11,38 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Dialect/MemRef/Utils/MemRefUtils.h"
-#include "mlir/Interfaces/SideEffectInterfaces.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 
-using namespace mlir;
+namespace mlir {
+namespace memref {
 
-/// Finds a single dealloc operation for the given allocated value.
-llvm::Optional<Operation *> mlir::findDealloc(Value allocValue) {
-  Operation *dealloc = nullptr;
-  for (Operation *user : allocValue.getUsers()) {
-    auto effectInterface = dyn_cast<MemoryEffectOpInterface>(user);
-    if (!effectInterface)
-      continue;
-    // Try to find a free effect that is applied to one of our values
-    // that will be automatically freed by our pass.
-    SmallVector<MemoryEffects::EffectInstance, 2> effects;
-    effectInterface.getEffectsOnValue(allocValue, effects);
-    const bool isFree =
-        llvm::any_of(effects, [&](MemoryEffects::EffectInstance &it) {
-          return isa<MemoryEffects::Free>(it.getEffect());
-        });
-    if (!isFree)
-      continue;
-    // If we found > 1 dealloc, return None.
-    if (dealloc)
-      return llvm::None;
-    dealloc = user;
+bool isStaticShapeAndContiguousRowMajor(MemRefType type) {
+  if (!type.hasStaticShape())
+    return false;
+
+  SmallVector<int64_t> strides;
+  int64_t offset;
+  if (failed(getStridesAndOffset(type, strides, offset)))
+    return false;
+
+  // MemRef is contiguous if outer dimensions are size-1 and inner
+  // dimensions have unit strides.
+  int64_t runningStride = 1;
+  int64_t curDim = strides.size() - 1;
+  // Finds all inner dimensions with unit strides.
+  while (curDim >= 0 && strides[curDim] == runningStride) {
+    runningStride *= type.getDimSize(curDim);
+    --curDim;
   }
-  return dealloc;
+
+  // Check if other dimensions are size-1.
+  while (curDim >= 0 && type.getDimSize(curDim) == 1) {
+    --curDim;
+  }
+
+  // All dims are unit-strided or size-1.
+  return curDim < 0;
 }
+
+} // namespace memref
+} // namespace mlir

@@ -86,15 +86,15 @@ namespace {
             lvalue.getAlignment();
         VoidPtrAddr = CGF.Builder.CreateConstGEP1_64(
             CGF.Int8Ty, VoidPtrAddr, OffsetInChars.getQuantity());
+        llvm::Type *IntTy = CGF.Builder.getIntNTy(AtomicSizeInBits);
         auto Addr = CGF.Builder.CreatePointerBitCastOrAddrSpaceCast(
-            VoidPtrAddr,
-            CGF.Builder.getIntNTy(AtomicSizeInBits)->getPointerTo(),
+            VoidPtrAddr, llvm::PointerType::getUnqual(CGF.getLLVMContext()),
             "atomic_bitfield_base");
         BFI = OrigBFI;
         BFI.Offset = Offset;
         BFI.StorageSize = AtomicSizeInBits;
         BFI.StorageOffset += OffsetInChars;
-        LVal = LValue::MakeBitfield(Address(Addr, lvalue.getAlignment()),
+        LVal = LValue::MakeBitfield(Address(Addr, IntTy, lvalue.getAlignment()),
                                     BFI, lvalue.getType(), lvalue.getBaseInfo(),
                                     lvalue.getTBAAInfo());
         AtomicTy = C.getIntTypeForBitwidth(AtomicSizeInBits, OrigBFI.IsSigned);
@@ -149,7 +149,16 @@ namespace {
       return LVal.getExtVectorPointer();
     }
     Address getAtomicAddress() const {
-      return Address(getAtomicPointer(), getAtomicAlignment());
+      llvm::Type *ElTy;
+      if (LVal.isSimple())
+        ElTy = LVal.getAddress(CGF).getElementType();
+      else if (LVal.isBitField())
+        ElTy = LVal.getBitFieldAddress().getElementType();
+      else if (LVal.isVectorElt())
+        ElTy = LVal.getVectorAddress().getElementType();
+      else
+        ElTy = LVal.getExtVectorAddress().getElementType();
+      return Address(getAtomicPointer(), ElTy, getAtomicAlignment());
     }
 
     Address getAtomicAddressAsAtomicIntPointer() const {
@@ -296,7 +305,8 @@ Address AtomicInfo::CreateTempAlloca() const {
   // Cast to pointer to value type for bitfields.
   if (LVal.isBitField())
     return CGF.Builder.CreatePointerBitCastOrAddrSpaceCast(
-        TempAlloca, getAtomicAddress().getType());
+        TempAlloca, getAtomicAddress().getType(),
+        getAtomicAddress().getElementType());
   return TempAlloca;
 }
 
@@ -600,7 +610,7 @@ static void EmitAtomicOp(CodeGenFunction &CGF, AtomicExpr *E, Address Dest,
   case AtomicExpr::AO__atomic_add_fetch:
     PostOp = E->getValueType()->isFloatingType() ? llvm::Instruction::FAdd
                                                  : llvm::Instruction::Add;
-    LLVM_FALLTHROUGH;
+    [[fallthrough]];
   case AtomicExpr::AO__c11_atomic_fetch_add:
   case AtomicExpr::AO__hip_atomic_fetch_add:
   case AtomicExpr::AO__opencl_atomic_fetch_add:
@@ -612,8 +622,9 @@ static void EmitAtomicOp(CodeGenFunction &CGF, AtomicExpr *E, Address Dest,
   case AtomicExpr::AO__atomic_sub_fetch:
     PostOp = E->getValueType()->isFloatingType() ? llvm::Instruction::FSub
                                                  : llvm::Instruction::Sub;
-    LLVM_FALLTHROUGH;
+    [[fallthrough]];
   case AtomicExpr::AO__c11_atomic_fetch_sub:
+  case AtomicExpr::AO__hip_atomic_fetch_sub:
   case AtomicExpr::AO__opencl_atomic_fetch_sub:
   case AtomicExpr::AO__atomic_fetch_sub:
     Op = E->getValueType()->isFloatingType() ? llvm::AtomicRMWInst::FSub
@@ -622,29 +633,35 @@ static void EmitAtomicOp(CodeGenFunction &CGF, AtomicExpr *E, Address Dest,
 
   case AtomicExpr::AO__atomic_min_fetch:
     PostOpMinMax = true;
-    LLVM_FALLTHROUGH;
+    [[fallthrough]];
   case AtomicExpr::AO__c11_atomic_fetch_min:
   case AtomicExpr::AO__hip_atomic_fetch_min:
   case AtomicExpr::AO__opencl_atomic_fetch_min:
   case AtomicExpr::AO__atomic_fetch_min:
-    Op = E->getValueType()->isSignedIntegerType() ? llvm::AtomicRMWInst::Min
-                                                  : llvm::AtomicRMWInst::UMin;
+    Op = E->getValueType()->isFloatingType()
+             ? llvm::AtomicRMWInst::FMin
+             : (E->getValueType()->isSignedIntegerType()
+                    ? llvm::AtomicRMWInst::Min
+                    : llvm::AtomicRMWInst::UMin);
     break;
 
   case AtomicExpr::AO__atomic_max_fetch:
     PostOpMinMax = true;
-    LLVM_FALLTHROUGH;
+    [[fallthrough]];
   case AtomicExpr::AO__c11_atomic_fetch_max:
   case AtomicExpr::AO__hip_atomic_fetch_max:
   case AtomicExpr::AO__opencl_atomic_fetch_max:
   case AtomicExpr::AO__atomic_fetch_max:
-    Op = E->getValueType()->isSignedIntegerType() ? llvm::AtomicRMWInst::Max
-                                                  : llvm::AtomicRMWInst::UMax;
+    Op = E->getValueType()->isFloatingType()
+             ? llvm::AtomicRMWInst::FMax
+             : (E->getValueType()->isSignedIntegerType()
+                    ? llvm::AtomicRMWInst::Max
+                    : llvm::AtomicRMWInst::UMax);
     break;
 
   case AtomicExpr::AO__atomic_and_fetch:
     PostOp = llvm::Instruction::And;
-    LLVM_FALLTHROUGH;
+    [[fallthrough]];
   case AtomicExpr::AO__c11_atomic_fetch_and:
   case AtomicExpr::AO__hip_atomic_fetch_and:
   case AtomicExpr::AO__opencl_atomic_fetch_and:
@@ -654,7 +671,7 @@ static void EmitAtomicOp(CodeGenFunction &CGF, AtomicExpr *E, Address Dest,
 
   case AtomicExpr::AO__atomic_or_fetch:
     PostOp = llvm::Instruction::Or;
-    LLVM_FALLTHROUGH;
+    [[fallthrough]];
   case AtomicExpr::AO__c11_atomic_fetch_or:
   case AtomicExpr::AO__hip_atomic_fetch_or:
   case AtomicExpr::AO__opencl_atomic_fetch_or:
@@ -664,7 +681,7 @@ static void EmitAtomicOp(CodeGenFunction &CGF, AtomicExpr *E, Address Dest,
 
   case AtomicExpr::AO__atomic_xor_fetch:
     PostOp = llvm::Instruction::Xor;
-    LLVM_FALLTHROUGH;
+    [[fallthrough]];
   case AtomicExpr::AO__c11_atomic_fetch_xor:
   case AtomicExpr::AO__hip_atomic_fetch_xor:
   case AtomicExpr::AO__opencl_atomic_fetch_xor:
@@ -674,7 +691,7 @@ static void EmitAtomicOp(CodeGenFunction &CGF, AtomicExpr *E, Address Dest,
 
   case AtomicExpr::AO__atomic_nand_fetch:
     PostOp = llvm::Instruction::And; // the NOT is special cased below
-    LLVM_FALLTHROUGH;
+    [[fallthrough]];
   case AtomicExpr::AO__c11_atomic_fetch_nand:
   case AtomicExpr::AO__atomic_fetch_nand:
     Op = llvm::AtomicRMWInst::Nand;
@@ -779,9 +796,8 @@ AddDirectArgument(CodeGenFunction &CGF, CallArgList &Args,
     int64_t SizeInBits = CGF.getContext().toBits(SizeInChars);
     ValTy =
         CGF.getContext().getIntTypeForBitwidth(SizeInBits, /*Signed=*/false);
-    llvm::Type *IPtrTy = llvm::IntegerType::get(CGF.getLLVMContext(),
-                                                SizeInBits)->getPointerTo();
-    Address Ptr = Address(CGF.Builder.CreateBitCast(Val, IPtrTy), Align);
+    llvm::Type *ITy = llvm::IntegerType::get(CGF.getLLVMContext(), SizeInBits);
+    Address Ptr = Address(Val, ITy, Align);
     Val = CGF.EmitLoadOfScalar(Ptr, false,
                                CGF.getContext().getPointerType(ValTy),
                                Loc);
@@ -888,6 +904,7 @@ RValue CodeGenFunction::EmitAtomicExpr(AtomicExpr *E) {
   case AtomicExpr::AO__c11_atomic_fetch_add:
   case AtomicExpr::AO__c11_atomic_fetch_sub:
   case AtomicExpr::AO__hip_atomic_fetch_add:
+  case AtomicExpr::AO__hip_atomic_fetch_sub:
   case AtomicExpr::AO__opencl_atomic_fetch_add:
   case AtomicExpr::AO__opencl_atomic_fetch_sub:
     if (MemTy->isPointerType()) {
@@ -905,13 +922,23 @@ RValue CodeGenFunction::EmitAtomicExpr(AtomicExpr *E) {
       EmitStoreOfScalar(Val1Scalar, MakeAddrLValue(Temp, Val1Ty));
       break;
     }
-    LLVM_FALLTHROUGH;
+    [[fallthrough]];
   case AtomicExpr::AO__atomic_fetch_add:
+  case AtomicExpr::AO__atomic_fetch_max:
+  case AtomicExpr::AO__atomic_fetch_min:
   case AtomicExpr::AO__atomic_fetch_sub:
   case AtomicExpr::AO__atomic_add_fetch:
+  case AtomicExpr::AO__atomic_max_fetch:
+  case AtomicExpr::AO__atomic_min_fetch:
   case AtomicExpr::AO__atomic_sub_fetch:
+  case AtomicExpr::AO__c11_atomic_fetch_max:
+  case AtomicExpr::AO__c11_atomic_fetch_min:
+  case AtomicExpr::AO__opencl_atomic_fetch_max:
+  case AtomicExpr::AO__opencl_atomic_fetch_min:
+  case AtomicExpr::AO__hip_atomic_fetch_max:
+  case AtomicExpr::AO__hip_atomic_fetch_min:
     ShouldCastToIntPtrTy = !MemTy->isFloatingType();
-    LLVM_FALLTHROUGH;
+    [[fallthrough]];
 
   case AtomicExpr::AO__c11_atomic_store:
   case AtomicExpr::AO__c11_atomic_exchange:
@@ -925,13 +952,9 @@ RValue CodeGenFunction::EmitAtomicExpr(AtomicExpr *E) {
   case AtomicExpr::AO__c11_atomic_fetch_or:
   case AtomicExpr::AO__c11_atomic_fetch_xor:
   case AtomicExpr::AO__c11_atomic_fetch_nand:
-  case AtomicExpr::AO__c11_atomic_fetch_max:
-  case AtomicExpr::AO__c11_atomic_fetch_min:
   case AtomicExpr::AO__opencl_atomic_fetch_and:
   case AtomicExpr::AO__opencl_atomic_fetch_or:
   case AtomicExpr::AO__opencl_atomic_fetch_xor:
-  case AtomicExpr::AO__opencl_atomic_fetch_min:
-  case AtomicExpr::AO__opencl_atomic_fetch_max:
   case AtomicExpr::AO__atomic_fetch_and:
   case AtomicExpr::AO__hip_atomic_fetch_and:
   case AtomicExpr::AO__atomic_fetch_or:
@@ -943,12 +966,6 @@ RValue CodeGenFunction::EmitAtomicExpr(AtomicExpr *E) {
   case AtomicExpr::AO__atomic_or_fetch:
   case AtomicExpr::AO__atomic_xor_fetch:
   case AtomicExpr::AO__atomic_nand_fetch:
-  case AtomicExpr::AO__atomic_max_fetch:
-  case AtomicExpr::AO__atomic_min_fetch:
-  case AtomicExpr::AO__atomic_fetch_max:
-  case AtomicExpr::AO__hip_atomic_fetch_max:
-  case AtomicExpr::AO__atomic_fetch_min:
-  case AtomicExpr::AO__hip_atomic_fetch_min:
     Val1 = EmitValToTemp(*this, E->getVal1());
     break;
   }
@@ -1004,6 +1021,7 @@ RValue CodeGenFunction::EmitAtomicExpr(AtomicExpr *E) {
     case AtomicExpr::AO__c11_atomic_fetch_sub:
     case AtomicExpr::AO__opencl_atomic_fetch_sub:
     case AtomicExpr::AO__atomic_fetch_sub:
+    case AtomicExpr::AO__hip_atomic_fetch_sub:
     case AtomicExpr::AO__c11_atomic_fetch_xor:
     case AtomicExpr::AO__opencl_atomic_fetch_xor:
     case AtomicExpr::AO__opencl_atomic_fetch_min:
@@ -1036,7 +1054,7 @@ RValue CodeGenFunction::EmitAtomicExpr(AtomicExpr *E) {
       // suitably aligned for the optimized version.
       if (Misaligned)
         break;
-      LLVM_FALLTHROUGH;
+      [[fallthrough]];
     case AtomicExpr::AO__c11_atomic_load:
     case AtomicExpr::AO__c11_atomic_store:
     case AtomicExpr::AO__c11_atomic_exchange:
@@ -1079,8 +1097,7 @@ RValue CodeGenFunction::EmitAtomicExpr(AtomicExpr *E) {
       if (AS == LangAS::opencl_generic)
         return V;
       auto DestAS = getContext().getTargetAddressSpace(LangAS::opencl_generic);
-      auto T = llvm::cast<llvm::PointerType>(V->getType());
-      auto *DestType = llvm::PointerType::getWithSamePointeeType(T, DestAS);
+      auto *DestType = llvm::PointerType::get(getLLVMContext(), DestAS);
 
       return getTargetHooks().performAddrSpaceCast(
           *this, V, AS, LangAS::opencl_generic, DestType, false);
@@ -1167,7 +1184,7 @@ RValue CodeGenFunction::EmitAtomicExpr(AtomicExpr *E) {
     // T __atomic_fetch_add_N(T *mem, T val, int order)
     case AtomicExpr::AO__atomic_add_fetch:
       PostOp = llvm::Instruction::Add;
-      LLVM_FALLTHROUGH;
+      [[fallthrough]];
     case AtomicExpr::AO__c11_atomic_fetch_add:
     case AtomicExpr::AO__opencl_atomic_fetch_add:
     case AtomicExpr::AO__atomic_fetch_add:
@@ -1180,7 +1197,7 @@ RValue CodeGenFunction::EmitAtomicExpr(AtomicExpr *E) {
     // T __atomic_fetch_and_N(T *mem, T val, int order)
     case AtomicExpr::AO__atomic_and_fetch:
       PostOp = llvm::Instruction::And;
-      LLVM_FALLTHROUGH;
+      [[fallthrough]];
     case AtomicExpr::AO__c11_atomic_fetch_and:
     case AtomicExpr::AO__opencl_atomic_fetch_and:
     case AtomicExpr::AO__hip_atomic_fetch_and:
@@ -1193,7 +1210,7 @@ RValue CodeGenFunction::EmitAtomicExpr(AtomicExpr *E) {
     // T __atomic_fetch_or_N(T *mem, T val, int order)
     case AtomicExpr::AO__atomic_or_fetch:
       PostOp = llvm::Instruction::Or;
-      LLVM_FALLTHROUGH;
+      [[fallthrough]];
     case AtomicExpr::AO__c11_atomic_fetch_or:
     case AtomicExpr::AO__opencl_atomic_fetch_or:
     case AtomicExpr::AO__hip_atomic_fetch_or:
@@ -1206,9 +1223,10 @@ RValue CodeGenFunction::EmitAtomicExpr(AtomicExpr *E) {
     // T __atomic_fetch_sub_N(T *mem, T val, int order)
     case AtomicExpr::AO__atomic_sub_fetch:
       PostOp = llvm::Instruction::Sub;
-      LLVM_FALLTHROUGH;
+      [[fallthrough]];
     case AtomicExpr::AO__c11_atomic_fetch_sub:
     case AtomicExpr::AO__opencl_atomic_fetch_sub:
+    case AtomicExpr::AO__hip_atomic_fetch_sub:
     case AtomicExpr::AO__atomic_fetch_sub:
       LibCallName = "__atomic_fetch_sub";
       AddDirectArgument(*this, Args, UseOptimizedLibcall, Val1.getPointer(),
@@ -1218,7 +1236,7 @@ RValue CodeGenFunction::EmitAtomicExpr(AtomicExpr *E) {
     // T __atomic_fetch_xor_N(T *mem, T val, int order)
     case AtomicExpr::AO__atomic_xor_fetch:
       PostOp = llvm::Instruction::Xor;
-      LLVM_FALLTHROUGH;
+      [[fallthrough]];
     case AtomicExpr::AO__c11_atomic_fetch_xor:
     case AtomicExpr::AO__opencl_atomic_fetch_xor:
     case AtomicExpr::AO__hip_atomic_fetch_xor:
@@ -1229,7 +1247,7 @@ RValue CodeGenFunction::EmitAtomicExpr(AtomicExpr *E) {
       break;
     case AtomicExpr::AO__atomic_min_fetch:
       PostOpMinMax = true;
-      LLVM_FALLTHROUGH;
+      [[fallthrough]];
     case AtomicExpr::AO__c11_atomic_fetch_min:
     case AtomicExpr::AO__atomic_fetch_min:
     case AtomicExpr::AO__hip_atomic_fetch_min:
@@ -1242,7 +1260,7 @@ RValue CodeGenFunction::EmitAtomicExpr(AtomicExpr *E) {
       break;
     case AtomicExpr::AO__atomic_max_fetch:
       PostOpMinMax = true;
-      LLVM_FALLTHROUGH;
+      [[fallthrough]];
     case AtomicExpr::AO__c11_atomic_fetch_max:
     case AtomicExpr::AO__atomic_fetch_max:
     case AtomicExpr::AO__hip_atomic_fetch_max:
@@ -1257,7 +1275,7 @@ RValue CodeGenFunction::EmitAtomicExpr(AtomicExpr *E) {
     // T __atomic_fetch_nand_N(T *mem, T val, int order)
     case AtomicExpr::AO__atomic_nand_fetch:
       PostOp = llvm::Instruction::And; // the NOT is special cased below
-      LLVM_FALLTHROUGH;
+      [[fallthrough]];
     case AtomicExpr::AO__c11_atomic_fetch_nand:
     case AtomicExpr::AO__atomic_fetch_nand:
       LibCallName = "__atomic_fetch_nand";
@@ -1585,7 +1603,7 @@ llvm::Value *AtomicInfo::EmitAtomicLoadOp(llvm::AtomicOrdering AO,
 /// we are operating under /volatile:ms *and* the LValue itself is volatile and
 /// performing such an operation can be performed without a libcall.
 bool CodeGenFunction::LValueIsSuitableForInlineAtomic(LValue LV) {
-  if (!CGM.getCodeGenOpts().MSVolatile) return false;
+  if (!CGM.getLangOpts().MSVolatile) return false;
   AtomicInfo AI(*this, LV);
   bool IsVolatile = LV.isVolatile() || hasVolatileMember(LV.getType());
   // An atomic is inline if we don't need to use a libcall.

@@ -9,24 +9,28 @@
 #include "exhaustive_test.h"
 #include "src/__support/FPUtil/FPBits.h"
 #include "src/math/log10f.h"
+#include "test/UnitTest/FPMatcher.h"
 #include "utils/MPFRWrapper/MPFRUtils.h"
-#include "utils/UnitTest/FPMatcher.h"
 
 using FPBits = __llvm_libc::fputil::FPBits<float>;
 
 namespace mpfr = __llvm_libc::testing::mpfr;
 
 struct LlvmLibcLog10fExhaustiveTest : public LlvmLibcExhaustiveTest<uint32_t> {
-  void check(uint32_t start, uint32_t stop,
+  bool check(uint32_t start, uint32_t stop,
              mpfr::RoundingMode rounding) override {
     mpfr::ForceRoundingMode r(rounding);
+    if (!r.success)
+      return true;
     uint32_t bits = start;
+    bool result = true;
     do {
       FPBits xbits(bits);
       float x = float(xbits);
-      EXPECT_MPFR_MATCH(mpfr::Operation::Log10, x, __llvm_libc::log10f(x), 0.5,
-                        rounding);
+      result &= TEST_MPFR_MATCH(mpfr::Operation::Log10, x,
+                                __llvm_libc::log10f(x), 0.5, rounding);
     } while (bits++ < stop);
+    return result;
   }
 };
 
@@ -36,20 +40,18 @@ static constexpr uint32_t STOP = 0x7f80'0000U;
 // Range: [1, 10];
 // static constexpr uint32_t START = 0x3f80'0000U;
 // static constexpr uint32_t STOP  = 0x41c0'0000U;
-static constexpr int NUM_THREADS = 16;
-
 TEST_F(LlvmLibcLog10fExhaustiveTest, RoundNearestTieToEven) {
-  test_full_range(START, STOP, NUM_THREADS, mpfr::RoundingMode::Nearest);
+  test_full_range(START, STOP, mpfr::RoundingMode::Nearest);
 }
 
 TEST_F(LlvmLibcLog10fExhaustiveTest, RoundUp) {
-  test_full_range(START, STOP, NUM_THREADS, mpfr::RoundingMode::Upward);
+  test_full_range(START, STOP, mpfr::RoundingMode::Upward);
 }
 
 TEST_F(LlvmLibcLog10fExhaustiveTest, RoundDown) {
-  test_full_range(START, STOP, NUM_THREADS, mpfr::RoundingMode::Downward);
+  test_full_range(START, STOP, mpfr::RoundingMode::Downward);
 }
 
 TEST_F(LlvmLibcLog10fExhaustiveTest, RoundTowardZero) {
-  test_full_range(START, STOP, NUM_THREADS, mpfr::RoundingMode::TowardZero);
+  test_full_range(START, STOP, mpfr::RoundingMode::TowardZero);
 }

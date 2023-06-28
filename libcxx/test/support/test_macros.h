@@ -23,11 +23,6 @@
 #include <ciso646>
 #endif
 
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wvariadic-macros"
-#endif
-
 #define TEST_STRINGIZE_IMPL(x) #x
 #define TEST_STRINGIZE(x) TEST_STRINGIZE_IMPL(x)
 
@@ -83,7 +78,8 @@
 #endif
 
 #if defined(__apple_build_version__)
-#define TEST_APPLE_CLANG_VER (__clang_major__ * 100) + __clang_minor__
+// Given AppleClang XX.Y.Z, TEST_APPLE_CLANG_VER is XXYZ (e.g. AppleClang 14.0.3 => 1403)
+#define TEST_APPLE_CLANG_VER (__apple_build_version__ / 10000)
 #elif defined(__clang_major__)
 #define TEST_CLANG_VER (__clang_major__ * 100) + __clang_minor__
 #elif defined(__GNUC__)
@@ -103,6 +99,8 @@
 # define TEST_STD_VER 17
 #elif __cplusplus <= 202002L
 # define TEST_STD_VER 20
+#elif __cplusplus <= 202302L
+# define TEST_STD_VER 23
 #else
 # define TEST_STD_VER 99    // greater than current standard
 // This is deliberately different than _LIBCPP_STD_VER to discourage matching them up.
@@ -171,6 +169,12 @@
 # define TEST_CONSTEXPR_CXX20
 #endif
 
+#if TEST_STD_VER >= 23
+#  define TEST_CONSTEXPR_CXX23 constexpr
+#else
+#  define TEST_CONSTEXPR_CXX23
+#endif
+
 #define TEST_ALIGNAS_TYPE(...) TEST_ALIGNAS(TEST_ALIGNOF(__VA_ARGS__))
 
 #if !TEST_HAS_FEATURE(cxx_rtti) && !defined(__cpp_rtti) \
@@ -189,9 +193,10 @@
 #define TEST_HAS_NO_EXCEPTIONS
 #endif
 
-#if TEST_HAS_FEATURE(address_sanitizer) || TEST_HAS_FEATURE(memory_sanitizer) || \
-    TEST_HAS_FEATURE(thread_sanitizer)
+#if TEST_HAS_FEATURE(address_sanitizer) || TEST_HAS_FEATURE(hwaddress_sanitizer) || \
+    TEST_HAS_FEATURE(memory_sanitizer) || TEST_HAS_FEATURE(thread_sanitizer)
 #define TEST_HAS_SANITIZERS
+#define TEST_IS_EXECUTED_IN_A_SLOW_ENVIRONMENT
 #endif
 
 #if defined(_LIBCPP_NORETURN)
@@ -206,15 +211,12 @@
 #define TEST_HAS_NO_ALIGNED_ALLOCATION
 #endif
 
-#if defined(_LIBCPP_SAFE_STATIC)
-#define TEST_SAFE_STATIC _LIBCPP_SAFE_STATIC
+#if TEST_STD_VER > 17
+#define TEST_CONSTINIT constinit
+#elif defined(_LIBCPP_CONSTINIT)
+#define TEST_CONSTINIT _LIBCPP_CONSTINIT
 #else
-#define TEST_SAFE_STATIC
-#endif
-
-#if !defined(__cpp_impl_three_way_comparison) \
-    && (!defined(_MSC_VER) || defined(__clang__) || _MSC_VER < 1920 || _MSVC_LANG <= 201703L)
-#define TEST_HAS_NO_SPACESHIP_OPERATOR
+#define TEST_CONSTINIT
 #endif
 
 #if TEST_STD_VER < 11
@@ -241,6 +243,12 @@
 #define LIBCPP_ASSERT_NOEXCEPT(...) static_assert(true, "")
 #define LIBCPP_ASSERT_NOT_NOEXCEPT(...) static_assert(true, "")
 #define LIBCPP_ONLY(...) static_assert(true, "")
+#endif
+
+#if __has_cpp_attribute(nodiscard)
+#  define TEST_NODISCARD [[nodiscard]]
+#else
+#  define TEST_NODISCARD
 #endif
 
 #define TEST_IGNORE_NODISCARD (void)
@@ -309,8 +317,7 @@ inline void DoNotOptimize(Tp const& value) {
 #define TEST_NOT_WIN32(...) __VA_ARGS__
 #endif
 
-#if (defined(_WIN32) && !defined(_LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS)) ||   \
-    defined(__MVS__) || defined(_AIX)
+#if defined(TEST_WINDOWS_DLL) ||defined(__MVS__) || defined(_AIX)
 // Macros for waiving cases when we can't count allocations done within
 // the library implementation.
 //
@@ -328,8 +335,7 @@ inline void DoNotOptimize(Tp const& value) {
 #define TEST_SUPPORTS_LIBRARY_INTERNAL_ALLOCATIONS 1
 #endif
 
-#if (defined(_WIN32) && !defined(_MSC_VER) &&                                  \
-     !defined(_LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS)) ||                      \
+#if (defined(TEST_WINDOWS_DLL) && !defined(_MSC_VER)) ||                      \
     defined(__MVS__)
 // Normally, a replaced e.g. 'operator new' ends up used if the user code
 // does a call to e.g. 'operator new[]'; it's enough to replace the base
@@ -364,12 +370,79 @@ inline void DoNotOptimize(Tp const& value) {
 #   define TEST_HAS_NO_UNICODE
 #endif
 
-#if defined(_LIBCPP_HAS_NO_INT128) || defined(TEST_COMPILER_MSVC)
+#if defined(_LIBCPP_HAS_NO_INT128) || defined(_MSVC_STL_VERSION)
 #   define TEST_HAS_NO_INT128
 #endif
 
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
+#if defined(_LIBCPP_HAS_NO_LOCALIZATION)
+#  define TEST_HAS_NO_LOCALIZATION
+#endif
+
+#if TEST_STD_VER <= 17 || !defined(__cpp_char8_t)
+#  define TEST_HAS_NO_CHAR8_T
+#endif
+
+#if defined(_LIBCPP_HAS_NO_THREADS)
+#  define TEST_HAS_NO_THREADS
+#endif
+
+#if defined(_LIBCPP_HAS_NO_FILESYSTEM)
+#  define TEST_HAS_NO_FILESYSTEM
+#endif
+
+#if defined(_LIBCPP_HAS_NO_FGETPOS_FSETPOS)
+#  define TEST_HAS_NO_FGETPOS_FSETPOS
+#endif
+
+#if defined(_LIBCPP_HAS_NO_C8RTOMB_MBRTOC8)
+#  define TEST_HAS_NO_C8RTOMB_MBRTOC8
+#endif
+
+#if defined(TEST_COMPILER_CLANG)
+#  define TEST_DIAGNOSTIC_PUSH _Pragma("clang diagnostic push")
+#  define TEST_DIAGNOSTIC_POP _Pragma("clang diagnostic pop")
+#  define TEST_CLANG_DIAGNOSTIC_IGNORED(str) _Pragma(TEST_STRINGIZE(clang diagnostic ignored str))
+#  define TEST_GCC_DIAGNOSTIC_IGNORED(str)
+#  define TEST_MSVC_DIAGNOSTIC_IGNORED(num)
+#elif defined(TEST_COMPILER_GCC)
+#  define TEST_DIAGNOSTIC_PUSH _Pragma("GCC diagnostic push")
+#  define TEST_DIAGNOSTIC_POP _Pragma("GCC diagnostic pop")
+#  define TEST_CLANG_DIAGNOSTIC_IGNORED(str)
+#  define TEST_GCC_DIAGNOSTIC_IGNORED(str) _Pragma(TEST_STRINGIZE(GCC diagnostic ignored str))
+#  define TEST_MSVC_DIAGNOSTIC_IGNORED(num)
+#elif defined(TEST_COMPILER_MSVC)
+#  define TEST_DIAGNOSTIC_PUSH _Pragma("warning(push)")
+#  define TEST_DIAGNOSTIC_POP _Pragma("warning(pop)")
+#  define TEST_CLANG_DIAGNOSTIC_IGNORED(str)
+#  define TEST_GCC_DIAGNOSTIC_IGNORED(str)
+#  define TEST_MSVC_DIAGNOSTIC_IGNORED(num) _Pragma(TEST_STRINGIZE(warning(disable: num)))
+#else
+#  define TEST_DIAGNOSTIC_PUSH
+#  define TEST_DIAGNOSTIC_POP
+#  define TEST_CLANG_DIAGNOSTIC_IGNORED(str)
+#  define TEST_GCC_DIAGNOSTIC_IGNORED(str)
+#  define TEST_MSVC_DIAGNOSTIC_IGNORED(num)
+#endif
+
+#if __has_cpp_attribute(msvc::no_unique_address)
+#define TEST_NO_UNIQUE_ADDRESS [[msvc::no_unique_address]]
+#elif __has_cpp_attribute(no_unique_address)
+#define TEST_NO_UNIQUE_ADDRESS [[no_unique_address]]
+#else
+#define TEST_NO_UNIQUE_ADDRESS
+#endif
+
+#ifdef _LIBCPP_SHORT_WCHAR
+#  define TEST_SHORT_WCHAR
+#endif
+
+// This is a temporary workaround for user-defined `operator new` definitions
+// not being picked up on Apple platforms in some circumstances. This is under
+// investigation and should be short-lived.
+#ifdef __APPLE__
+#  define TEST_WORKAROUND_BUG_109234844_WEAK __attribute__((weak))
+#else
+#  define TEST_WORKAROUND_BUG_109234844_WEAK /* nothing */
 #endif
 
 #endif // SUPPORT_TEST_MACROS_HPP

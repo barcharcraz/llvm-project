@@ -24,12 +24,10 @@ static Foo gFoo;
 - (void)setFooProperty : (Foo &) arg {  };
 @end
 
-// CHECK: [[T0:%.*]] = load {{%.*}} [[S0:%.*]]
-// CHECK:  [[T2:%.*]]  = bitcast {{%.*}} [[T0]] to i8*
-// CHECK: load i8*, i8** @OBJC_SELECTOR_REFERENCES_
+// CHECK: [[T0:%.*]] = load {{.*}} [[S0:%.*]]
+// CHECK: load ptr, ptr @OBJC_SELECTOR_REFERENCES_
 // CHECK:  @objc_msgSend
-// CHECK: [[R0:%.*]] = load {{%.*}} [[U0:%.*]]
-// CHECK:  [[R2:%.*]]  = bitcast {{%.*}} [[R0]] to i8*
-// CHECK: load i8*, i8** @OBJC_SELECTOR_REFERENCES_
+// CHECK: [[R0:%.*]] = load {{.*}} [[U0:%.*]]
+// CHECK: load ptr, ptr @OBJC_SELECTOR_REFERENCES_
 // CHECK:  @objc_msgSend
 

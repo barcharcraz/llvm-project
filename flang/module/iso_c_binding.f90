@@ -15,7 +15,8 @@ module iso_c_binding
     c_ptr => __builtin_c_ptr, &
     c_funptr => __builtin_c_funptr, &
     c_sizeof => sizeof, &
-    c_loc => __builtin_c_loc
+    c_loc => __builtin_c_loc, &
+    operator(==), operator(/=)
 
   type(c_ptr), parameter :: c_null_ptr = c_ptr(0)
   type(c_funptr), parameter :: c_null_funptr = c_funptr(0)
@@ -64,7 +65,7 @@ module iso_c_binding
     c_double_complex = c_double, &
     c_long_double_complex = c_long_double
 
-  integer, parameter :: c_bool = 1 ! TODO: or default LOGICAL?
+  integer, parameter :: c_bool = 1
   integer, parameter :: c_char = 1
 
   ! C characters with special semantics
@@ -83,6 +84,10 @@ module iso_c_binding
   end interface
   private :: c_associated_c_ptr, c_associated_c_funptr
 
+  interface c_f_procpointer
+    module procedure c_f_procpointer
+  end interface
+
   ! gfortran extensions
   integer, parameter :: &
     c_float128 = 16, &
@@ -90,7 +95,7 @@ module iso_c_binding
 
  contains
 
-  logical function c_associated_c_ptr(c_ptr_1, c_ptr_2)
+  pure logical function c_associated_c_ptr(c_ptr_1, c_ptr_2)
     type(c_ptr), intent(in) :: c_ptr_1
     type(c_ptr), intent(in), optional :: c_ptr_2
     if (c_ptr_1%__address == c_null_ptr%__address) then
@@ -102,7 +107,7 @@ module iso_c_binding
     end if
   end function c_associated_c_ptr
 
-  logical function c_associated_c_funptr(c_funptr_1, c_funptr_2)
+  pure logical function c_associated_c_funptr(c_funptr_1, c_funptr_2)
     type(c_funptr), intent(in) :: c_funptr_1
     type(c_funptr), intent(in), optional :: c_funptr_2
     if (c_funptr_1%__address == c_null_ptr%__address) then
@@ -120,6 +125,10 @@ module iso_c_binding
     c_funloc = c_funptr(loc(x))
   end function c_funloc
 
-  ! TODO c_f_procpointer
+  subroutine c_f_procpointer(cptr, fptr)
+    type(c_funptr), intent(in) :: cptr
+    procedure(), pointer, intent(out) :: fptr
+    ! TODO: implement
+  end subroutine c_f_procpointer
 
 end module iso_c_binding

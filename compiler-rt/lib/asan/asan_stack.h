@@ -34,7 +34,7 @@ u32 GetMallocContextSize();
 // don't want stack trace to contain functions from ASan internals.
 
 #define GET_STACK_TRACE(max_size, fast)                                \
-  __sanitizer::BufferedStackTrace stack;                               \
+  UNINITIALIZED __sanitizer::BufferedStackTrace stack;                               \
   if (max_size <= 2) {                                                 \
     stack.size = max_size;                                             \
     if (max_size > 0) {                                                \
@@ -50,7 +50,7 @@ u32 GetMallocContextSize();
 
 #define GET_STACK_TRACE_EXPLICIT(max_size, fast, pc, bp, caller_pc, \
                                  extra_context)                     \
-  __sanitizer::BufferedStackTrace stack;                            \
+  UNINITIALIZED __sanitizer::BufferedStackTrace stack;                            \
   if (max_size <= 2) {                                              \
     stack.size = max_size;                                          \
     if (max_size > 0) {                                             \
@@ -64,7 +64,7 @@ u32 GetMallocContextSize();
   }
 
 #define GET_STACK_TRACE_FATAL(pc, bp)    \
-  __sanitizer::BufferedStackTrace stack; \
+  UNINITIALIZED __sanitizer::BufferedStackTrace stack; \
   stack.Unwind(pc, bp, nullptr, common_flags()->fast_unwind_on_fatal)
 
 #define GET_STACK_TRACE_FATAL_HERE \

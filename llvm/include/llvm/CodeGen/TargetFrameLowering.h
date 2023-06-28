@@ -54,15 +54,18 @@ public:
   };
 
   struct DwarfFrameBase {
-    // The frame base may be either a register (the default), the CFA,
-    // or a WebAssembly-specific location description.
+    // The frame base may be either a register (the default), the CFA with an
+    // offset, or a WebAssembly-specific location description.
     enum FrameBaseKind { Register, CFA, WasmFrameBase } Kind;
     struct WasmFrameBase {
       unsigned Kind; // Wasm local, global, or value stack
       unsigned Index;
     };
     union {
+      // Used with FrameBaseKind::Register.
       unsigned Reg;
+      // Used with FrameBaseKind::CFA.
+      int Offset;
       struct WasmFrameBase WasmLoc;
     } Location;
   };
@@ -122,11 +125,6 @@ public:
   bool isStackRealignable() const {
     return StackRealignable;
   }
-
-  /// Return the skew that has to be applied to stack alignment under
-  /// certain conditions (e.g. stack was adjusted before function \p MF
-  /// was called).
-  virtual unsigned getStackAlignmentSkew(const MachineFunction &MF) const;
 
   /// This method returns whether or not it is safe for an object with the
   /// given stack id to be bundled into the local area.
@@ -213,11 +211,23 @@ public:
   virtual void emitEpilogue(MachineFunction &MF,
                             MachineBasicBlock &MBB) const = 0;
 
+  /// emitZeroCallUsedRegs - Zeros out call used registers.
+  virtual void emitZeroCallUsedRegs(BitVector RegsToZero,
+                                    MachineBasicBlock &MBB) const {}
+
   /// With basic block sections, emit callee saved frame moves for basic blocks
   /// that are in a different section.
   virtual void
   emitCalleeSavedFrameMovesFullCFA(MachineBasicBlock &MBB,
                                    MachineBasicBlock::iterator MBBI) const {}
+
+  /// Returns true if we may need to fix the unwind information for the
+  /// function.
+  virtual bool enableCFIFixup(MachineFunction &MF) const;
+
+  /// Emit CFI instructions that recreate the state of the unwind information
+  /// upon fucntion entry.
+  virtual void resetCFIToInitialState(MachineBasicBlock &MBB) const {}
 
   /// Replace a StackProbe stub (if any) with the actual probe code inline
   virtual void inlineStackProbe(MachineFunction &MF,

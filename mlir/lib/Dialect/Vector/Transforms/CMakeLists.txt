@@ -1,30 +1,47 @@
 add_mlir_dialect_library(MLIRVectorTransforms
   BufferizableOpInterfaceImpl.cpp
+  Bufferize.cpp
+  LowerVectorBroadcast.cpp
+  LowerVectorContract.cpp
+  LowerVectorGather.cpp
+  LowerVectorMask.cpp
+  LowerVectorMultiReduction.cpp
+  LowerVectorScan.cpp
+  LowerVectorShapeCast.cpp
+  LowerVectorTransfer.cpp
+  LowerVectorTranspose.cpp
+  VectorDistribute.cpp
   VectorDropLeadUnitDim.cpp
   VectorInsertExtractStridedSliceRewritePatterns.cpp
-  VectorMultiDimReductionTransforms.cpp
   VectorTransferOpTransforms.cpp
+  VectorTransferTensorSliceTransforms.cpp
   VectorTransferSplitRewritePatterns.cpp
-  VectorTransferPermutationMapRewritePatterns.cpp
   VectorTransforms.cpp
-  VectorUnrollDistribute.cpp
+  VectorUnroll.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${MLIR_MAIN_INCLUDE_DIR}/mlir/Dialect/Vector/Transforms
 
+  DEPENDS
+  MLIRVectorTransformsIncGen
+
   LINK_LIBS PUBLIC
-  MLIRAffine
+  MLIRAffineDialect
   MLIRAffineAnalysis
   MLIRAffineUtils
-  MLIRArithmetic
-  MLIRBufferization
+  MLIRArithDialect
+  MLIRBufferizationDialect
+  MLIRBufferizationTransforms
   MLIRDialectUtils
+  MLIRGPUDialect
   MLIRIR
-  MLIRLinalg
-  MLIRMemRef
-  MLIRSCF
-  MLIRStandard
-  MLIRVector
+  MLIRLinalgDialect
+  MLIRMemRefDialect
+  MLIRSCFDialect
+  MLIRSideEffectInterfaces
+  MLIRTensorDialect
+  MLIRTransforms
+  MLIRVectorDialect
   MLIRVectorInterfaces
   MLIRVectorUtils
   )

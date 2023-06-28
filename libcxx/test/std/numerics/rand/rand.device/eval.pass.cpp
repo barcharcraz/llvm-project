@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// UNSUPPORTED: libcpp-has-no-random-device
+// UNSUPPORTED: no-random-device
 
 // <random>
 
@@ -16,6 +16,7 @@
 
 #include <random>
 #include <cassert>
+#include <string>
 #include <system_error>
 
 #include "test_macros.h"

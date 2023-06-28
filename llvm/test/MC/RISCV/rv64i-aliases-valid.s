@@ -1,7 +1,7 @@
 # RUN: llvm-mc %s -triple=riscv64 -riscv-no-aliases \
-# RUN:     | FileCheck -check-prefixes=CHECK-EXPAND,CHECK-INST %s
+# RUN:     | FileCheck -check-prefixes=CHECK-EXPAND,CHECK-INST,CHECK-ASM-NOALIAS %s
 # RUN: llvm-mc %s -triple=riscv64 \
-# RUN:     | FileCheck -check-prefixes=CHECK-EXPAND,CHECK-ALIAS %s
+# RUN:     | FileCheck -check-prefixes=CHECK-EXPAND,CHECK-ALIAS,CHECK-ASM %s
 # RUN: llvm-mc -filetype=obj -triple riscv64 < %s \
 # RUN:     | llvm-objdump -M no-aliases -d - \
 # RUN:     | FileCheck -check-prefixes=CHECK-OBJ-NOALIAS,CHECK-EXPAND,CHECK-INST %s
@@ -20,6 +20,10 @@
 # Needed for testing valid %pcrel_lo expressions
 .Lpcrel_hi0: auipc a0, %pcrel_hi(foo)
 
+# Needed for testing li with a symbol difference
+.Lbuf: .skip 8
+.Lbuf_end:
+
 # CHECK-INST: addi a0, zero, 0
 # CHECK-ALIAS: li a0, 0
 li x10, 0
@@ -35,8 +39,10 @@ li x10, 2047
 # CHECK-INST: addi a0, zero, -2047
 # CHECK-ALIAS: li a0, -2047
 li x10, -2047
-# CHECK-EXPAND: lui a1, 1
-# CHECK-EXPAND: addiw a1, a1, -2048
+# CHECK-INST: addi a1, zero, 1
+# CHECK-INST: slli a1, a1, 11
+# CHECK-ALIAS: li a1, 1
+# CHECK-ALIAS: slli a1, a1, 11
 li x11, 2048
 # CHECK-INST: addi a1, zero, -2048
 # CHECK-ALIAS: li a1, -2048
@@ -170,6 +176,28 @@ li x10, 0xE000000001FFFFFF
 # CHECK-ALIAS-NEXT: addi a1, a1, 2047
 li x11, 0xFFFC007FFFFFF7FF
 
+# CHECK-INST: lui a2, 349525
+# CHECK-INST-NEXT: addiw a2, a2, 1365
+# CHECK-INST-NEXT: slli a2, a2, 1
+# CHECK-ALIAS: lui a2, 349525
+# CHECK-ALIAS-NEXT: addiw a2, a2, 1365
+# CHECK-ALIAS-NEXT: slli a2, a2, 1
+li x12, 0xaaaaaaaa
+
+# CHECK-INST: lui a3, 699051
+# CHECK-INST-NEXT: addiw a3, a3, -1365
+# CHECK-INST-NEXT: slli a3, a3, 1
+# CHECK-ALIAS: lui a3, 699051
+# CHECK-ALIAS-NEXT: addiw a3, a3, -1365
+# CHECK-ALIAS-NEXT: slli a3, a3, 1
+li x13, 0xffffffff55555556
+
+# CHECK-S-OBJ-NOALIAS: lui t0, 524288
+# CHECK-S-OBJ-NOALIAS-NEXT: addi t0, t0, -1365
+# CHECK-S-OBJ: lui t0, 524288
+# CHECK-S-OBJ-NEXT: addi t0, t0, -1365
+li x5, -2147485013
+
 # CHECK-INST: addi a0, zero, 1110
 # CHECK-ALIAS: li a0, 1110
 li a0, %lo(0x123456)
@@ -189,6 +217,12 @@ li a0, CONST
 .equ CONST, 0x654321
 # CHECK-EXPAND: lui a0, 1620
 # CHECK-EXPAND: addiw a0, a0, 801
+li a0, CONST
+
+.equ CONST, .Lbuf_end - .Lbuf
+# CHECK-ASM: li a0, CONST
+# CHECK-ASM-NOALIAS: addi a0, zero, CONST
+# CHECK-OBJ-NOALIAS: addi a0, zero, 8
 li a0, CONST
 
 # CHECK-INST: subw t6, zero, ra

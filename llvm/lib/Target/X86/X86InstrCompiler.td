@@ -257,6 +257,15 @@ let isPseudo = 1, SchedRW = [WriteSystem] in {
 }
 
 //===----------------------------------------------------------------------===//
+// Pseudo instructions used by KCFI.
+//===----------------------------------------------------------------------===//
+let
+  Defs = [R10, R11, EFLAGS] in {
+def KCFI_CHECK : PseudoI<
+  (outs), (ins GR64:$ptr, i32imm:$type), []>, Sched<[]>;
+}
+
+//===----------------------------------------------------------------------===//
 // Pseudo instructions used by address sanitizer.
 //===----------------------------------------------------------------------===//
 let
@@ -544,10 +553,10 @@ let usesCustomInserter = 1, hasNoSchedulingInfo = 1, Uses = [EFLAGS] in {
   // i8 register pressure.
   defm _GR8 : CMOVrr_PSEUDO<GR8, i8>;
 
-  let Predicates = [NoCMov] in {
+  let Predicates = [NoCMOV] in {
     defm _GR32 : CMOVrr_PSEUDO<GR32, i32>;
     defm _GR16 : CMOVrr_PSEUDO<GR16, i16>;
-  } // Predicates = [NoCMov]
+  } // Predicates = [NoCMOV]
 
   // fcmov doesn't handle all possible EFLAGS, provide a fallback if there is no
   // SSE1/SSE2.
@@ -562,12 +571,14 @@ let usesCustomInserter = 1, hasNoSchedulingInfo = 1, Uses = [EFLAGS] in {
   let Predicates = [HasMMX] in
     defm _VR64   : CMOVrr_PSEUDO<VR64, x86mmx>;
 
-  defm _FR16X    : CMOVrr_PSEUDO<FR16X, f16>;
   let Predicates = [HasSSE1,NoAVX512] in
     defm _FR32   : CMOVrr_PSEUDO<FR32, f32>;
-  let Predicates = [HasSSE2,NoAVX512] in
+  let Predicates = [HasSSE2,NoAVX512] in {
+    defm _FR16   : CMOVrr_PSEUDO<FR16, f16>;
     defm _FR64   : CMOVrr_PSEUDO<FR64, f64>;
+  }
   let Predicates = [HasAVX512] in {
+    defm _FR16X  : CMOVrr_PSEUDO<FR16X, f16>;
     defm _FR32X  : CMOVrr_PSEUDO<FR32X, f32>;
     defm _FR64X  : CMOVrr_PSEUDO<FR64X, f64>;
   }
@@ -669,11 +680,6 @@ def OR32mi8Locked  : Ii8<0x83, MRM1m, (outs), (ins i32mem:$dst, i32i8imm:$zero),
                          "or{l}\t{$zero, $dst|$dst, $zero}", []>,
                          Requires<[Not64BitMode]>, OpSize32, LOCK,
                          Sched<[WriteALURMW]>;
-
-let hasSideEffects = 1 in
-def Int_MemBarrier : I<0, Pseudo, (outs), (ins),
-                     "#MEMBARRIER",
-                     [(X86MemBarrier)]>, Sched<[WriteLoad]>;
 
 // RegOpc corresponds to the mr version of the instruction
 // ImmOpc corresponds to the mi version of the instruction
@@ -790,9 +796,9 @@ def X86lock_sub_nocf : PatFrag<(ops node:$lhs, node:$rhs),
   return hasNoCarryFlagUses(SDValue(N, 0));
 }]>;
 
-let Predicates = [UseIncDec] in {
-  let Defs = [EFLAGS], mayLoad = 1, mayStore = 1, isCodeGenOnly = 1,
-      SchedRW = [WriteALURMW]  in {
+let Defs = [EFLAGS], mayLoad = 1, mayStore = 1, isCodeGenOnly = 1,
+    SchedRW = [WriteALURMW]  in {
+  let Predicates = [UseIncDec] in {
     def LOCK_INC8m  : I<0xFE, MRM0m, (outs), (ins i8mem :$dst),
                         "inc{b}\t$dst",
                         [(set EFLAGS, (X86lock_add_nocf addr:$dst, (i8 1)))]>,
@@ -805,10 +811,6 @@ let Predicates = [UseIncDec] in {
                         "inc{l}\t$dst",
                         [(set EFLAGS, (X86lock_add_nocf addr:$dst, (i32 1)))]>,
                         OpSize32, LOCK;
-    def LOCK_INC64m : RI<0xFF, MRM0m, (outs), (ins i64mem:$dst),
-                         "inc{q}\t$dst",
-                         [(set EFLAGS, (X86lock_add_nocf addr:$dst, (i64 1)))]>,
-                         LOCK;
 
     def LOCK_DEC8m  : I<0xFE, MRM1m, (outs), (ins i8mem :$dst),
                         "dec{b}\t$dst",
@@ -822,22 +824,101 @@ let Predicates = [UseIncDec] in {
                         "dec{l}\t$dst",
                         [(set EFLAGS, (X86lock_sub_nocf addr:$dst, (i32 1)))]>,
                         OpSize32, LOCK;
+  }
+
+  let Predicates = [UseIncDec, In64BitMode] in {
+    def LOCK_INC64m : RI<0xFF, MRM0m, (outs), (ins i64mem:$dst),
+                         "inc{q}\t$dst",
+                         [(set EFLAGS, (X86lock_add_nocf addr:$dst, (i64 1)))]>,
+                         LOCK;
     def LOCK_DEC64m : RI<0xFF, MRM1m, (outs), (ins i64mem:$dst),
                          "dec{q}\t$dst",
                          [(set EFLAGS, (X86lock_sub_nocf addr:$dst, (i64 1)))]>,
                          LOCK;
   }
+}
 
+let Predicates = [UseIncDec] in {
   // Additional patterns for -1 constant.
   def : Pat<(X86lock_add addr:$dst, (i8  -1)), (LOCK_DEC8m  addr:$dst)>;
   def : Pat<(X86lock_add addr:$dst, (i16 -1)), (LOCK_DEC16m addr:$dst)>;
   def : Pat<(X86lock_add addr:$dst, (i32 -1)), (LOCK_DEC32m addr:$dst)>;
-  def : Pat<(X86lock_add addr:$dst, (i64 -1)), (LOCK_DEC64m addr:$dst)>;
   def : Pat<(X86lock_sub addr:$dst, (i8  -1)), (LOCK_INC8m  addr:$dst)>;
   def : Pat<(X86lock_sub addr:$dst, (i16 -1)), (LOCK_INC16m addr:$dst)>;
   def : Pat<(X86lock_sub addr:$dst, (i32 -1)), (LOCK_INC32m addr:$dst)>;
+}
+
+let Predicates = [UseIncDec, In64BitMode] in {
+  // Additional patterns for -1 constant.
+  def : Pat<(X86lock_add addr:$dst, (i64 -1)), (LOCK_DEC64m addr:$dst)>;
   def : Pat<(X86lock_sub addr:$dst, (i64 -1)), (LOCK_INC64m addr:$dst)>;
 }
+
+// Atomic bit test.
+def X86LBTest : SDTypeProfile<1, 3, [SDTCisVT<0, i32>, SDTCisPtrTy<1>,
+                                     SDTCisVT<2, i8>, SDTCisVT<3, i32>]>;
+def x86bts : SDNode<"X86ISD::LBTS", X86LBTest,
+                    [SDNPHasChain, SDNPMayLoad, SDNPMayStore, SDNPMemOperand]>;
+def x86btc : SDNode<"X86ISD::LBTC", X86LBTest,
+                    [SDNPHasChain, SDNPMayLoad, SDNPMayStore, SDNPMemOperand]>;
+def x86btr : SDNode<"X86ISD::LBTR", X86LBTest,
+                    [SDNPHasChain, SDNPMayLoad, SDNPMayStore, SDNPMemOperand]>;
+
+def X86LBTestRM : SDTypeProfile<1, 2, [SDTCisVT<0, i32>, SDTCisPtrTy<1>,
+                                       SDTCisInt<2>]>;
+
+def x86_rm_bts : SDNode<"X86ISD::LBTS_RM", X86LBTestRM,
+                        [SDNPHasChain, SDNPMayLoad, SDNPMayStore, SDNPMemOperand]>;
+def x86_rm_btc : SDNode<"X86ISD::LBTC_RM", X86LBTestRM,
+                        [SDNPHasChain, SDNPMayLoad, SDNPMayStore, SDNPMemOperand]>;
+def x86_rm_btr : SDNode<"X86ISD::LBTR_RM", X86LBTestRM,
+                        [SDNPHasChain, SDNPMayLoad, SDNPMayStore, SDNPMemOperand]>;
+
+
+multiclass ATOMIC_LOGIC_OP<Format Form, string s> {
+  let Defs = [EFLAGS], mayLoad = 1, mayStore = 1, isCodeGenOnly = 1,
+      SchedRW = [WriteBitTestSetRegRMW]  in {
+    def 16m : Ii8<0xBA, Form, (outs), (ins i16mem:$src1, i8imm:$src2),
+                  !strconcat(s, "{w}\t{$src2, $src1|$src1, $src2}"),
+                  [(set EFLAGS, (!cast<SDNode>("x86" # s) addr:$src1, timm:$src2, (i32 16)))]>,
+              OpSize16, TB, LOCK;
+    def 32m : Ii8<0xBA, Form, (outs), (ins i32mem:$src1, i8imm:$src2),
+                  !strconcat(s, "{l}\t{$src2, $src1|$src1, $src2}"),
+                  [(set EFLAGS, (!cast<SDNode>("x86" # s) addr:$src1, timm:$src2, (i32 32)))]>,
+              OpSize32, TB, LOCK;
+    def 64m : RIi8<0xBA, Form, (outs), (ins i64mem:$src1, i8imm:$src2),
+                   !strconcat(s, "{q}\t{$src2, $src1|$src1, $src2}"),
+                   [(set EFLAGS, (!cast<SDNode>("x86" # s) addr:$src1, timm:$src2, (i32 64)))]>,
+              TB, LOCK;
+  }
+}
+
+multiclass ATOMIC_LOGIC_OP_RM<bits<8> Opc8, string s> {
+  let Defs = [EFLAGS], mayLoad = 1, mayStore = 1, isCodeGenOnly = 1,
+      SchedRW = [WriteBitTestSetRegRMW]  in {
+    def 16rm : I<Opc8, MRMDestMem, (outs), (ins i16mem:$src1, GR16:$src2),
+                  !strconcat(s, "{w}\t{$src2, $src1|$src1, $src2}"),
+                  [(set EFLAGS, (!cast<SDNode>("x86_rm_" # s) addr:$src1, GR16:$src2))]>,
+               OpSize16, TB, LOCK;
+    def 32rm : I<Opc8, MRMDestMem, (outs), (ins i32mem:$src1, GR32:$src2),
+                  !strconcat(s, "{l}\t{$src2, $src1|$src1, $src2}"),
+                  [(set EFLAGS, (!cast<SDNode>("x86_rm_" # s) addr:$src1, GR32:$src2))]>,
+               OpSize32, TB, LOCK;
+    def 64rm : RI<Opc8, MRMDestMem, (outs), (ins i64mem:$src1, GR64:$src2),
+                   !strconcat(s, "{q}\t{$src2, $src1|$src1, $src2}"),
+                   [(set EFLAGS, (!cast<SDNode>("x86_rm_" # s) addr:$src1, GR64:$src2))]>,
+               TB, LOCK;
+  }
+}
+
+
+defm LOCK_BTS : ATOMIC_LOGIC_OP<MRM5m, "bts">;
+defm LOCK_BTC : ATOMIC_LOGIC_OP<MRM7m, "btc">;
+defm LOCK_BTR : ATOMIC_LOGIC_OP<MRM6m, "btr">;
+
+defm LOCK_BTS_RM : ATOMIC_LOGIC_OP_RM<0xAB, "bts">;
+defm LOCK_BTC_RM : ATOMIC_LOGIC_OP_RM<0xBB, "btc">;
+defm LOCK_BTR_RM : ATOMIC_LOGIC_OP_RM<0xB3, "btr">;
 
 // Atomic compare and swap.
 multiclass LCMPXCHG_BinOp<bits<8> Opc8, bits<8> Opc, Format Form,
@@ -863,7 +944,7 @@ let isCodeGenOnly = 1, SchedRW = [WriteCMPXCHGRMW] in {
 }
 
 let Defs = [EAX, EDX, EFLAGS], Uses = [EAX, EBX, ECX, EDX],
-    Predicates = [HasCmpxchg8b], SchedRW = [WriteCMPXCHGRMW],
+    Predicates = [HasCX8], SchedRW = [WriteCMPXCHGRMW],
     isCodeGenOnly = 1, usesCustomInserter = 1 in {
 def LCMPXCHG8B : I<0xC7, MRM1m, (outs), (ins i64mem:$ptr),
                    "cmpxchg8b\t$ptr",
@@ -871,7 +952,7 @@ def LCMPXCHG8B : I<0xC7, MRM1m, (outs), (ins i64mem:$ptr),
 }
 
 let Defs = [RAX, RDX, EFLAGS], Uses = [RAX, RBX, RCX, RDX],
-    Predicates = [HasCmpxchg16b,In64BitMode], SchedRW = [WriteCMPXCHGRMW],
+    Predicates = [HasCX16,In64BitMode], SchedRW = [WriteCMPXCHGRMW],
     isCodeGenOnly = 1, mayLoad = 1, mayStore = 1, hasSideEffects = 0 in {
 def LCMPXCHG16B : RI<0xC7, MRM1m, (outs), (ins i128mem:$ptr),
                      "cmpxchg16b\t$ptr",
@@ -898,7 +979,7 @@ def LCMPXCHG16B : RI<0xC7, MRM1m, (outs), (ins i128mem:$ptr),
 // the instruction and we are sure we will have a valid register to restore
 // the value of RBX.
 let Defs = [RAX, RDX, RBX, EFLAGS], Uses = [RAX, RCX, RDX],
-    Predicates = [HasCmpxchg16b,In64BitMode], SchedRW = [WriteCMPXCHGRMW],
+    Predicates = [HasCX16,In64BitMode], SchedRW = [WriteCMPXCHGRMW],
     isCodeGenOnly = 1, isPseudo = 1,
     mayLoad = 1, mayStore = 1, hasSideEffects = 0,
     Constraints = "$rbx_save = $dst" in {
@@ -910,7 +991,7 @@ def LCMPXCHG16B_SAVE_RBX :
 // Pseudo instruction that doesn't read/write RBX. Will be turned into either
 // LCMPXCHG16B_SAVE_RBX or LCMPXCHG16B via a custom inserter.
 let Defs = [RAX, RDX, EFLAGS], Uses = [RAX, RCX, RDX],
-    Predicates = [HasCmpxchg16b,In64BitMode], SchedRW = [WriteCMPXCHGRMW],
+    Predicates = [HasCX16,In64BitMode], SchedRW = [WriteCMPXCHGRMW],
     isCodeGenOnly = 1, isPseudo = 1,
     mayLoad = 1, mayStore = 1, hasSideEffects = 0,
     usesCustomInserter = 1 in {
@@ -1144,12 +1225,12 @@ def : Pat<(f64 (bitconvert (i64 (atomic_load_64 addr:$src)))),
 // binary size compared to a regular MOV, but it introduces an unnecessary
 // load, so is not suitable for regular or optsize functions.
 let Predicates = [OptForMinSize] in {
-def : Pat<(simple_store (i16 0), addr:$dst), (AND16mi8 addr:$dst, 0)>;
-def : Pat<(simple_store (i32 0), addr:$dst), (AND32mi8 addr:$dst, 0)>;
-def : Pat<(simple_store (i64 0), addr:$dst), (AND64mi8 addr:$dst, 0)>;
-def : Pat<(simple_store (i16 -1), addr:$dst), (OR16mi8 addr:$dst, -1)>;
-def : Pat<(simple_store (i32 -1), addr:$dst), (OR32mi8 addr:$dst, -1)>;
-def : Pat<(simple_store (i64 -1), addr:$dst), (OR64mi8 addr:$dst, -1)>;
+def : Pat<(simple_store (i16 0), addr:$dst), (AND16mi addr:$dst, 0)>;
+def : Pat<(simple_store (i32 0), addr:$dst), (AND32mi addr:$dst, 0)>;
+def : Pat<(simple_store (i64 0), addr:$dst), (AND64mi32 addr:$dst, 0)>;
+def : Pat<(simple_store (i16 -1), addr:$dst), (OR16mi addr:$dst, -1)>;
+def : Pat<(simple_store (i32 -1), addr:$dst), (OR32mi addr:$dst, -1)>;
+def : Pat<(simple_store (i64 -1), addr:$dst), (OR64mi32 addr:$dst, -1)>;
 }
 
 // In kernel code model, we can get the address of a label
@@ -1235,6 +1316,21 @@ def X86tcret_6regs : PatFrag<(ops node:$ptr, node:$off),
   return true;
 }]>;
 
+def X86tcret_1reg : PatFrag<(ops node:$ptr, node:$off),
+                             (X86tcret node:$ptr, node:$off), [{
+  // X86tcret args: (*chain, ptr, imm, regs..., glue)
+  unsigned NumRegs = 1;
+  const SDValue& BasePtr = cast<LoadSDNode>(N->getOperand(1))->getBasePtr();
+  if (isa<FrameIndexSDNode>(BasePtr))
+    NumRegs = 3;
+  else if (BasePtr->getNumOperands() && isa<GlobalAddressSDNode>(BasePtr->getOperand(0)))
+    NumRegs = 3;
+  for (unsigned i = 3, e = N->getNumOperands(); i != e; ++i)
+    if (isa<RegisterSDNode>(N->getOperand(i)) && ( NumRegs-- == 0))
+      return false;
+  return true;
+}]>;
+
 def : Pat<(X86tcret ptr_rc_tailcall:$dst, timm:$off),
           (TCRETURNri ptr_rc_tailcall:$dst, timm:$off)>,
           Requires<[Not64BitMode, NotUseIndirectThunkCalls]>;
@@ -1242,7 +1338,8 @@ def : Pat<(X86tcret ptr_rc_tailcall:$dst, timm:$off),
 // FIXME: This is disabled for 32-bit PIC mode because the global base
 // register which is part of the address mode may be assigned a
 // callee-saved register.
-def : Pat<(X86tcret (load addr:$dst), timm:$off),
+// Similar to X86tcret_6regs, here we only have 1 register left
+def : Pat<(X86tcret_1reg (load addr:$dst), timm:$off),
           (TCRETURNmi addr:$dst, timm:$off)>,
           Requires<[Not64BitMode, IsNotPIC, NotUseIndirectThunkCalls]>;
 
@@ -1429,35 +1526,16 @@ def ADD64rr_DB  : I<0, Pseudo, (outs GR64:$dst), (ins GR64:$src1, GR64:$src2),
                     [(set GR64:$dst, (or_is_add GR64:$src1, GR64:$src2))]>;
 } // isCommutable
 
-// NOTE: These are order specific, we want the ri8 forms to be listed
-// first so that they are slightly preferred to the ri forms.
-
 def ADD8ri_DB :   I<0, Pseudo,
                     (outs GR8:$dst), (ins GR8:$src1, i8imm:$src2),
                     "", // orb/addb REG, imm8
                     [(set GR8:$dst, (or_is_add GR8:$src1, imm:$src2))]>;
-def ADD16ri8_DB : I<0, Pseudo,
-                    (outs GR16:$dst), (ins GR16:$src1, i16i8imm:$src2),
-                    "", // orw/addw REG, imm8
-                    [(set GR16:$dst,(or_is_add GR16:$src1,i16immSExt8:$src2))]>;
 def ADD16ri_DB  : I<0, Pseudo, (outs GR16:$dst), (ins GR16:$src1, i16imm:$src2),
                     "", // orw/addw REG, imm
                     [(set GR16:$dst, (or_is_add GR16:$src1, imm:$src2))]>;
-
-def ADD32ri8_DB : I<0, Pseudo,
-                    (outs GR32:$dst), (ins GR32:$src1, i32i8imm:$src2),
-                    "", // orl/addl REG, imm8
-                    [(set GR32:$dst,(or_is_add GR32:$src1,i32immSExt8:$src2))]>;
 def ADD32ri_DB  : I<0, Pseudo, (outs GR32:$dst), (ins GR32:$src1, i32imm:$src2),
                     "", // orl/addl REG, imm
                     [(set GR32:$dst, (or_is_add GR32:$src1, imm:$src2))]>;
-
-
-def ADD64ri8_DB : I<0, Pseudo,
-                    (outs GR64:$dst), (ins GR64:$src1, i64i8imm:$src2),
-                    "", // orq/addq REG, imm8
-                    [(set GR64:$dst, (or_is_add GR64:$src1,
-                                                i64immSExt8:$src2))]>;
 def ADD64ri32_DB : I<0, Pseudo,
                      (outs GR64:$dst), (ins GR64:$src1, i64i32imm:$src2),
                      "", // orq/addq REG, imm
@@ -1467,41 +1545,18 @@ def ADD64ri32_DB : I<0, Pseudo,
 } // AddedComplexity, SchedRW
 
 //===----------------------------------------------------------------------===//
-// Pattern match SUB as XOR
+// Pattern match XOR as ADD
 //===----------------------------------------------------------------------===//
 
-// An immediate in the LHS of a subtract can't be encoded in the instruction.
-// If there is no possibility of a borrow we can use an XOR instead of a SUB
-// to enable the immediate to be folded.
-// TODO: Move this to a DAG combine?
-
-def sub_is_xor : PatFrag<(ops node:$lhs, node:$rhs), (sub node:$lhs, node:$rhs),[{
-  if (ConstantSDNode *CN = dyn_cast<ConstantSDNode>(N->getOperand(0))) {
-    KnownBits Known = CurDAG->computeKnownBits(N->getOperand(1));
-
-    // If all possible ones in the RHS are set in the LHS then there can't be
-    // a borrow and we can use xor.
-    return (~Known.Zero).isSubsetOf(CN->getAPIntValue());
-  }
-
-  return false;
-}]>;
-
+// Prefer to pattern match XOR with min_signed_value as ADD at isel time.
+// ADD can be 3-addressified into an LEA instruction to avoid copies.
 let AddedComplexity = 5 in {
-def : Pat<(sub_is_xor imm:$src2, GR8:$src1),
-          (XOR8ri GR8:$src1, imm:$src2)>;
-def : Pat<(sub_is_xor i16immSExt8:$src2, GR16:$src1),
-          (XOR16ri8 GR16:$src1, i16immSExt8:$src2)>;
-def : Pat<(sub_is_xor imm:$src2, GR16:$src1),
-          (XOR16ri GR16:$src1, imm:$src2)>;
-def : Pat<(sub_is_xor i32immSExt8:$src2, GR32:$src1),
-          (XOR32ri8 GR32:$src1, i32immSExt8:$src2)>;
-def : Pat<(sub_is_xor imm:$src2, GR32:$src1),
-          (XOR32ri GR32:$src1, imm:$src2)>;
-def : Pat<(sub_is_xor i64immSExt8:$src2, GR64:$src1),
-          (XOR64ri8 GR64:$src1, i64immSExt8:$src2)>;
-def : Pat<(sub_is_xor i64immSExt32:$src2, GR64:$src1),
-          (XOR64ri32 GR64:$src1, i64immSExt32:$src2)>;
+def : Pat<(xor GR8:$src1, -128),
+          (ADD8ri GR8:$src1, -128)>;
+def : Pat<(xor GR16:$src1, -32768),
+          (ADD16ri GR16:$src1, -32768)>;
+def : Pat<(xor GR32:$src1, -2147483648),
+          (ADD32ri GR32:$src1, -2147483648)>;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1511,26 +1566,26 @@ def : Pat<(sub_is_xor i64immSExt32:$src2, GR64:$src1),
 // Odd encoding trick: -128 fits into an 8-bit immediate field while
 // +128 doesn't, so in this special case use a sub instead of an add.
 def : Pat<(add GR16:$src1, 128),
-          (SUB16ri8 GR16:$src1, -128)>;
+          (SUB16ri GR16:$src1, -128)>;
 def : Pat<(store (add (loadi16 addr:$dst), 128), addr:$dst),
-          (SUB16mi8 addr:$dst, -128)>;
+          (SUB16mi addr:$dst, -128)>;
 
 def : Pat<(add GR32:$src1, 128),
-          (SUB32ri8 GR32:$src1, -128)>;
+          (SUB32ri GR32:$src1, -128)>;
 def : Pat<(store (add (loadi32 addr:$dst), 128), addr:$dst),
-          (SUB32mi8 addr:$dst, -128)>;
+          (SUB32mi addr:$dst, -128)>;
 
 def : Pat<(add GR64:$src1, 128),
-          (SUB64ri8 GR64:$src1, -128)>;
+          (SUB64ri32 GR64:$src1, -128)>;
 def : Pat<(store (add (loadi64 addr:$dst), 128), addr:$dst),
-          (SUB64mi8 addr:$dst, -128)>;
+          (SUB64mi32 addr:$dst, -128)>;
 
 def : Pat<(X86add_flag_nocf GR16:$src1, 128),
-          (SUB16ri8 GR16:$src1, -128)>;
+          (SUB16ri GR16:$src1, -128)>;
 def : Pat<(X86add_flag_nocf GR32:$src1, 128),
-          (SUB32ri8 GR32:$src1, -128)>;
+          (SUB32ri GR32:$src1, -128)>;
 def : Pat<(X86add_flag_nocf GR64:$src1, 128),
-          (SUB64ri8 GR64:$src1, -128)>;
+          (SUB64ri32 GR64:$src1, -128)>;
 
 // The same trick applies for 32-bit immediate fields in 64-bit
 // instructions.
@@ -1538,7 +1593,6 @@ def : Pat<(add GR64:$src1, 0x0000000080000000),
           (SUB64ri32 GR64:$src1, 0xffffffff80000000)>;
 def : Pat<(store (add (loadi64 addr:$dst), 0x0000000080000000), addr:$dst),
           (SUB64mi32 addr:$dst, 0xffffffff80000000)>;
-
 def : Pat<(X86add_flag_nocf GR64:$src1, 0x0000000080000000),
           (SUB64ri32 GR64:$src1, 0xffffffff80000000)>;
 
@@ -1551,14 +1605,6 @@ def : Pat<(X86add_flag_nocf GR64:$src1, 0x0000000080000000),
 
 // AddedComplexity is needed to give priority over i64immSExt8 and i64immSExt32.
 let AddedComplexity = 1 in {
-def : Pat<(and GR64:$src, i64immZExt32SExt8:$imm),
-          (SUBREG_TO_REG
-            (i64 0),
-            (AND32ri8
-              (EXTRACT_SUBREG GR64:$src, sub_32bit),
-              (i32 (GetLo32XForm imm:$imm))),
-            sub_32bit)>;
-
 def : Pat<(and GR64:$src, i64immZExt32:$imm),
           (SUBREG_TO_REG
             (i64 0),
@@ -1606,12 +1652,12 @@ def : Pat<(and GR64:$src, 0xff),
 
 def BTRXForm : SDNodeXForm<imm, [{
   // Transformation function: Find the lowest 0.
-  return getI64Imm((uint8_t)N->getAPIntValue().countTrailingOnes(), SDLoc(N));
+  return getI64Imm((uint8_t)N->getAPIntValue().countr_one(), SDLoc(N));
 }]>;
 
 def BTCBTSXForm : SDNodeXForm<imm, [{
   // Transformation function: Find the lowest 1.
-  return getI64Imm((uint8_t)N->getAPIntValue().countTrailingZeros(), SDLoc(N));
+  return getI64Imm((uint8_t)N->getAPIntValue().countr_zero(), SDLoc(N));
 }]>;
 
 def BTRMask64 : ImmLeaf<i64, [{
@@ -1983,14 +2029,7 @@ def : Pat<(add GR64:$src1, (loadi64 addr:$src2)),
 def : Pat<(add GR8 :$src1, imm:$src2), (ADD8ri  GR8:$src1 , imm:$src2)>;
 def : Pat<(add GR16:$src1, imm:$src2), (ADD16ri GR16:$src1, imm:$src2)>;
 def : Pat<(add GR32:$src1, imm:$src2), (ADD32ri GR32:$src1, imm:$src2)>;
-def : Pat<(add GR16:$src1, i16immSExt8:$src2),
-          (ADD16ri8 GR16:$src1, i16immSExt8:$src2)>;
-def : Pat<(add GR32:$src1, i32immSExt8:$src2),
-          (ADD32ri8 GR32:$src1, i32immSExt8:$src2)>;
-def : Pat<(add GR64:$src1, i64immSExt8:$src2),
-          (ADD64ri8 GR64:$src1, i64immSExt8:$src2)>;
-def : Pat<(add GR64:$src1, i64immSExt32:$src2),
-          (ADD64ri32 GR64:$src1, i64immSExt32:$src2)>;
+def : Pat<(add GR64:$src1, i64immSExt32:$src2), (ADD64ri32 GR64:$src1, i64immSExt32:$src2)>;
 
 // sub reg, reg
 def : Pat<(sub GR8 :$src1, GR8 :$src2), (SUB8rr  GR8 :$src1, GR8 :$src2)>;
@@ -2015,12 +2054,6 @@ def : Pat<(sub GR16:$src1, imm:$src2),
           (SUB16ri GR16:$src1, imm:$src2)>;
 def : Pat<(sub GR32:$src1, imm:$src2),
           (SUB32ri GR32:$src1, imm:$src2)>;
-def : Pat<(sub GR16:$src1, i16immSExt8:$src2),
-          (SUB16ri8 GR16:$src1, i16immSExt8:$src2)>;
-def : Pat<(sub GR32:$src1, i32immSExt8:$src2),
-          (SUB32ri8 GR32:$src1, i32immSExt8:$src2)>;
-def : Pat<(sub GR64:$src1, i64immSExt8:$src2),
-          (SUB64ri8 GR64:$src1, i64immSExt8:$src2)>;
 def : Pat<(sub GR64:$src1, i64immSExt32:$src2),
           (SUB64ri32 GR64:$src1, i64immSExt32:$src2)>;
 
@@ -2051,12 +2084,6 @@ def : Pat<(mul GR16:$src1, imm:$src2),
           (IMUL16rri GR16:$src1, imm:$src2)>;
 def : Pat<(mul GR32:$src1, imm:$src2),
           (IMUL32rri GR32:$src1, imm:$src2)>;
-def : Pat<(mul GR16:$src1, i16immSExt8:$src2),
-          (IMUL16rri8 GR16:$src1, i16immSExt8:$src2)>;
-def : Pat<(mul GR32:$src1, i32immSExt8:$src2),
-          (IMUL32rri8 GR32:$src1, i32immSExt8:$src2)>;
-def : Pat<(mul GR64:$src1, i64immSExt8:$src2),
-          (IMUL64rri8 GR64:$src1, i64immSExt8:$src2)>;
 def : Pat<(mul GR64:$src1, i64immSExt32:$src2),
           (IMUL64rri32 GR64:$src1, i64immSExt32:$src2)>;
 
@@ -2065,12 +2092,6 @@ def : Pat<(mul (loadi16 addr:$src1), imm:$src2),
           (IMUL16rmi addr:$src1, imm:$src2)>;
 def : Pat<(mul (loadi32 addr:$src1), imm:$src2),
           (IMUL32rmi addr:$src1, imm:$src2)>;
-def : Pat<(mul (loadi16 addr:$src1), i16immSExt8:$src2),
-          (IMUL16rmi8 addr:$src1, i16immSExt8:$src2)>;
-def : Pat<(mul (loadi32 addr:$src1), i32immSExt8:$src2),
-          (IMUL32rmi8 addr:$src1, i32immSExt8:$src2)>;
-def : Pat<(mul (loadi64 addr:$src1), i64immSExt8:$src2),
-          (IMUL64rmi8 addr:$src1, i64immSExt8:$src2)>;
 def : Pat<(mul (loadi64 addr:$src1), i64immSExt32:$src2),
           (IMUL64rmi32 addr:$src1, i64immSExt32:$src2)>;
 
@@ -2116,12 +2137,6 @@ def : Pat<(or GR64:$src1, (loadi64 addr:$src2)),
 def : Pat<(or GR8:$src1 , imm:$src2), (OR8ri  GR8 :$src1, imm:$src2)>;
 def : Pat<(or GR16:$src1, imm:$src2), (OR16ri GR16:$src1, imm:$src2)>;
 def : Pat<(or GR32:$src1, imm:$src2), (OR32ri GR32:$src1, imm:$src2)>;
-def : Pat<(or GR16:$src1, i16immSExt8:$src2),
-          (OR16ri8 GR16:$src1, i16immSExt8:$src2)>;
-def : Pat<(or GR32:$src1, i32immSExt8:$src2),
-          (OR32ri8 GR32:$src1, i32immSExt8:$src2)>;
-def : Pat<(or GR64:$src1, i64immSExt8:$src2),
-          (OR64ri8 GR64:$src1, i64immSExt8:$src2)>;
 def : Pat<(or GR64:$src1, i64immSExt32:$src2),
           (OR64ri32 GR64:$src1, i64immSExt32:$src2)>;
 
@@ -2148,12 +2163,6 @@ def : Pat<(xor GR16:$src1, imm:$src2),
           (XOR16ri GR16:$src1, imm:$src2)>;
 def : Pat<(xor GR32:$src1, imm:$src2),
           (XOR32ri GR32:$src1, imm:$src2)>;
-def : Pat<(xor GR16:$src1, i16immSExt8:$src2),
-          (XOR16ri8 GR16:$src1, i16immSExt8:$src2)>;
-def : Pat<(xor GR32:$src1, i32immSExt8:$src2),
-          (XOR32ri8 GR32:$src1, i32immSExt8:$src2)>;
-def : Pat<(xor GR64:$src1, i64immSExt8:$src2),
-          (XOR64ri8 GR64:$src1, i64immSExt8:$src2)>;
 def : Pat<(xor GR64:$src1, i64immSExt32:$src2),
           (XOR64ri32 GR64:$src1, i64immSExt32:$src2)>;
 
@@ -2180,12 +2189,6 @@ def : Pat<(and GR16:$src1, imm:$src2),
           (AND16ri GR16:$src1, imm:$src2)>;
 def : Pat<(and GR32:$src1, imm:$src2),
           (AND32ri GR32:$src1, imm:$src2)>;
-def : Pat<(and GR16:$src1, i16immSExt8:$src2),
-          (AND16ri8 GR16:$src1, i16immSExt8:$src2)>;
-def : Pat<(and GR32:$src1, i32immSExt8:$src2),
-          (AND32ri8 GR32:$src1, i32immSExt8:$src2)>;
-def : Pat<(and GR64:$src1, i64immSExt8:$src2),
-          (AND64ri8 GR64:$src1, i64immSExt8:$src2)>;
 def : Pat<(and GR64:$src1, i64immSExt32:$src2),
           (AND64ri32 GR64:$src1, i64immSExt32:$src2)>;
 

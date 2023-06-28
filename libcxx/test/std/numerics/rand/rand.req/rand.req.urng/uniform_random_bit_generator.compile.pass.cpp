@@ -7,7 +7,6 @@
 //===----------------------------------------------------------------------===//
 
 // UNSUPPORTED: c++03, c++11, c++14, c++17
-// UNSUPPORTED: libcpp-no-concepts
 
 // template<class T>
 // concept uniform_random_bit_generator = // see below
@@ -141,5 +140,3 @@ struct Works {
   static constexpr unsigned char max() { return 1; }
 };
 static_assert(std::uniform_random_bit_generator<Works>);
-
-int main(int, char**) { return 0; }

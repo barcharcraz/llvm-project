@@ -8,7 +8,6 @@ lldb_tablegen(ProcessGDBRemotePropertiesEnum.inc -gen-lldb-property-enum-defs
 
 set(LLDB_PLUGINS
   lldbPluginProcessUtility
-  lldbPluginPlatformMacOSX
 )
 
 if(HAVE_LIBCOMPRESSION)
@@ -48,6 +47,7 @@ add_lldb_library(lldbPluginProcessGDBRemote PLUGIN
     ${LIBCOMPRESSION}
   LINK_COMPONENTS
     Support
+    TargetParser
   )
 
 add_dependencies(lldbPluginProcessGDBRemote

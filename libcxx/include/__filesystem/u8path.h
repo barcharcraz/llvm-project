@@ -10,16 +10,27 @@
 #ifndef _LIBCPP___FILESYSTEM_U8PATH_H
 #define _LIBCPP___FILESYSTEM_U8PATH_H
 
+#include <__algorithm/unwrap_iter.h>
 #include <__availability>
 #include <__config>
 #include <__filesystem/path.h>
-#include <type_traits>
+#include <string>
+
+// Only required on Windows for __widen_from_utf8, and included conservatively
+// because it requires support for localization.
+#if defined(_LIBCPP_WIN32API)
+# include <locale>
+#endif
+
+#if !defined(_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER)
+#  pragma GCC system_header
+#endif
 
 #ifndef _LIBCPP_CXX03_LANG
 
 _LIBCPP_BEGIN_NAMESPACE_FILESYSTEM
 
-_LIBCPP_AVAILABILITY_FILESYSTEM_PUSH
+_LIBCPP_AVAILABILITY_FILESYSTEM_LIBRARY_PUSH
 
 template <class _InputIt>
 _LIBCPP_INLINE_VISIBILITY _LIBCPP_DEPRECATED_WITH_CHAR8_T
@@ -87,7 +98,7 @@ _LIBCPP_INLINE_VISIBILITY _LIBCPP_DEPRECATED_WITH_CHAR8_T
 #endif
 }
 
-_LIBCPP_AVAILABILITY_FILESYSTEM_POP
+_LIBCPP_AVAILABILITY_FILESYSTEM_LIBRARY_POP
 
 _LIBCPP_END_NAMESPACE_FILESYSTEM
 

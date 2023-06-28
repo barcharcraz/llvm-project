@@ -3,6 +3,7 @@ RUN: FileCheck --input-file=%t %s
 
      CHECK:-Wall
 CHECK-NEXT:  -Wmost
+CHECK-NEXT:    -Warray-parameter
 CHECK-NEXT:    -Wbool-operation
 CHECK-NEXT:    -Wbitwise-instead-of-logical
 CHECK-NEXT:    -Wchar-subscripts
@@ -98,6 +99,7 @@ CHECK-NEXT:    -Wdangling-else
 CHECK-NEXT:  -Wswitch
 CHECK-NEXT:  -Wswitch-bool
 CHECK-NEXT:  -Wmisleading-indentation
+CHECK-NEXT:  -Wpacked-non-pod
 
 
 CHECK-NOT:-W

@@ -3,15 +3,14 @@
 #include "Headers.h"
 #include "SyncAPI.h"
 #include "TestFS.h"
-#include "TestIndex.h"
 #include "TestTU.h"
 #include "index/Background.h"
 #include "index/BackgroundRebuild.h"
+#include "index/MemIndex.h"
 #include "clang/Tooling/ArgumentsAdjusters.h"
 #include "clang/Tooling/CompilationDatabase.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/ScopedPrinter.h"
-#include "llvm/Support/Threading.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include <deque>
@@ -70,7 +69,7 @@ public:
   loadShard(llvm::StringRef ShardIdentifier) const override {
     std::lock_guard<std::mutex> Lock(StorageMu);
     AccessedPaths.insert(ShardIdentifier);
-    if (Storage.find(ShardIdentifier) == Storage.end()) {
+    if (!Storage.contains(ShardIdentifier)) {
       return nullptr;
     }
     auto IndexFile =
@@ -147,7 +146,7 @@ TEST_F(BackgroundIndexTest, Config) {
   MemoryShardStorage MSS(Storage, CacheHits);
   // We need the CommandMangler, because that applies the config we're testing.
   OverlayCDB CDB(/*Base=*/nullptr, /*FallbackFlags=*/{},
-                 tooling::ArgumentsAdjuster(CommandMangler::forTests()));
+                 CommandMangler::forTests());
 
   BackgroundIndex Idx(
       FS, CDB, [&](llvm::StringRef) { return &MSS; }, std::move(Opts));
@@ -581,8 +580,9 @@ TEST_F(BackgroundIndexTest, UncompilableFiles) {
   CDB.setCompileCommand(testPath("build/../A.cc"), Cmd);
   ASSERT_TRUE(Idx.blockUntilIdleForTest());
 
-  EXPECT_THAT(Storage.keys(), ElementsAre(testPath("A.cc"), testPath("A.h"),
-                                          testPath("B.h"), testPath("C.h")));
+  EXPECT_THAT(Storage.keys(),
+              UnorderedElementsAre(testPath("A.cc"), testPath("A.h"),
+                                   testPath("B.h"), testPath("C.h")));
 
   {
     auto Shard = MSS.loadShard(testPath("A.cc"));
@@ -636,7 +636,8 @@ TEST_F(BackgroundIndexTest, CmdLineHash) {
   CDB.setCompileCommand(testPath("build/../A.cc"), Cmd);
   ASSERT_TRUE(Idx.blockUntilIdleForTest());
 
-  EXPECT_THAT(Storage.keys(), ElementsAre(testPath("A.cc"), testPath("A.h")));
+  EXPECT_THAT(Storage.keys(),
+              UnorderedElementsAre(testPath("A.cc"), testPath("A.h")));
   // Make sure we only store the Cmd for main file.
   EXPECT_FALSE(MSS.loadShard(testPath("A.h"))->Cmd);
 

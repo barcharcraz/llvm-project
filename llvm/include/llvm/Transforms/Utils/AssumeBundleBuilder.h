@@ -17,12 +17,13 @@
 #define LLVM_TRANSFORMS_UTILS_ASSUMEBUNDLEBUILDER_H
 
 #include "llvm/Analysis/AssumeBundleQueries.h"
-#include "llvm/IR/Attributes.h"
-#include "llvm/IR/Instruction.h"
 #include "llvm/IR/PassManager.h"
-#include "llvm/Pass.h"
 
 namespace llvm {
+class AssumeInst;
+class Function;
+class FunctionPass;
+class Instruction;
 class AssumptionCache;
 class DominatorTree;
 
@@ -39,7 +40,8 @@ AssumeInst *buildAssumeFromInst(Instruction *I);
 /// become silently be invalid.
 /// The DominatorTree can optionally be provided to enable cross-block
 /// reasoning.
-void salvageKnowledge(Instruction *I, AssumptionCache *AC = nullptr,
+/// This returns if a change was made.
+bool salvageKnowledge(Instruction *I, AssumptionCache *AC = nullptr,
                       DominatorTree *DT = nullptr);
 
 /// Build and return a new assume created from the provided knowledge
@@ -54,8 +56,6 @@ AssumeInst *buildAssumeFromKnowledge(ArrayRef<RetainedKnowledge> Knowledge,
 struct AssumeSimplifyPass : public PassInfoMixin<AssumeSimplifyPass> {
   PreservedAnalyses run(Function &F, FunctionAnalysisManager &AM);
 };
-
-FunctionPass *createAssumeSimplifyPass();
 
 /// This pass will try to build an llvm.assume for every instruction in the
 /// function. Its main purpose is testing.

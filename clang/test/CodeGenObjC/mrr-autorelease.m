@@ -18,7 +18,7 @@
 }
 @end
 
-// CHECK-NOT: call i8* @objc_getClass
-// CHECK: call i8* bitcast (i8* (i8*, i8*, ...)* @objc_msgSend
-// CHECK: call i8* bitcast (i8* (i8*, i8*, ...)* @objc_msgSend
-// CHECK: call void bitcast (i8* (i8*, i8*, ...)* @objc_msgSend
+// CHECK-NOT: call ptr @objc_getClass
+// CHECK: call ptr @objc_msgSend
+// CHECK: call ptr @objc_msgSend
+// CHECK: call void @objc_msgSend

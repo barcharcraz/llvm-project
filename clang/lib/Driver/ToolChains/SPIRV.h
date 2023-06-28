@@ -17,9 +17,6 @@ namespace driver {
 namespace tools {
 namespace SPIRV {
 
-void addTranslatorArgs(const llvm::opt::ArgList &InArgs,
-                       llvm::opt::ArgStringList &OutArgs);
-
 void constructTranslateCommand(Compilation &C, const Tool &T,
                                const JobAction &JA, const InputInfo &Output,
                                const InputInfo &Input,
@@ -64,8 +61,9 @@ public:
       : ToolChain(D, Triple, Args) {}
 
   bool useIntegratedAs() const override { return true; }
-  bool useIntegratedBackend() const override { return false; }
 
+  bool IsIntegratedBackendDefault() const override { return false; }
+  bool IsNonIntegratedBackendSupported() const override { return true; }
   bool IsMathErrnoDefault() const override { return false; }
   bool isCrossCompiling() const override { return true; }
   bool isPICDefault() const override { return false; }

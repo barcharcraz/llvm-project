@@ -11,11 +11,11 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
-#include "llvm/ADT/Triple.h"
 #include "llvm/Support/ErrorOr.h"
-#include "llvm/Support/Host.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Threading.h"
+#include "llvm/TargetParser/Host.h"
+#include "llvm/TargetParser/Triple.h"
 
 using namespace clang::driver;
 using namespace clang;
@@ -91,6 +91,9 @@ static Distro::DistroType DetectLsbRelease(llvm::vfs::FileSystem &VFS) {
                     .Case("hirsute", Distro::UbuntuHirsute)
                     .Case("impish", Distro::UbuntuImpish)
                     .Case("jammy", Distro::UbuntuJammy)
+                    .Case("kinetic", Distro::UbuntuKinetic)
+                    .Case("lunar", Distro::UbuntuLunar)
+                    .Case("mantic", Distro::UbuntuMantic)
                     .Default(Distro::UnknownDistro);
   return Version;
 }
@@ -153,6 +156,8 @@ static Distro::DistroType DetectDistro(llvm::vfs::FileSystem &VFS) {
         return Distro::DebianBullseye;
       case 12:
         return Distro::DebianBookworm;
+      case 13:
+        return Distro::DebianTrixie;
       default:
         return Distro::UnknownDistro;
       }

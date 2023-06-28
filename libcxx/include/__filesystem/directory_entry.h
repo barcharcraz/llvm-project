@@ -11,8 +11,9 @@
 #define _LIBCPP___FILESYSTEM_DIRECTORY_ENTRY_H
 
 #include <__availability>
+#include <__chrono/time_point.h>
+#include <__compare/ordering.h>
 #include <__config>
-#include <__errc>
 #include <__filesystem/file_status.h>
 #include <__filesystem/file_time_type.h>
 #include <__filesystem/file_type.h>
@@ -20,11 +21,16 @@
 #include <__filesystem/operations.h>
 #include <__filesystem/path.h>
 #include <__filesystem/perms.h>
-#include <chrono>
+#include <__system_error/errc.h>
+#include <__system_error/error_code.h>
+#include <__utility/move.h>
+#include <__utility/unreachable.h>
 #include <cstdint>
-#include <cstdlib>
 #include <iosfwd>
-#include <system_error>
+
+#if !defined(_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER)
+#  pragma GCC system_header
+#endif
 
 _LIBCPP_PUSH_MACROS
 #include <__undef_macros>
@@ -33,7 +39,7 @@ _LIBCPP_PUSH_MACROS
 
 _LIBCPP_BEGIN_NAMESPACE_FILESYSTEM
 
-_LIBCPP_AVAILABILITY_FILESYSTEM_PUSH
+_LIBCPP_AVAILABILITY_FILESYSTEM_LIBRARY_PUSH
 
 
 class directory_entry {
@@ -41,9 +47,9 @@ class directory_entry {
 
 public:
   // constructors and destructors
-  directory_entry() noexcept = default;
-  directory_entry(directory_entry const&) = default;
-  directory_entry(directory_entry&&) noexcept = default;
+  _LIBCPP_HIDE_FROM_ABI directory_entry() noexcept = default;
+  _LIBCPP_HIDE_FROM_ABI directory_entry(directory_entry const&) = default;
+  _LIBCPP_HIDE_FROM_ABI directory_entry(directory_entry&&) noexcept = default;
 
   _LIBCPP_INLINE_VISIBILITY
   explicit directory_entry(_Path const& __p) : __p_(__p) {
@@ -56,10 +62,10 @@ public:
     __refresh(&__ec);
   }
 
-  ~directory_entry() {}
+  _LIBCPP_HIDE_FROM_ABI ~directory_entry() {}
 
-  directory_entry& operator=(directory_entry const&) = default;
-  directory_entry& operator=(directory_entry&&) noexcept = default;
+  _LIBCPP_HIDE_FROM_ABI directory_entry& operator=(directory_entry const&) = default;
+  _LIBCPP_HIDE_FROM_ABI directory_entry& operator=(directory_entry&&) noexcept = default;
 
   _LIBCPP_INLINE_VISIBILITY
   void assign(_Path const& __p) {
@@ -210,19 +216,21 @@ public:
     return __get_symlink_status(&__ec);
   }
 
-  _LIBCPP_INLINE_VISIBILITY
-  bool operator<(directory_entry const& __rhs) const noexcept {
-    return __p_ < __rhs.__p_;
-  }
 
   _LIBCPP_INLINE_VISIBILITY
   bool operator==(directory_entry const& __rhs) const noexcept {
     return __p_ == __rhs.__p_;
   }
 
+#if _LIBCPP_STD_VER <= 17
   _LIBCPP_INLINE_VISIBILITY
   bool operator!=(directory_entry const& __rhs) const noexcept {
     return __p_ != __rhs.__p_;
+  }
+
+  _LIBCPP_INLINE_VISIBILITY
+  bool operator<(directory_entry const& __rhs) const noexcept {
+    return __p_ < __rhs.__p_;
   }
 
   _LIBCPP_INLINE_VISIBILITY
@@ -239,6 +247,15 @@ public:
   bool operator>=(directory_entry const& __rhs) const noexcept {
     return __p_ >= __rhs.__p_;
   }
+
+#else // _LIBCPP_STD_VER <= 17
+
+  _LIBCPP_HIDE_FROM_ABI
+  strong_ordering operator<=>(const directory_entry& __rhs) const noexcept {
+    return __p_ <=> __rhs.__p_;
+  }
+
+#endif // _LIBCPP_STD_VER <= 17
 
   template <class _CharT, class _Traits>
   _LIBCPP_INLINE_VISIBILITY
@@ -305,8 +322,7 @@ private:
     __data_ = __dt;
   }
 
-  _LIBCPP_FUNC_VIS
-  error_code __do_refresh() noexcept;
+  _LIBCPP_EXPORTED_FROM_ABI error_code __do_refresh() noexcept;
 
   _LIBCPP_INLINE_VISIBILITY
   static bool __is_dne_error(error_code const& __ec) {
@@ -358,7 +374,7 @@ private:
         __ec->clear();
       return __data_.__type_;
     }
-    _LIBCPP_UNREACHABLE();
+    __libcpp_unreachable();
   }
 
   _LIBCPP_INLINE_VISIBILITY
@@ -379,7 +395,7 @@ private:
       return __data_.__type_;
     }
     }
-    _LIBCPP_UNREACHABLE();
+    __libcpp_unreachable();
   }
 
   _LIBCPP_INLINE_VISIBILITY
@@ -394,7 +410,7 @@ private:
     case _RefreshSymlink:
       return file_status(__get_ft(__ec), __data_.__non_sym_perms_);
     }
-    _LIBCPP_UNREACHABLE();
+    __libcpp_unreachable();
   }
 
   _LIBCPP_INLINE_VISIBILITY
@@ -410,7 +426,7 @@ private:
     case _RefreshSymlinkUnresolved:
       return file_status(__get_sym_ft(__ec), __data_.__sym_perms_);
     }
-    _LIBCPP_UNREACHABLE();
+    __libcpp_unreachable();
   }
 
   _LIBCPP_INLINE_VISIBILITY
@@ -435,7 +451,7 @@ private:
       return __data_.__size_;
     }
     }
-    _LIBCPP_UNREACHABLE();
+    __libcpp_unreachable();
   }
 
   _LIBCPP_INLINE_VISIBILITY
@@ -454,7 +470,7 @@ private:
       return __data_.__nlink_;
     }
     }
-    _LIBCPP_UNREACHABLE();
+    __libcpp_unreachable();
   }
 
   _LIBCPP_INLINE_VISIBILITY
@@ -477,7 +493,7 @@ private:
       return __data_.__write_time_;
     }
     }
-    _LIBCPP_UNREACHABLE();
+    __libcpp_unreachable();
   }
 
 private:
@@ -494,13 +510,13 @@ public:
 private:
   friend class directory_iterator;
   friend class recursive_directory_iterator;
-  explicit __dir_element_proxy(directory_entry const& __e) : __elem_(__e) {}
-  __dir_element_proxy(__dir_element_proxy&& __o)
+  _LIBCPP_HIDE_FROM_ABI explicit __dir_element_proxy(directory_entry const& __e) : __elem_(__e) {}
+  _LIBCPP_HIDE_FROM_ABI __dir_element_proxy(__dir_element_proxy&& __o)
       : __elem_(_VSTD::move(__o.__elem_)) {}
   directory_entry __elem_;
 };
 
-_LIBCPP_AVAILABILITY_FILESYSTEM_POP
+_LIBCPP_AVAILABILITY_FILESYSTEM_LIBRARY_POP
 
 _LIBCPP_END_NAMESPACE_FILESYSTEM
 

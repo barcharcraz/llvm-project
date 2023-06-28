@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "asan_interceptors.h"
+
 #include "asan_allocator.h"
 #include "asan_internal.h"
 #include "asan_mapping.h"
@@ -20,7 +21,9 @@
 #include "asan_stack.h"
 #include "asan_stats.h"
 #include "asan_suppressions.h"
+#include "asan_thread.h"
 #include "lsan/lsan_common.h"
+#include "sanitizer_common/sanitizer_internal_defs.h"
 #include "sanitizer_common/sanitizer_libc.h"
 
 // There is no general interception at all on Fuchsia.
@@ -84,12 +87,6 @@ using namespace __asan;
 DECLARE_REAL_AND_INTERCEPTOR(void *, malloc, uptr)
 DECLARE_REAL_AND_INTERCEPTOR(void, free, void *)
 
-#define ASAN_INTERCEPTOR_ENTER(ctx, func)                                      \
-  AsanInterceptorContext _ctx = {#func};                                       \
-  ctx = (void *)&_ctx;                                                         \
-  (void) ctx;                                                                  \
-
-#define COMMON_INTERCEPT_FUNCTION(name) ASAN_INTERCEPT_FUNC(name)
 #define COMMON_INTERCEPT_FUNCTION_VER(name, ver) \
   ASAN_INTERCEPT_FUNC_VER(name, ver)
 #define COMMON_INTERCEPT_FUNCTION_VER_UNVERSIONED_FALLBACK(name, ver) \
@@ -103,7 +100,7 @@ DECLARE_REAL_AND_INTERCEPTOR(void, free, void *)
   do {                                                                         \
     if (asan_init_is_running)                                                  \
       return REAL(func)(__VA_ARGS__);                                          \
-    if (SANITIZER_MAC && UNLIKELY(!asan_inited))                               \
+    if (SANITIZER_APPLE && UNLIKELY(!asan_inited))                               \
       return REAL(func)(__VA_ARGS__);                                          \
     ENSURE_ASAN_INITED();                                                      \
   } while (false)
@@ -149,24 +146,6 @@ DECLARE_REAL_AND_INTERCEPTOR(void, free, void *)
       *begin = *end = 0;                               \
     }
 
-#define COMMON_INTERCEPTOR_MEMMOVE_IMPL(ctx, to, from, size) \
-  do {                                                       \
-    ASAN_INTERCEPTOR_ENTER(ctx, memmove);                    \
-    ASAN_MEMMOVE_IMPL(ctx, to, from, size);                  \
-  } while (false)
-
-#define COMMON_INTERCEPTOR_MEMCPY_IMPL(ctx, to, from, size) \
-  do {                                                      \
-    ASAN_INTERCEPTOR_ENTER(ctx, memcpy);                    \
-    ASAN_MEMCPY_IMPL(ctx, to, from, size);                  \
-  } while (false)
-
-#define COMMON_INTERCEPTOR_MEMSET_IMPL(ctx, block, c, size) \
-  do {                                                      \
-    ASAN_INTERCEPTOR_ENTER(ctx, memset);                    \
-    ASAN_MEMSET_IMPL(ctx, block, c, size);                  \
-  } while (false)
-
 #if CAN_SANITIZE_LEAKS
 #define COMMON_INTERCEPTOR_STRERROR()                       \
   __lsan::ScopedInterceptorDisabler disabler
@@ -196,19 +175,26 @@ DECLARE_REAL_AND_INTERCEPTOR(void, free, void *)
 static thread_return_t THREAD_CALLING_CONV asan_thread_start(void *arg) {
   AsanThread *t = (AsanThread *)arg;
   SetCurrentThread(t);
-  return t->ThreadStart(GetTid());
+  auto self = GetThreadSelf();
+  auto args = asanThreadArgRetval().GetArgs(self);
+  thread_return_t retval = t->ThreadStart(GetTid());
+  asanThreadArgRetval().Finish(self, retval);
+  CHECK_EQ(args.arg_retval, t->get_arg());
+  return retval;
 }
 
-INTERCEPTOR(int, pthread_create, void *thread,
-    void *attr, void *(*start_routine)(void*), void *arg) {
+INTERCEPTOR(int, pthread_create, void *thread, void *attr,
+            void *(*start_routine)(void *), void *arg) {
   EnsureMainThreadIDIsCorrect();
   // Strict init-order checking is thread-hostile.
   if (flags()->strict_init_order)
     StopInitOrderChecking();
   GET_STACK_TRACE_THREAD;
-  int detached = 0;
-  if (attr)
-    REAL(pthread_attr_getdetachstate)(attr, &detached);
+  bool detached = [attr]() {
+    int d = 0;
+    return attr && !REAL(pthread_attr_getdetachstate)(attr, &d) &&
+           IsStateDetached(d);
+  }();
 
   u32 current_tid = GetCurrentTidOrInvalid();
   AsanThread *t =
@@ -220,10 +206,13 @@ INTERCEPTOR(int, pthread_create, void *thread,
     // stored by pthread for future reuse even after thread destruction, and
     // the linked list it's stored in doesn't even hold valid pointers to the
     // objects, the latter are calculated by obscure pointer arithmetic.
-#if CAN_SANITIZE_LEAKS
+#    if CAN_SANITIZE_LEAKS
     __lsan::ScopedInterceptorDisabler disabler;
-#endif
-    result = REAL(pthread_create)(thread, attr, asan_thread_start, t);
+#    endif
+    asanThreadArgRetval().Create(detached, {start_routine, arg}, [&]() -> uptr {
+      result = REAL(pthread_create)(thread, attr, asan_thread_start, t);
+      return result ? 0 : *(uptr *)(thread);
+    });
   }
   if (result != 0) {
     // If the thread didn't start delete the AsanThread to avoid leaking it.
@@ -234,24 +223,101 @@ INTERCEPTOR(int, pthread_create, void *thread,
   return result;
 }
 
-INTERCEPTOR(int, pthread_join, void *t, void **arg) {
-  return real_pthread_join(t, arg);
+INTERCEPTOR(int, pthread_join, void *thread, void **retval) {
+  int result;
+  asanThreadArgRetval().Join((uptr)thread, [&]() {
+    result = REAL(pthread_join)(thread, retval);
+    return !result;
+  });
+  return result;
 }
+
+INTERCEPTOR(int, pthread_detach, void *thread) {
+  int result;
+  asanThreadArgRetval().Detach((uptr)thread, [&]() {
+    result = REAL(pthread_detach)(thread);
+    return !result;
+  });
+  return result;
+}
+
+INTERCEPTOR(int, pthread_exit, void *retval) {
+  asanThreadArgRetval().Finish(GetThreadSelf(), retval);
+  return REAL(pthread_exit)(retval);
+}
+
+#    if ASAN_INTERCEPT_TRYJOIN
+INTERCEPTOR(int, pthread_tryjoin_np, void *thread, void **ret) {
+  int result;
+  asanThreadArgRetval().Join((uptr)thread, [&]() {
+    result = REAL(pthread_tryjoin_np)(thread, ret);
+    return !result;
+  });
+  return result;
+}
+#    endif
+
+#    if ASAN_INTERCEPT_TIMEDJOIN
+INTERCEPTOR(int, pthread_timedjoin_np, void *thread, void **ret,
+            const struct timespec *abstime) {
+  int result;
+  asanThreadArgRetval().Join((uptr)thread, [&]() {
+    result = REAL(pthread_timedjoin_np)(thread, ret, abstime);
+    return !result;
+  });
+  return result;
+}
+#    endif
 
 DEFINE_REAL_PTHREAD_FUNCTIONS
 #endif  // ASAN_INTERCEPT_PTHREAD_CREATE
 
 #if ASAN_INTERCEPT_SWAPCONTEXT
 static void ClearShadowMemoryForContextStack(uptr stack, uptr ssize) {
+  // Only clear if we know the stack. This should be true only for contexts
+  // created with makecontext().
+  if (!ssize)
+    return;
   // Align to page size.
   uptr PageSize = GetPageSizeCached();
-  uptr bottom = stack & ~(PageSize - 1);
+  uptr bottom = RoundDownTo(stack, PageSize);
+  if (!AddrIsInMem(bottom))
+    return;
   ssize += stack - bottom;
   ssize = RoundUpTo(ssize, PageSize);
-  static const uptr kMaxSaneContextStackSize = 1 << 22;  // 4 Mb
-  if (AddrIsInMem(bottom) && ssize && ssize <= kMaxSaneContextStackSize) {
-    PoisonShadow(bottom, ssize, 0);
-  }
+  PoisonShadow(bottom, ssize, 0);
+}
+
+INTERCEPTOR(void, makecontext, struct ucontext_t *ucp, void (*func)(), int argc,
+            ...) {
+  va_list ap;
+  uptr args[64];
+  // We don't know a better way to forward ... into REAL function. We can
+  // increase args size if neccecary.
+  CHECK_LE(argc, ARRAY_SIZE(args));
+  internal_memset(args, 0, sizeof(args));
+  va_start(ap, argc);
+  for (int i = 0; i < argc; ++i) args[i] = va_arg(ap, uptr);
+  va_end(ap);
+
+#    define ENUMERATE_ARRAY_4(start) \
+      args[start], args[start + 1], args[start + 2], args[start + 3]
+#    define ENUMERATE_ARRAY_16(start)                         \
+      ENUMERATE_ARRAY_4(start), ENUMERATE_ARRAY_4(start + 4), \
+          ENUMERATE_ARRAY_4(start + 8), ENUMERATE_ARRAY_4(start + 12)
+#    define ENUMERATE_ARRAY_64()                                             \
+      ENUMERATE_ARRAY_16(0), ENUMERATE_ARRAY_16(16), ENUMERATE_ARRAY_16(32), \
+          ENUMERATE_ARRAY_16(48)
+
+  REAL(makecontext)
+  ((struct ucontext_t *)ucp, func, argc, ENUMERATE_ARRAY_64());
+
+#    undef ENUMERATE_ARRAY_4
+#    undef ENUMERATE_ARRAY_16
+#    undef ENUMERATE_ARRAY_64
+
+  // Sign the stack so we can identify it for unpoisoning.
+  SignContextStack(ucp);
 }
 
 INTERCEPTOR(int, swapcontext, struct ucontext_t *oucp,
@@ -267,15 +333,15 @@ INTERCEPTOR(int, swapcontext, struct ucontext_t *oucp,
   uptr stack, ssize;
   ReadContextStack(ucp, &stack, &ssize);
   ClearShadowMemoryForContextStack(stack, ssize);
-#if __has_attribute(__indirect_return__) && \
-    (defined(__x86_64__) || defined(__i386__))
+
+#    if __has_attribute(__indirect_return__) && \
+        (defined(__x86_64__) || defined(__i386__))
   int (*real_swapcontext)(struct ucontext_t *, struct ucontext_t *)
-    __attribute__((__indirect_return__))
-    = REAL(swapcontext);
+      __attribute__((__indirect_return__)) = REAL(swapcontext);
   int res = real_swapcontext(oucp, ucp);
-#else
+#    else
   int res = REAL(swapcontext)(oucp, ucp);
-#endif
+#    endif
   // swapcontext technically does not return, but program may swap context to
   // "oucp" later, that would look as if swapcontext() returned 0.
   // We need to clear shadow for ucp once again, as it may be in arbitrary
@@ -353,9 +419,9 @@ INTERCEPTOR(_Unwind_Reason_Code, _Unwind_SjLj_RaiseException,
 #if ASAN_INTERCEPT_INDEX
 # if ASAN_USE_ALIAS_ATTRIBUTE_FOR_INDEX
 INTERCEPTOR(char*, index, const char *string, int c)
-  ALIAS(WRAPPER_NAME(strchr));
+  ALIAS(WRAP(strchr));
 # else
-#  if SANITIZER_MAC
+#  if SANITIZER_APPLE
 DECLARE_REAL(char*, index, const char *string, int c)
 OVERRIDE_FUNCTION(index, strchr);
 #  else
@@ -409,7 +475,7 @@ INTERCEPTOR(char*, strncat, char *to, const char *from, uptr size) {
 INTERCEPTOR(char *, strcpy, char *to, const char *from) {
   void *ctx;
   ASAN_INTERCEPTOR_ENTER(ctx, strcpy);
-#if SANITIZER_MAC
+#if SANITIZER_APPLE
   if (UNLIKELY(!asan_inited))
     return REAL(strcpy)(to, from);
 #endif
@@ -440,7 +506,9 @@ INTERCEPTOR(char*, strdup, const char *s) {
   }
   GET_STACK_TRACE_MALLOC;
   void *new_mem = asan_malloc(length + 1, &stack);
-  REAL(memcpy)(new_mem, s, length + 1);
+  if (new_mem) {
+    REAL(memcpy)(new_mem, s, length + 1);
+  }
   return reinterpret_cast<char*>(new_mem);
 }
 #endif // !SANITIZER_WINDOWS
@@ -474,7 +542,9 @@ INTERCEPTOR(char*, __strdup, const char *s) {
   }
   GET_STACK_TRACE_MALLOC;
   void *new_mem = asan_malloc(length + 1, &stack);
-  REAL(memcpy)(new_mem, s, length + 1);
+  if (new_mem) {
+    REAL(memcpy)(new_mem, s, length + 1);
+  }
   return reinterpret_cast<char*>(new_mem);
 }
 #endif // ASAN_INTERCEPT___STRDUP
@@ -508,7 +578,7 @@ INTERCEPTOR(long, strtol, const char *nptr, char **endptr, int base) {
 INTERCEPTOR(int, atoi, const char *nptr) {
   void *ctx;
   ASAN_INTERCEPTOR_ENTER(ctx, atoi);
-#if SANITIZER_MAC
+#if SANITIZER_APPLE
   if (UNLIKELY(!asan_inited)) return REAL(atoi)(nptr);
 #endif
   ENSURE_ASAN_INITED();
@@ -529,7 +599,7 @@ INTERCEPTOR(int, atoi, const char *nptr) {
 INTERCEPTOR(long, atol, const char *nptr) {
   void *ctx;
   ASAN_INTERCEPTOR_ENTER(ctx, atol);
-#if SANITIZER_MAC
+#if SANITIZER_APPLE
   if (UNLIKELY(!asan_inited)) return REAL(atol)(nptr);
 #endif
   ENSURE_ASAN_INITED();
@@ -582,7 +652,7 @@ static void AtCxaAtexit(void *unused) {
 #if ASAN_INTERCEPT___CXA_ATEXIT
 INTERCEPTOR(int, __cxa_atexit, void (*func)(void *), void *arg,
             void *dso_handle) {
-#if SANITIZER_MAC
+#if SANITIZER_APPLE
   if (UNLIKELY(!asan_inited)) return REAL(__cxa_atexit)(func, arg, dso_handle);
 #endif
   ENSURE_ASAN_INITED();
@@ -636,6 +706,7 @@ void InitializeAsanInterceptors() {
   static bool was_called_once;
   CHECK(!was_called_once);
   was_called_once = true;
+  InitializePlatformInterceptors();
   InitializeCommonInterceptors();
   InitializeSignalInterceptors();
 
@@ -667,10 +738,11 @@ void InitializeAsanInterceptors() {
   // Intecept jump-related functions.
   ASAN_INTERCEPT_FUNC(longjmp);
 
-#if ASAN_INTERCEPT_SWAPCONTEXT
+#  if ASAN_INTERCEPT_SWAPCONTEXT
   ASAN_INTERCEPT_FUNC(swapcontext);
-#endif
-#if ASAN_INTERCEPT__LONGJMP
+  ASAN_INTERCEPT_FUNC(makecontext);
+#  endif
+#  if ASAN_INTERCEPT__LONGJMP
   ASAN_INTERCEPT_FUNC(_longjmp);
 #endif
 #if ASAN_INTERCEPT___LONGJMP_CHK
@@ -689,11 +761,11 @@ void InitializeAsanInterceptors() {
 #endif
   // Indirectly intercept std::rethrow_exception.
 #if ASAN_INTERCEPT__UNWIND_RAISEEXCEPTION
-  INTERCEPT_FUNCTION(_Unwind_RaiseException);
+  ASAN_INTERCEPT_FUNC(_Unwind_RaiseException);
 #endif
   // Indirectly intercept std::rethrow_exception.
 #if ASAN_INTERCEPT__UNWIND_SJLJ_RAISEEXCEPTION
-  INTERCEPT_FUNCTION(_Unwind_SjLj_RaiseException);
+  ASAN_INTERCEPT_FUNC(_Unwind_SjLj_RaiseException);
 #endif
 
   // Intercept threading-related functions
@@ -705,6 +777,16 @@ void InitializeAsanInterceptors() {
   ASAN_INTERCEPT_FUNC(pthread_create);
 #endif
   ASAN_INTERCEPT_FUNC(pthread_join);
+  ASAN_INTERCEPT_FUNC(pthread_detach);
+  ASAN_INTERCEPT_FUNC(pthread_exit);
+#  endif
+
+#  if ASAN_INTERCEPT_TIMEDJOIN
+  ASAN_INTERCEPT_FUNC(pthread_timedjoin_np);
+#endif
+
+#if ASAN_INTERCEPT_TRYJOIN
+  ASAN_INTERCEPT_FUNC(pthread_tryjoin_np);
 #endif
 
   // Intercept atexit function.
@@ -723,8 +805,6 @@ void InitializeAsanInterceptors() {
 #if ASAN_INTERCEPT_VFORK
   ASAN_INTERCEPT_FUNC(vfork);
 #endif
-
-  InitializePlatformInterceptors();
 
   VReport(1, "AddressSanitizer: libc interceptors initialized\n");
 }

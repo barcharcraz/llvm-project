@@ -18,14 +18,15 @@
 #define PASS_NAME "test-loop-permutation"
 
 using namespace mlir;
-
-static llvm::cl::OptionCategory clOptionsCategory(PASS_NAME " options");
+using namespace mlir::affine;
 
 namespace {
 
 /// This pass applies the permutation on the first maximal perfect nest.
 struct TestLoopPermutation
-    : public PassWrapper<TestLoopPermutation, OperationPass<FuncOp>> {
+    : public PassWrapper<TestLoopPermutation, OperationPass<>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TestLoopPermutation)
+
   StringRef getArgument() const final { return PASS_NAME; }
   StringRef getDescription() const final {
     return "Tests affine loop permutation utility";
@@ -40,7 +41,7 @@ private:
   /// transformed nest (with i going from outermost to innermost).
   ListOption<unsigned> permList{*this, "permutation-map",
                                 llvm::cl::desc("Specify the loop permutation"),
-                                llvm::cl::OneOrMore, llvm::cl::CommaSeparated};
+                                llvm::cl::OneOrMore};
 };
 
 } // namespace
@@ -50,7 +51,7 @@ void TestLoopPermutation::runOnOperation() {
   SmallVector<unsigned, 4> permMap(permList.begin(), permList.end());
 
   SmallVector<AffineForOp, 2> forOps;
-  getOperation().walk([&](AffineForOp forOp) { forOps.push_back(forOp); });
+  getOperation()->walk([&](AffineForOp forOp) { forOps.push_back(forOp); });
 
   for (auto forOp : forOps) {
     SmallVector<AffineForOp, 6> nest;

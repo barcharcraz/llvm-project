@@ -6,7 +6,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "AST.h"
 #include "Annotations.h"
 #include "Compiler.h"
 #include "Headers.h"
@@ -26,8 +25,6 @@
 #include "index/SymbolID.h"
 #include "support/Threading.h"
 #include "clang/Frontend/CompilerInvocation.h"
-#include "clang/Frontend/Utils.h"
-#include "clang/Index/IndexSymbol.h"
 #include "clang/Lex/Preprocessor.h"
 #include "clang/Tooling/CompilationDatabase.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -308,16 +305,18 @@ TEST(FileIndexTest, RebuildWithPreamble) {
 
   FileIndex Index;
   bool IndexUpdated = false;
-  buildPreamble(FooCpp, *CI, PI,
-                /*StoreInMemory=*/true,
-                [&](ASTContext &Ctx, Preprocessor &PP,
-                    const CanonicalIncludes &CanonIncludes) {
-                  EXPECT_FALSE(IndexUpdated)
-                      << "Expected only a single index update";
-                  IndexUpdated = true;
-                  Index.updatePreamble(FooCpp, /*Version=*/"null", Ctx, PP,
-                                       CanonIncludes);
-                });
+  buildPreamble(
+      FooCpp, *CI, PI,
+      /*StoreInMemory=*/true,
+      [&](CapturedASTCtx ASTCtx,
+          const std::shared_ptr<const CanonicalIncludes> CanonIncludes) {
+        auto &Ctx = ASTCtx.getASTContext();
+        auto &PP = ASTCtx.getPreprocessor();
+        EXPECT_FALSE(IndexUpdated) << "Expected only a single index update";
+        IndexUpdated = true;
+        Index.updatePreamble(FooCpp, /*Version=*/"null", Ctx, PP,
+                             *CanonIncludes);
+      });
   ASSERT_TRUE(IndexUpdated);
 
   // Check the index contains symbols from the preamble, but not from the main
@@ -653,7 +652,7 @@ TEST(FileShardedIndexTest, Sharding) {
                              Relation{Sym3.ID, RelationKind::BaseOf, Sym1.ID}));
     ASSERT_THAT(Shard->Sources->keys(), UnorderedElementsAre(AHeaderUri));
     EXPECT_THAT(Shard->Sources->lookup(AHeaderUri).DirectIncludes, IsEmpty());
-    EXPECT_TRUE(Shard->Cmd.hasValue());
+    EXPECT_TRUE(Shard->Cmd);
   }
   {
     auto Shard = ShardedIndex.getShard(BHeaderUri);
@@ -668,7 +667,7 @@ TEST(FileShardedIndexTest, Sharding) {
                 UnorderedElementsAre(BHeaderUri, AHeaderUri));
     EXPECT_THAT(Shard->Sources->lookup(BHeaderUri).DirectIncludes,
                 UnorderedElementsAre(AHeaderUri));
-    EXPECT_TRUE(Shard->Cmd.hasValue());
+    EXPECT_TRUE(Shard->Cmd);
   }
   {
     auto Shard = ShardedIndex.getShard(BSourceUri);
@@ -680,7 +679,7 @@ TEST(FileShardedIndexTest, Sharding) {
                 UnorderedElementsAre(BSourceUri, BHeaderUri));
     EXPECT_THAT(Shard->Sources->lookup(BSourceUri).DirectIncludes,
                 UnorderedElementsAre(BHeaderUri));
-    EXPECT_TRUE(Shard->Cmd.hasValue());
+    EXPECT_TRUE(Shard->Cmd);
   }
 }
 

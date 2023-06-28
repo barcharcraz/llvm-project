@@ -1,13 +1,15 @@
-// RUN: %clang_cl_asan -LD /Od -DDLL %s -Fe%t.dll
-// RUN: %clang_cl /Od -DEXE %s -Fe%te.exe
-// RUN: not %run %te.exe %t.dll 2>&1 | FileCheck %s
+#include <stdio.h>
+#include <windows.h>
+
+// RUN: %clang_cl_asan %LD %Od -DDLL %s %Fe%t.dll
+// RUN: %clang_cl %Od -DEXE %s %Fe%te.exe
+// RUN: %env_asan_opts=windows_hook_rtl_allocators=true not %run %te.exe %t.dll 2>&1 | FileCheck %s
 // REQUIRES: asan-dynamic-runtime
+// REQUIRES: asan-32-bits
 
 #include <cassert>
 #include <stdio.h>
 #include <windows.h>
-#include "../defines.h"
-
 extern "C" {
 #if defined(EXE)
 
@@ -30,8 +32,7 @@ BOOL WINAPI DllMain(HMODULE, DWORD reason, LPVOID) {
 
 // CHECK: in DLL(reason=1)
 // CHECK: in DLL(reason=0)
-// CHECK: AddressSanitizer: {{(attempting double-free|nested bug in the same thread, aborting.)}}
-
+// CHECK: AddressSanitizer: nested bug in the same thread, aborting.
 
 #else
 #error oops!

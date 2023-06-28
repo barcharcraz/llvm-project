@@ -13,6 +13,7 @@
 #include "flang/Semantics/semantics.h"
 #include "flang/Semantics/tools.h"
 #include "llvm/Support/raw_ostream.h"
+#include <cstring>
 #include <string>
 #include <type_traits>
 
@@ -69,6 +70,11 @@ static void DumpList(llvm::raw_ostream &os, const char *label, const T &list) {
   }
 }
 
+void SubprogramDetails::set_moduleInterface(Symbol &symbol) {
+  CHECK(!moduleInterface_);
+  moduleInterface_ = &symbol;
+}
+
 const Scope *ModuleDetails::parent() const {
   return isSubmodule_ && scope_ ? &scope_->parent() : nullptr;
 }
@@ -116,6 +122,28 @@ llvm::raw_ostream &operator<<(
   if (x.stmtFunction_) {
     os << " -> " << x.stmtFunction_->AsFortran();
   }
+  if (x.moduleInterface_) {
+    os << " moduleInterface: " << *x.moduleInterface_;
+  }
+  if (x.defaultIgnoreTKR_) {
+    os << " defaultIgnoreTKR";
+  }
+  if (x.cudaSubprogramAttrs_) {
+    os << " cudaSubprogramAttrs: "
+       << common::EnumToString(*x.cudaSubprogramAttrs_);
+  }
+  if (!x.cudaLaunchBounds_.empty()) {
+    os << " cudaLaunchBounds:";
+    for (auto x : x.cudaLaunchBounds_) {
+      os << ' ' << x;
+    }
+  }
+  if (!x.cudaClusterDims_.empty()) {
+    os << " cudaClusterDims:";
+    for (auto x : x.cudaClusterDims_) {
+      os << ' ' << x;
+    }
+  }
   return os;
 }
 
@@ -126,6 +154,9 @@ void EntityDetails::set_type(const DeclTypeSpec &type) {
 
 void AssocEntityDetails::set_rank(int rank) { rank_ = rank; }
 void EntityDetails::ReplaceType(const DeclTypeSpec &type) { type_ = &type; }
+
+ObjectEntityDetails::ObjectEntityDetails(EntityDetails &&d)
+    : EntityDetails(std::move(d)) {}
 
 void ObjectEntityDetails::set_shape(const ArraySpec &shape) {
   CHECK(shape_.empty());
@@ -140,11 +171,8 @@ void ObjectEntityDetails::set_coshape(const ArraySpec &coshape) {
   }
 }
 
-ProcEntityDetails::ProcEntityDetails(EntityDetails &&d) : EntityDetails(d) {
-  if (type()) {
-    interface_.set_type(*type());
-  }
-}
+ProcEntityDetails::ProcEntityDetails(EntityDetails &&d)
+    : EntityDetails(std::move(d)) {}
 
 UseErrorDetails::UseErrorDetails(const UseDetails &useDetails) {
   add_occurrence(useDetails.location(), *GetUsedModule(useDetails).scope());
@@ -165,11 +193,13 @@ void GenericDetails::set_specific(Symbol &specific) {
   CHECK(!derivedType_);
   specific_ = &specific;
 }
+void GenericDetails::clear_specific() { specific_ = nullptr; }
 void GenericDetails::set_derivedType(Symbol &derivedType) {
   CHECK(!specific_);
   CHECK(!derivedType_);
   derivedType_ = &derivedType;
 }
+void GenericDetails::clear_derivedType() { derivedType_ = nullptr; }
 void GenericDetails::AddUse(const Symbol &use) {
   CHECK(use.has<UseDetails>());
   uses_.push_back(use);
@@ -202,7 +232,8 @@ void GenericDetails::CopyFrom(const GenericDetails &from) {
   for (std::size_t i{0}; i < from.specificProcs_.size(); ++i) {
     if (std::find_if(specificProcs_.begin(), specificProcs_.end(),
             [&](const Symbol &mySymbol) {
-              return &mySymbol == &*from.specificProcs_[i];
+              return &mySymbol.GetUltimate() ==
+                  &from.specificProcs_[i]->GetUltimate();
             }) == specificProcs_.end()) {
       specificProcs_.push_back(from.specificProcs_[i]);
       bindingNames_.push_back(from.bindingNames_[i]);
@@ -213,7 +244,7 @@ void GenericDetails::CopyFrom(const GenericDetails &from) {
 // The name of the kind of details for this symbol.
 // This is primarily for debugging.
 std::string DetailsToString(const Details &details) {
-  return std::visit(
+  return common::visit(
       common::visitors{
           [](const UnknownDetails &) { return "Unknown"; },
           [](const MainProgramDetails &) { return "MainProgram"; },
@@ -238,9 +269,7 @@ std::string DetailsToString(const Details &details) {
       details);
 }
 
-const std::string Symbol::GetDetailsName() const {
-  return DetailsToString(details_);
-}
+std::string Symbol::GetDetailsName() const { return DetailsToString(details_); }
 
 void Symbol::set_details(Details &&details) {
   CHECK(CanReplaceDetails(details));
@@ -251,7 +280,7 @@ bool Symbol::CanReplaceDetails(const Details &details) const {
   if (has<UnknownDetails>()) {
     return true; // can always replace UnknownDetails
   } else {
-    return std::visit(
+    return common::visit(
         common::visitors{
             [](const UseErrorDetails &) { return true; },
             [&](const ObjectEntityDetails &) { return has<EntityDetails>(); },
@@ -267,6 +296,9 @@ bool Symbol::CanReplaceDetails(const Details &details) const {
               const auto *use{this->detailsIf<UseDetails>()};
               return use && use->symbol() == x.symbol();
             },
+            [&](const HostAssocDetails &) {
+              return this->has<HostAssocDetails>();
+            },
             [](const auto &) { return false; },
         },
         details);
@@ -281,14 +313,14 @@ void Symbol::ReplaceName(const SourceName &name) {
 }
 
 void Symbol::SetType(const DeclTypeSpec &type) {
-  std::visit(common::visitors{
-                 [&](EntityDetails &x) { x.set_type(type); },
-                 [&](ObjectEntityDetails &x) { x.set_type(type); },
-                 [&](AssocEntityDetails &x) { x.set_type(type); },
-                 [&](ProcEntityDetails &x) { x.interface().set_type(type); },
-                 [&](TypeParamDetails &x) { x.set_type(type); },
-                 [](auto &) {},
-             },
+  common::visit(common::visitors{
+                    [&](EntityDetails &x) { x.set_type(type); },
+                    [&](ObjectEntityDetails &x) { x.set_type(type); },
+                    [&](AssocEntityDetails &x) { x.set_type(type); },
+                    [&](ProcEntityDetails &x) { x.set_type(type); },
+                    [&](TypeParamDetails &x) { x.set_type(type); },
+                    [](auto &) {},
+                },
       details_);
 }
 
@@ -296,7 +328,7 @@ template <typename T>
 constexpr bool HasBindName{std::is_convertible_v<T, const WithBindName *>};
 
 const std::string *Symbol::GetBindName() const {
-  return std::visit(
+  return common::visit(
       [&](auto &x) -> const std::string * {
         if constexpr (HasBindName<decltype(&x)>) {
           return x.bindName();
@@ -308,7 +340,7 @@ const std::string *Symbol::GetBindName() const {
 }
 
 void Symbol::SetBindName(std::string &&name) {
-  std::visit(
+  common::visit(
       [&](auto &x) {
         if constexpr (HasBindName<decltype(&x)>) {
           x.set_bindName(std::move(name));
@@ -319,8 +351,32 @@ void Symbol::SetBindName(std::string &&name) {
       details_);
 }
 
+bool Symbol::GetIsExplicitBindName() const {
+  return common::visit(
+      [&](auto &x) -> bool {
+        if constexpr (HasBindName<decltype(&x)>) {
+          return x.isExplicitBindName();
+        } else {
+          return false;
+        }
+      },
+      details_);
+}
+
+void Symbol::SetIsExplicitBindName(bool yes) {
+  common::visit(
+      [&](auto &x) {
+        if constexpr (HasBindName<decltype(&x)>) {
+          x.set_isExplicitBindName(yes);
+        } else {
+          DIE("bind name not allowed on this kind of symbol");
+        }
+      },
+      details_);
+}
+
 bool Symbol::IsFuncResult() const {
-  return std::visit(
+  return common::visit(
       common::visitors{[](const EntityDetails &x) { return x.isFuncResult(); },
           [](const ObjectEntityDetails &x) { return x.isFuncResult(); },
           [](const ProcEntityDetails &x) { return x.isFuncResult(); },
@@ -335,7 +391,7 @@ bool Symbol::IsObjectArray() const {
 }
 
 bool Symbol::IsSubprogram() const {
-  return std::visit(
+  return common::visit(
       common::visitors{
           [](const SubprogramDetails &) { return true; },
           [](const SubprogramNameDetails &) { return true; },
@@ -350,9 +406,6 @@ bool Symbol::IsFromModFile() const {
   return test(Flag::ModFile) ||
       (!owner_->IsTopLevel() && owner_->symbol()->IsFromModFile());
 }
-
-ObjectEntityDetails::ObjectEntityDetails(EntityDetails &&d)
-    : EntityDetails(d) {}
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const EntityDetails &x) {
   DumpBool(os, "dummy", x.isDummy());
@@ -370,6 +423,15 @@ llvm::raw_ostream &operator<<(
   DumpList(os, "shape", x.shape());
   DumpList(os, "coshape", x.coshape());
   DumpExpr(os, "init", x.init_);
+  if (x.unanalyzedPDTComponentInit()) {
+    os << " (has unanalyzedPDTComponentInit)";
+  }
+  if (!x.ignoreTKR_.empty()) {
+    x.ignoreTKR_.Dump(os << ' ', common::EnumToString);
+  }
+  if (x.cudaDataAttr()) {
+    os << " cudaDataAttr: " << common::EnumToString(*x.cudaDataAttr());
+  }
   return os;
 }
 
@@ -385,10 +447,10 @@ llvm::raw_ostream &operator<<(
 
 llvm::raw_ostream &operator<<(
     llvm::raw_ostream &os, const ProcEntityDetails &x) {
-  if (auto *symbol{x.interface_.symbol()}) {
-    os << ' ' << symbol->name();
+  if (x.procInterface_) {
+    os << ' ' << x.procInterface_->name();
   } else {
-    DumpType(os, x.interface_.type());
+    DumpType(os, x.type());
   }
   DumpOptional(os, "bindName", x.bindName());
   DumpOptional(os, "passName", x.passName());
@@ -398,6 +460,9 @@ llvm::raw_ostream &operator<<(
     } else {
       os << " => NULL()";
     }
+  }
+  if (x.isCUDAKernel()) {
+    os << " isCUDAKernel";
   }
   return os;
 }
@@ -431,7 +496,7 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const GenericDetails &x) {
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Details &details) {
   os << DetailsToString(details);
-  std::visit( //
+  common::visit( //
       common::visitors{
           [&](const UnknownDetails &) {},
           [&](const MainProgramDetails &) {},
@@ -449,6 +514,9 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Details &details) {
                 }
               }
               os << ")";
+            }
+            if (x.isDefaultPrivate()) {
+              os << " isDefaultPrivate";
             }
           },
           [&](const SubprogramNameDetails &x) {
@@ -471,6 +539,10 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Details &details) {
           [&](const ProcBindingDetails &x) {
             os << " => " << x.symbol().name();
             DumpOptional(os, "passName", x.passName());
+            if (x.numPrivatesNotOverridden() > 0) {
+              os << " numPrivatesNotOverridden: "
+                 << x.numPrivatesNotOverridden();
+            }
           },
           [&](const NamelistDetails &x) {
             os << ':';
@@ -628,7 +700,7 @@ const Symbol *DerivedTypeDetails::GetFinalForRank(int rank) const {
         if (const Symbol * arg{details->dummyArgs().at(0)}) {
           if (const auto *object{arg->detailsIf<ObjectEntityDetails>()}) {
             if (rank == object->shape().Rank() || object->IsAssumedRank() ||
-                symbol.attrs().test(Attr::ELEMENTAL)) {
+                IsElementalProcedure(symbol)) {
               return &symbol;
             }
           }
@@ -654,25 +726,30 @@ bool GenericKind::IsOperator() const {
 }
 
 std::string GenericKind::ToString() const {
-  return std::visit(
+  return common::visit(
       common::visitors {
-        [](const OtherKind &x) { return EnumToString(x); },
-            [](const DefinedIo &x) { return EnumToString(x); },
+        [](const OtherKind &x) { return std::string{EnumToString(x)}; },
+            [](const common::DefinedIo &x) { return AsFortran(x).ToString(); },
 #if !__clang__ && __GNUC__ == 7 && __GNUC_MINOR__ == 2
             [](const common::NumericOperator &x) {
-              return common::EnumToString(x);
+              return std::string{common::EnumToString(x)};
             },
             [](const common::LogicalOperator &x) {
-              return common::EnumToString(x);
+              return std::string{common::EnumToString(x)};
             },
             [](const common::RelationalOperator &x) {
-              return common::EnumToString(x);
+              return std::string{common::EnumToString(x)};
             },
 #else
-            [](const auto &x) { return common::EnumToString(x); },
+            [](const auto &x) { return std::string{common::EnumToString(x)}; },
 #endif
       },
       u);
+}
+
+SourceName GenericKind::AsFortran(common::DefinedIo x) {
+  const char *name{common::AsFortran(x)};
+  return {name, std::strlen(name)};
 }
 
 bool GenericKind::Is(GenericKind::OtherKind x) const {
@@ -709,6 +786,7 @@ bool SymbolOffsetCompare::operator()(
   return x->GetSemanticsContext().allCookedSources().Precedes(
       x->name(), y->name());
 }
+
 bool SymbolOffsetCompare::operator()(
     const MutableSymbolRef &x, const MutableSymbolRef &y) const {
   return (*this)(SymbolRef{*x}, SymbolRef{*y});

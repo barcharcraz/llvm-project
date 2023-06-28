@@ -50,7 +50,8 @@ public:
                     const char *LinkingOutput) const override;
 };
 
-void getHexagonTargetFeatures(const Driver &D, const llvm::opt::ArgList &Args,
+void getHexagonTargetFeatures(const Driver &D, const llvm::Triple &Triple,
+                              const llvm::opt::ArgList &Args,
                               std::vector<StringRef> &Features);
 
 } // end namespace hexagon.
@@ -94,9 +95,6 @@ public:
                            llvm::opt::ArgStringList &CmdArgs) const override;
 
   StringRef GetGCCLibAndIncVersion() const { return GCCLibAndIncVersion.Text; }
-  bool IsIntegratedAssemblerDefault() const override {
-    return true;
-  }
 
   std::string getHexagonTargetDir(
       const std::string &InstalledDir,
@@ -110,8 +108,8 @@ public:
   static StringRef GetDefaultCPU();
   static StringRef GetTargetCPUVersion(const llvm::opt::ArgList &Args);
 
-  static Optional<unsigned> getSmallDataThreshold(
-      const llvm::opt::ArgList &Args);
+  static std::optional<unsigned>
+  getSmallDataThreshold(const llvm::opt::ArgList &Args);
 };
 
 } // end namespace toolchains

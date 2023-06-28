@@ -11,41 +11,55 @@
 
 include "mlir/Pass/PassBase.td"
 
-def ExpandOps : Pass<"memref-expand", "FuncOp"> {
+def ExpandOps : Pass<"memref-expand"> {
   let summary = "Legalize memref operations to be convertible to LLVM.";
   let constructor = "mlir::memref::createExpandOpsPass()";
-  let dependentDialects = ["StandardOpsDialect"];
 }
 
-def FoldSubViewOps : Pass<"fold-memref-subview-ops"> {
-  let summary = "Fold memref.subview ops into consumer load/store ops";
+def FoldMemRefAliasOps : Pass<"fold-memref-alias-ops"> {
+  let summary = "Fold memref alias ops into consumer load/store ops";
   let description = [{
-    The pass folds loading/storing from/to subview ops to loading/storing
+    The pass folds loading/storing from/to memref aliasing ops to loading/storing
     from/to the original memref.
   }];
-  let constructor = "mlir::memref::createFoldSubViewOpsPass()";
+  let constructor = "mlir::memref::createFoldMemRefAliasOpsPass()";
   let dependentDialects = [
-      "AffineDialect", "memref::MemRefDialect", "vector::VectorDialect"
+      "affine::AffineDialect", "memref::MemRefDialect", "vector::VectorDialect"
   ];
+}
+
+def MemRefEmulateWideInt : Pass<"memref-emulate-wide-int"> {
+  let summary = "Emulate 2*N-bit integer operations using N-bit operations";
+  let description = [{
+    Emulate memref integer operations that use too wide integer types with
+    equivalent operations on supported narrow integer types. This is done by
+    splitting original integer values into two halves.
+
+    Currently, only power-of-two integer bitwidths are supported.
+  }];
+  let options = [
+    Option<"widestIntSupported", "widest-int-supported", "unsigned",
+           /*default=*/"32", "Widest integer type supported by the target">,
+  ];
+  let dependentDialects = ["vector::VectorDialect"];
 }
 
 def NormalizeMemRefs : Pass<"normalize-memrefs", "ModuleOp"> {
   let summary = "Normalize memrefs";
    let description = [{
     This pass transforms memref types with a non-trivial
-    [layout map](https://mlir.llvm.org/docs/LangRef/#layout-map) into
-    memref types with an identity layout map, e.g. (i, j) -> (i, j). This
+    [layout map](https://mlir.llvm.org/docs/Dialects/Builtin/#affine-map-layout)
+    into memref types with an identity layout map, e.g. (i, j) -> (i, j). This
     pass is inter-procedural, in the sense that it can modify function
     interfaces and call sites that pass memref types. In order to modify
     memref types while preserving the original behavior, users of those
     memref types are also modified to incorporate the resulting layout map.
-    For instance, an [AffineLoadOp]
-    (https://mlir.llvm.org/docs/Dialects/Affine/#affineload-affineloadop)
+    For instance, an [AffineLoadOp](https://mlir.llvm.org/docs/Dialects/Affine/#affineload-mliraffineloadop)
     will be updated to compose the layout map with with the affine expression
-    contained in the op. Operations marked with the [MemRefsNormalizable]
-    (https://mlir.llvm.org/docs/Traits/#memrefsnormalizable) trait are
-    expected to be normalizable. Supported operations include affine
-    operations, memref.alloc, memref.dealloc, and std.return.
+    contained in the op. Operations marked with the
+    [MemRefsNormalizable](https://mlir.llvm.org/docs/Traits/#memrefsnormalizable)
+    trait are expected to be normalizable. Supported operations include affine
+    operations, memref.alloc, memref.dealloc, and func.return.
 
     Given an appropriate layout map specified in the code, this transformation
     can express tiled or linearized access to multi-dimensional data
@@ -61,7 +75,7 @@ def NormalizeMemRefs : Pass<"normalize-memrefs", "ModuleOp"> {
 
     ```mlir
     #tile = affine_map<(i) -> (i floordiv 4, i mod 4)>
-    func @matmul(%A: memref<16xf64, #tile>,
+    func.func @matmul(%A: memref<16xf64, #tile>,
                  %B: index, %C: memref<16xf64>) -> (memref<16xf64, #tile>) {
       affine.for %arg3 = 0 to 16 {
             %a = affine.load %A[%arg3] : memref<16xf64, #tile>
@@ -77,7 +91,7 @@ def NormalizeMemRefs : Pass<"normalize-memrefs", "ModuleOp"> {
     Output
 
     ```mlir
-    func @matmul(%arg0: memref<4x4xf64>, %arg1: index, %arg2: memref<16xf64>)
+    func.func @matmul(%arg0: memref<4x4xf64>, %arg1: index, %arg2: memref<16xf64>)
       -> memref<4x4xf64> {
       affine.for %arg3 = 0 to 16 {
         %3 = affine.load %arg0[%arg3 floordiv 4, %arg3 mod 4]: memref<4x4xf64>
@@ -95,7 +109,7 @@ def NormalizeMemRefs : Pass<"normalize-memrefs", "ModuleOp"> {
 
     ```
     #linear8 = affine_map<(i, j) -> (i * 8 + j)>
-    func @linearize(%arg0: memref<8x8xi32, #linear8>,
+    func.func @linearize(%arg0: memref<8x8xi32, #linear8>,
                     %arg1: memref<8x8xi32, #linear8>,
                     %arg2: memref<8x8xi32, #linear8>) {
       %c8 = arith.constant 8 : index
@@ -120,7 +134,7 @@ def NormalizeMemRefs : Pass<"normalize-memrefs", "ModuleOp"> {
     Output
 
     ```mlir
-    func @linearize(%arg0: memref<64xi32>,
+    func.func @linearize(%arg0: memref<64xi32>,
                     %arg1: memref<64xi32>,
                     %arg2: memref<64xi32>) {
     %c8 = arith.constant 8 : index
@@ -142,7 +156,7 @@ def NormalizeMemRefs : Pass<"normalize-memrefs", "ModuleOp"> {
   ```
   }];
   let constructor = "mlir::memref::createNormalizeMemRefsPass()";
-  let dependentDialects = ["AffineDialect"];
+  let dependentDialects = ["affine::AffineDialect"];
 }
 
 def ResolveRankedShapeTypeResultDims :
@@ -170,9 +184,23 @@ def ResolveShapedTypeResultDims : Pass<"resolve-shaped-type-result-dims"> {
   }];
   let constructor = "mlir::memref::createResolveShapedTypeResultDimsPass()";
   let dependentDialects = [
-    "AffineDialect", "memref::MemRefDialect", "tensor::TensorDialect"
+    "affine::AffineDialect", "memref::MemRefDialect", "tensor::TensorDialect"
   ];
 }
 
+def ExpandStridedMetadata : Pass<"expand-strided-metadata"> {
+  let summary = "Expand memref operations into easier to analyze constructs";
+  let description = [{
+    The pass expands memref operations that modify the metadata of a memref
+    (sizes, offset, strides) into a sequence of easier to analyze constructs.
+    In particular, this pass transforms operations into explicit sequence of
+    operations that model the effect of this operation on the different metadata.
+    This pass uses affine constructs to materialize these effects.
+  }];
+  let constructor = "mlir::memref::createExpandStridedMetadataPass()";
+  let dependentDialects = [
+      "affine::AffineDialect", "memref::MemRefDialect"
+  ];
+}
 #endif // MLIR_DIALECT_MEMREF_TRANSFORMS_PASSES
 

@@ -7,7 +7,6 @@
 //===----------------------------------------------------------------------===//
 
 // UNSUPPORTED: c++03, c++11, c++14, c++17
-// UNSUPPORTED: libcpp-no-concepts
 
 // template<class From, class To>
 // concept common_with;
@@ -991,5 +990,3 @@ struct common_type<const volatile int&, const volatile CommonWithIntButRefLong&>
     : common_type<CommonWithIntButRefLong&, int&> {};
 } // namespace std
 static_assert(CheckCommonWith<CommonWithIntButRefLong, int>());
-
-int main(int, char**) { return 0; }

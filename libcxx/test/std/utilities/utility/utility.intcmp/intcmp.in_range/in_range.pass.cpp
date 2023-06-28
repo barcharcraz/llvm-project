@@ -7,7 +7,6 @@
 //===----------------------------------------------------------------------===//
 
 // UNSUPPORTED: c++03, c++11, c++14, c++17
-// UNSUPPORTED: libcpp-no-concepts
 
 // <utility>
 
@@ -19,6 +18,7 @@
 #include <numeric>
 #include <tuple>
 #include <cassert>
+#include <cstdint>
 
 #include "test_macros.h"
 
@@ -47,14 +47,14 @@ constexpr void test_in_range1() {
 }
 
 constexpr void test_in_range() {
-  constexpr Tuple<uint8_t> utup8;
-  constexpr Tuple<int8_t> stup8;
-  assert(!std::in_range<int8_t>(utup8.max));
+  constexpr Tuple<std::uint8_t> utup8;
+  constexpr Tuple<std::int8_t> stup8;
+  assert(!std::in_range<std::int8_t>(utup8.max));
   assert(std::in_range<short>(utup8.max));
-  assert(!std::in_range<uint8_t>(stup8.min));
-  assert(std::in_range<int8_t>(utup8.mid));
-  assert(!std::in_range<uint8_t>(stup8.mid));
-  assert(!std::in_range<uint8_t>(-1));
+  assert(!std::in_range<std::uint8_t>(stup8.min));
+  assert(std::in_range<std::int8_t>(utup8.mid));
+  assert(!std::in_range<std::uint8_t>(stup8.mid));
+  assert(!std::in_range<std::uint8_t>(-1));
 }
 
 template <class... Ts>

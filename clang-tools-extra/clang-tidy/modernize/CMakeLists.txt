@@ -9,8 +9,10 @@ add_clang_library(clangTidyModernizeModule
   ConcatNestedNamespacesCheck.cpp
   DeprecatedHeadersCheck.cpp
   DeprecatedIosBaseAliasesCheck.cpp
+  IntegralLiteralExpressionMatcher.cpp
   LoopConvertCheck.cpp
   LoopConvertUtils.cpp
+  MacroToEnumCheck.cpp
   MakeSharedCheck.cpp
   MakeSmartPtrCheck.cpp
   MakeUniqueCheck.cpp
@@ -23,6 +25,7 @@ add_clang_library(clangTidyModernizeModule
   ReplaceRandomShuffleCheck.cpp
   ReturnBracedInitListCheck.cpp
   ShrinkToFitCheck.cpp
+  TypeTraitsCheck.cpp
   UnaryStaticAssertCheck.cpp
   UseAutoCheck.cpp
   UseBoolLiteralsCheck.cpp

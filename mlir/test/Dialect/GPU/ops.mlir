@@ -1,9 +1,13 @@
 // RUN: mlir-opt -allow-unregistered-dialect %s | FileCheck %s
+// Verify the printed output can be parsed.
+// RUN: mlir-opt -allow-unregistered-dialect %s | mlir-opt -allow-unregistered-dialect | FileCheck %s
+// Verify the generic form can be parsed.
+// RUN: mlir-opt -allow-unregistered-dialect -mlir-print-op-generic %s | mlir-opt -allow-unregistered-dialect | FileCheck %s
 
 module attributes {gpu.container_module} {
 
   // CHECK-LABEL:func @no_args(%{{.*}}: index)
-  func @no_args(%sz : index) {
+  func.func @no_args(%sz : index) {
     // CHECK: gpu.launch blocks(%{{.*}}, %{{.*}}, %{{.*}}) in (%{{.*}} = %{{.*}}, %{{.*}} = %{{.*}}, %{{.*}} = %{{.*}}) threads(%{{.*}}, %{{.*}}, %{{.*}}) in (%{{.*}} = %{{.*}}, %{{.*}} = %{{.*}}, %{{.*}} = %{{.*}})
     gpu.launch blocks(%bx, %by, %bz) in (%grid_x = %sz, %grid_y = %sz, %grid_z = %sz)
                threads(%tx, %ty, %tz) in (%block_x = %sz, %block_y = %sz, %block_z = %sz) {
@@ -14,13 +18,39 @@ module attributes {gpu.container_module} {
   }
 
   // CHECK-LABEL:func @args(%{{.*}}: index, %{{.*}}: index, %{{.*}}: f32, %{{.*}}: memref<?xf32, 1>) {
-  func @args(%blk : index, %thrd : index, %float : f32, %data : memref<?xf32,1>) {
+  func.func @args(%blk : index, %thrd : index, %float : f32, %data : memref<?xf32,1>) {
     // CHECK: gpu.launch blocks(%{{.*}}, %{{.*}}, %{{.*}}) in (%{{.*}} = %{{.*}}, %{{.*}} = %{{.*}}, %{{.*}} = %{{.*}}) threads(%{{.*}}, %{{.*}}, %{{.*}}) in (%{{.*}} = %{{.*}}, %{{.*}} = %{{.*}}, %{{.*}} = %{{.*}})
     gpu.launch blocks(%bx, %by, %bz) in (%grid_x = %blk, %grid_y = %blk, %grid_z = %blk)
                threads(%tx, %ty, %tz) in (%block_x = %thrd, %block_y = %thrd, %block_z = %thrd) {
       "use"(%float) : (f32) -> ()
       "use"(%data) : (memref<?xf32,1>) -> ()
       // CHECK: gpu.terminator
+      gpu.terminator
+    }
+    return
+  }
+
+  // CHECK-LABEL:func @launch_async(%{{.*}}: index, %{{.*}}: index) {
+  func.func @launch_async(%blk : index, %thrd : index) {
+    // CHECK: gpu.launch async [%{{.+}}] blocks(%{{.*}}, %{{.*}}, %{{.*}}) in (%{{.*}} = %{{.*}}, %{{.*}} = %{{.*}}, %{{.*}} = %{{.*}}) threads(%{{.*}}, %{{.*}}, %{{.*}}) in (%{{.*}} = %{{.*}}, %{{.*}} = %{{.*}}, %{{.*}} = %{{.*}})
+    %t = gpu.wait async
+    %name = gpu.launch async [%t] blocks(%arg0, %arg1, %arg2) in (%grid_x = %blk, %grid_y = %blk, %grid_z = %blk)
+               threads(%arg3, %arg4, %arg5) in (%block_x = %thrd, %block_y = %thrd, %block_z = %thrd) {
+      gpu.terminator
+    }
+    return
+  }
+
+  // CHECK-LABEL:func @launch_async_no_deps(%{{.*}}: index, %{{.*}}: index) {
+  func.func @launch_async_no_deps(%blk : index, %thrd : index) {
+    // CHECK: %{{.*}} = gpu.launch async blocks(%{{.*}}, %{{.*}}, %{{.*}}) in (%{{.*}} = %{{.*}}, %{{.*}} = %{{.*}}, %{{.*}} = %{{.*}}) threads(%{{.*}}, %{{.*}}, %{{.*}}) in (%{{.*}} = %{{.*}}, %{{.*}} = %{{.*}}, %{{.*}} = %{{.*}})
+    %t0 = gpu.launch async blocks(%arg0, %arg1, %arg2) in (%grid_x = %blk, %grid_y = %blk, %grid_z = %blk)
+               threads(%arg3, %arg4, %arg5) in (%block_x = %thrd, %block_y = %thrd, %block_z = %thrd) {
+      gpu.terminator
+    }
+    // CHECK: gpu.launch async blocks(%{{.*}}, %{{.*}}, %{{.*}}) in (%{{.*}} = %{{.*}}, %{{.*}} = %{{.*}}, %{{.*}} = %{{.*}}) threads(%{{.*}}, %{{.*}}, %{{.*}}) in (%{{.*}} = %{{.*}}, %{{.*}} = %{{.*}}, %{{.*}} = %{{.*}})
+    %t1 = gpu.launch async [] blocks(%arg0, %arg1, %arg2) in (%grid_x = %blk, %grid_y = %blk, %grid_z = %blk)
+               threads(%arg3, %arg4, %arg5) in (%block_x = %thrd, %block_y = %thrd, %block_z = %thrd) {
       gpu.terminator
     }
     return
@@ -44,12 +74,29 @@ module attributes {gpu.container_module} {
       %gDimY = gpu.grid_dim y
       %gDimZ = gpu.grid_dim z
 
+      %gIdX = gpu.global_id x
+      %gIdY = gpu.global_id y
+      %gIdZ = gpu.global_id z
+
       %sgId = gpu.subgroup_id : index
       %numSg = gpu.num_subgroups : index
       %SgSi = gpu.subgroup_size : index
 
       %one = arith.constant 1.0 : f32
+
+      // CHECK: %{{.*}} = gpu.all_reduce add %{{.*}} {
+      // CHECK-NEXT: } : (f32) -> f32
       %sum = gpu.all_reduce add %one {} : (f32) -> (f32)
+
+      // CHECK: %{{.*}} = gpu.all_reduce add %{{.*}} uniform {
+      // CHECK-NEXT: } : (f32) -> f32
+      %sum1 = gpu.all_reduce add %one uniform {} : (f32) -> f32
+
+      // CHECK: %{{.*}} = gpu.subgroup_reduce add %{{.*}} : (f32) -> f32
+      %sum_subgroup = gpu.subgroup_reduce add %one : (f32) -> f32
+
+      // CHECK: %{{.*}} = gpu.subgroup_reduce add %{{.*}} uniform : (f32) -> f32
+      %sum_subgroup1 = gpu.subgroup_reduce add %one uniform : (f32) -> f32
 
       %width = arith.constant 7 : i32
       %offset = arith.constant 3 : i32
@@ -74,7 +121,9 @@ module attributes {gpu.container_module} {
     }
   }
 
-  func @foo() {
+  func.func private @two_value_generator() -> (f32, memref<?xf32, 1>)
+
+  func.func @foo() {
     %0 = "op"() : () -> (f32)
     %1 = "op"() : () -> (memref<?xf32, 1>)
     // CHECK: %{{.*}} = arith.constant 8
@@ -92,6 +141,11 @@ module attributes {gpu.container_module} {
 
     // CHECK: %{{.*}} = gpu.launch_func async [%{{.*}}] @kernels::@kernel_2 blocks in (%{{.*}}, %{{.*}}, %{{.*}}) threads in (%{{.*}}, %{{.*}}, %{{.*}})
     %t1 = gpu.launch_func async [%t0] @kernels::@kernel_2  blocks in (%cst, %cst, %cst) threads in (%cst, %cst, %cst)
+
+    // CHECK: %[[VALUES:.*]]:2 = call
+    %values:2 = func.call @two_value_generator() : () -> (f32, memref<?xf32, 1>)
+    // CHECK: gpu.launch_func @kernels::@kernel_1 {{.*}} args(%[[VALUES]]#0 : f32, %[[VALUES]]#1 : memref<?xf32, 1>)
+    gpu.launch_func @kernels::@kernel_1 blocks in (%cst, %cst, %cst) threads in (%cst, %cst, %cst) args(%values#0 : f32, %values#1 : memref<?xf32, 1>)
 
     return
   }
@@ -158,10 +212,10 @@ module attributes {gpu.container_module} {
     "gpu.func"() ({
     ^bb0(%arg0: f32, %arg1: memref<?xf32>, %arg2: memref<5xf32, 3>, %arg3: memref<5xf32, 5>):
       "gpu.return"() : () -> ()
-    } ) {gpu.kernel, sym_name = "kernel_1", type = (f32, memref<?xf32>) -> (), workgroup_attributions = 1: i64} : () -> ()
+    } ) {function_type = (f32, memref<?xf32>) -> (), gpu.kernel, sym_name = "kernel_1", workgroup_attributions = 1: i64} : () -> ()
   }
 
-  func @alloc() {
+  func.func @alloc() {
     // CHECK-LABEL: func @alloc()
 
     // CHECK: %[[m0:.*]] = gpu.alloc () : memref<13xf32, 1>
@@ -175,16 +229,21 @@ module attributes {gpu.container_module} {
     // CHECK: gpu.dealloc async [%[[t1]]] %[[m1]] : memref<13xf32, 1>
     %t2 = gpu.dealloc async [%t1] %m1 : memref<13xf32, 1>
 
+    // CHECK: %[[m2:.*]] = gpu.alloc host_shared () : memref<13xf32, 1>
+    %m2 = gpu.alloc host_shared () : memref<13xf32, 1>
+    // CHECK: gpu.dealloc %[[m2]] : memref<13xf32, 1>
+    gpu.dealloc %m2 : memref<13xf32, 1>
+
     return
   }
 
-  func @async_token(%arg0 : !gpu.async.token) -> !gpu.async.token {
+  func.func @async_token(%arg0 : !gpu.async.token) -> !gpu.async.token {
     // CHECK-LABEL: func @async_token({{.*}}: !gpu.async.token)
     // CHECK: return {{.*}} : !gpu.async.token
     return %arg0 : !gpu.async.token
   }
 
-  func @async_wait() {
+  func.func @async_wait() {
     // CHECK-LABEL: func @async_wait
     // CHECK: %[[t0:.*]] = gpu.wait async
     %0 = gpu.wait async
@@ -201,7 +260,7 @@ module attributes {gpu.container_module} {
     return
   }
 
-  func @memcpy(%dst : memref<3x7xf32>, %src : memref<3x7xf32, 1>) {
+  func.func @memcpy(%dst : memref<3x7xf32>, %src : memref<3x7xf32, 1>) {
     // CHECK-LABEL: func @memcpy
     // CHECK: gpu.memcpy {{.*}}, {{.*}} : memref<3x7xf32>, memref<3x7xf32, 1>
     gpu.memcpy %dst, %src : memref<3x7xf32>, memref<3x7xf32, 1>
@@ -212,7 +271,7 @@ module attributes {gpu.container_module} {
     return
   }
 
-  func @memset(%dst : memref<3x7xf32>, %value : f32) {
+  func.func @memset(%dst : memref<3x7xf32>, %value : f32) {
     // CHECK-LABEL: func @memset
     // CHECK: gpu.memset {{.*}}, {{.*}} : memref<3x7xf32>, f32
     gpu.memset %dst, %value : memref<3x7xf32>, f32
@@ -223,8 +282,8 @@ module attributes {gpu.container_module} {
     return
   }
 
-  func @mmamatrix_valid_element_type(){
-    // CHECK-LABEL: func @mmamatrix_valid_element_type
+  func.func @mmamatrix_valid_scalar_element_type(%src : memref<32x32xf16, affine_map<(d0, d1) -> (d0 * 64 + d1)>>){
+    // CHECK-LABEL: func @mmamatrix_valid_scalar_element_type
     %wg = memref.alloca() {alignment = 32} : memref<32x32xf16, 3>
     // CHECK: %[[wg:.*]] = memref.alloca()
     %i = arith.constant 16 : index
@@ -233,6 +292,8 @@ module attributes {gpu.container_module} {
     // CHECK: %[[cst:.*]] = arith.constant 1.000000e+00 : f32
     %0 = gpu.subgroup_mma_load_matrix %wg[%i, %i] {leadDimension = 32 : index} : memref<32x32xf16, 3> -> !gpu.mma_matrix<16x16xf16, "AOp">
     // CHECK: gpu.subgroup_mma_load_matrix %[[wg]][%[[i]], %[[i]]] {leadDimension = 32 : index} : memref<32x32xf16, 3> -> !gpu.mma_matrix<16x16xf16, "AOp">
+    %s = gpu.subgroup_mma_load_matrix %src[%i, %i] {leadDimension = 64 : index} : memref<32x32xf16, affine_map<(d0, d1) -> (d0 * 64 + d1)>> -> !gpu.mma_matrix<16x16xf16, "AOp">
+    // CHECK: gpu.subgroup_mma_load_matrix %{{.*}}[%[[i]], %[[i]]] {leadDimension = 64 : index} : memref<32x32xf16, #{{.*}}> -> !gpu.mma_matrix<16x16xf16, "AOp">
     %1 = gpu.subgroup_mma_constant_matrix %cst : !gpu.mma_matrix<16x16xf32, "COp">
     // CHECK: gpu.subgroup_mma_elementwise addf %{{.*}}, %{{.*}} : (!gpu.mma_matrix<16x16xf32, "COp">, !gpu.mma_matrix<16x16xf32, "COp">) -> !gpu.mma_matrix<16x16xf32, "COp">
     %2 = gpu.subgroup_mma_elementwise addf %1, %1 : (!gpu.mma_matrix<16x16xf32, "COp">, !gpu.mma_matrix<16x16xf32, "COp">) -> !gpu.mma_matrix<16x16xf32, "COp">
@@ -240,4 +301,70 @@ module attributes {gpu.container_module} {
     %3 = gpu.subgroup_mma_elementwise maxf %2, %1 : (!gpu.mma_matrix<16x16xf32, "COp">, !gpu.mma_matrix<16x16xf32, "COp">) -> !gpu.mma_matrix<16x16xf32, "COp">
     return
   }
+
+  // CHECK-LABEL: func @mmamatrix_valid_vector_element_type
+  func.func @mmamatrix_valid_vector_element_type(%src : memref<32x4xvector<4xf32>>, %i : index) {
+    // CHECK: gpu.subgroup_mma_load_matrix
+    %s = gpu.subgroup_mma_load_matrix %src[%i, %i] {leadDimension = 4 : index} : memref<32x4xvector<4xf32>> -> !gpu.mma_matrix<16x16xf16, "COp">
+    // CHECK: gpu.subgroup_mma_store_matrix
+    gpu.subgroup_mma_store_matrix %s, %src[%i, %i] {leadDimension = 4 : index} : !gpu.mma_matrix<16x16xf16, "COp">, memref<32x4xvector<4xf32>>
+    return
+  }
+
+  // CHECK-LABEL: func @set_default_device
+  func.func @set_default_device(%arg0: i32) {
+    // CHECK: gpu.set_default_device
+    gpu.set_default_device %arg0
+    return
+  }
+
+  // CHECK-LABEL: func @sparse_ops
+  func.func @sparse_ops(%arg0: index) {
+    // CHECK: gpu.wait async
+    %token0 = gpu.wait async
+    // CHECK: gpu.alloc async
+    %mem1, %token1 = gpu.alloc async [%token0] (%arg0) : memref<?xindex>
+    // CHECK: gpu.alloc async
+    %mem2, %token2 = gpu.alloc async [%token1] (%arg0) : memref<?xf64>
+    // CHECK: gpu.create_sparse_env async
+    %env, %token3 = gpu.create_sparse_env async [%token2]
+    // CHECK: gpu.create_coo async
+    %spmat, %token4 = gpu.create_coo async [%token3] %arg0, %arg0, %arg0, %mem1, %mem1, %mem2 : memref<?xindex>, memref<?xindex>, memref<?xf64>
+    // CHECK: gpu.create_csr async
+    %spmat2, %token5 = gpu.create_csr async [%token4] %arg0, %arg0, %arg0, %mem1, %mem1, %mem2 : memref<?xindex>, memref<?xindex>, memref<?xf64>
+    // CHECK: gpu.create_dn_tensor async
+    %dnvec, %token6 = gpu.create_dn_tensor async [%token5] %env, %mem2, %arg0 : index into memref<?xf64>
+    // CHECK: gpu.spmv_buffer_size async
+    %bufferSz, %token7 = gpu.spmv_buffer_size async [%token6] %env, %spmat, %dnvec, %dnvec  into f64
+    // CHECK: gpu.spmv async
+    %token8 = gpu.spmv async [%token7] %env, %spmat, %dnvec, %dnvec, %mem2 : memref<?xf64>  into f64
+    // CHECK: gpu.create_dn_tensor async
+    %dnmat, %token9 = gpu.create_dn_tensor async [%token8] %env, %mem2, %arg0, %arg0 : index, index into memref<?xf64>
+    // CHECK: gpu.spmm_buffer_size async
+    %bufferSz2, %token10 = gpu.spmm_buffer_size async [%token9] %env, %spmat, %dnmat, %dnmat : index into f64
+    // CHECK: gpu.spmm async
+    %token11 = gpu.spmm async [%token10] %env, %spmat, %dnmat, %dnmat, %mem2 : memref<?xf64>  into f64
+    // CHECK: gpu.sddmm_buffer_size async
+    %bufferSz3, %token12 = gpu.sddmm_buffer_size async [%token11] %env, %dnmat, %dnmat, %spmat  into f64
+    // CHECK: gpu.sddmm async
+    %token13 = gpu.sddmm async [%token12] %env, %dnmat, %dnmat, %spmat, %mem2 : memref<?xf64>  into f64
+    // CHECK: gpu.destroy_dn_tensor async
+    %token14 = gpu.destroy_dn_tensor async [%token13] %dnmat
+    // CHECK: gpu.destroy_sp_mat async
+    %token15 = gpu.destroy_sp_mat async [%token14] %spmat
+    // CHECK: gpu.destroy_dn_tensor async
+    %token16 = gpu.destroy_dn_tensor async [%token15] %dnvec
+    // CHECK: gpu.destroy_sparse_env async
+    %token17 = gpu.destroy_sparse_env async [%token16] %env
+    // CHECK: gpu.wait
+    gpu.wait [%token17]
+    return
+  }
+}
+
+// Just check that this doesn't crash.
+gpu.module @module {
+  "gpu.func"() ({
+    gpu.return
+  }) {function_type = () -> (), sym_name = "func"} : () -> ()
 }

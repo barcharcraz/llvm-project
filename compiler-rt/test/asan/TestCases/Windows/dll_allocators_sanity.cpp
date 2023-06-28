@@ -1,5 +1,5 @@
-// RUN: %clang_cl_asan -Od %p/dll_host.cpp -Fe%t
-// RUN: %clang_cl_asan -LD -Od %s -Fe%t.dll
+// RUN: %clang_cl_asan %Od %p/dll_host.cpp %Fe%t
+// RUN: %clang_cl_asan %LD %Od %s %Fe%t.dll
 // RUN: %run %t %t.dll | FileCheck %s
 
 // RUN: %clang_cl_asan -Od %p/dll_host.cpp -Fe%t_dbg /link /INFERASANLIBS:DEBUG

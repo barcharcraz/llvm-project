@@ -18,6 +18,7 @@
 #include "MipsTargetMachine.h"
 #include "llvm/CodeGen/Analysis.h"
 #include "llvm/CodeGen/GlobalISel/MachineIRBuilder.h"
+#include "llvm/CodeGen/MachineFrameInfo.h"
 
 using namespace llvm;
 
@@ -180,7 +181,7 @@ MipsIncomingValueHandler::assignCustomValue(CallLowering::ArgInfo &Arg,
 
   Arg.OrigRegs.assign(Arg.Regs.begin(), Arg.Regs.end());
   Arg.Regs = { CopyLo.getReg(0), CopyHi.getReg(0) };
-  MIRBuilder.buildMerge(Arg.OrigRegs[0], {CopyLo, CopyHi});
+  MIRBuilder.buildMergeLikeInstr(Arg.OrigRegs[0], {CopyLo, CopyHi});
 
   markPhysRegUsed(VALo.getLocReg());
   markPhysRegUsed(VAHi.getLocReg());
@@ -411,7 +412,7 @@ bool MipsCallLowering::lowerFormalArguments(MachineIRBuilder &MIRBuilder,
     int VaArgOffset;
     unsigned RegSize = 4;
     if (ArgRegs.size() == Idx)
-      VaArgOffset = alignTo(CCInfo.getNextStackOffset(), RegSize);
+      VaArgOffset = alignTo(CCInfo.getStackSize(), RegSize);
     else {
       VaArgOffset =
           (int)ABI.GetCalleeAllocdArgSizeInBytes(CCInfo.getCallingConv()) -
@@ -523,14 +524,14 @@ bool MipsCallLowering::lowerCall(MachineIRBuilder &MIRBuilder,
   if (!handleAssignments(ArgHandler, ArgInfos, CCInfo, ArgLocs, MIRBuilder))
     return false;
 
-  unsigned NextStackOffset = CCInfo.getNextStackOffset();
+  unsigned StackSize = CCInfo.getStackSize();
   unsigned StackAlignment = F.getParent()->getOverrideStackAlignment();
   if (!StackAlignment) {
     const TargetFrameLowering *TFL = MF.getSubtarget().getFrameLowering();
     StackAlignment = TFL->getStackAlignment();
   }
-  NextStackOffset = alignTo(NextStackOffset, StackAlignment);
-  CallSeqStart.addImm(NextStackOffset).addImm(0);
+  StackSize = alignTo(StackSize, StackAlignment);
+  CallSeqStart.addImm(StackSize).addImm(0);
 
   if (IsCalleeGlobalPIC) {
     MIRBuilder.buildCopy(
@@ -540,8 +541,7 @@ bool MipsCallLowering::lowerCall(MachineIRBuilder &MIRBuilder,
   }
   MIRBuilder.insertInstr(MIB);
   if (MIB->getOpcode() == Mips::JALRPseudo) {
-    const MipsSubtarget &STI =
-        static_cast<const MipsSubtarget &>(MIRBuilder.getMF().getSubtarget());
+    const MipsSubtarget &STI = MIRBuilder.getMF().getSubtarget<MipsSubtarget>();
     MIB.constrainAllUses(MIRBuilder.getTII(), *STI.getRegisterInfo(),
                          *STI.getRegBankInfo());
   }
@@ -570,7 +570,7 @@ bool MipsCallLowering::lowerCall(MachineIRBuilder &MIRBuilder,
       return false;
   }
 
-  MIRBuilder.buildInstr(Mips::ADJCALLSTACKUP).addImm(NextStackOffset).addImm(0);
+  MIRBuilder.buildInstr(Mips::ADJCALLSTACKUP).addImm(StackSize).addImm(0);
 
   return true;
 }

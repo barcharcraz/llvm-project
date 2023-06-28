@@ -13,10 +13,14 @@
 
 #include "Debug.h"
 
-#pragma omp declare target
+#pragma omp begin declare target device_type(nohost)
 
-namespace _OMP {
+namespace ompx {
 namespace impl {
+
+double getWTick();
+
+double getWTime();
 
 /// AMDGCN Implementation
 ///
@@ -39,7 +43,8 @@ double getWTime() {
 ///
 ///{
 #pragma omp begin declare variant match(                                       \
-    device = {arch(nvptx, nvptx64)}, implementation = {extension(match_any)})
+        device = {arch(nvptx, nvptx64)},                                       \
+            implementation = {extension(match_any)})
 
 double getWTick() {
   // Timer precision is 1ns
@@ -48,14 +53,14 @@ double getWTick() {
 
 double getWTime() {
   unsigned long long nsecs;
-  asm("mov.u64  %0, %%globaltimer;" : "=l"(nsecs));
+  asm volatile("mov.u64  %0, %%globaltimer;" : "=l"(nsecs));
   return (double)nsecs * getWTick();
 }
 
 #pragma omp end declare variant
 
 } // namespace impl
-} // namespace _OMP
+} // namespace ompx
 
 /// Interfaces
 ///
@@ -72,9 +77,9 @@ int32_t __kmpc_cancel(IdentTy *, int32_t, int32_t) {
   return 0;
 }
 
-double omp_get_wtick(void) { return _OMP::impl::getWTick(); }
+double omp_get_wtick(void) { return ompx::impl::getWTick(); }
 
-double omp_get_wtime(void) { return _OMP::impl::getWTime(); }
+double omp_get_wtime(void) { return ompx::impl::getWTime(); }
 }
 
 ///}

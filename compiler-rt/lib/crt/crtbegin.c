@@ -28,7 +28,7 @@ extern fp __CTOR_LIST_END__[];
 
 extern void __cxa_finalize(void *) __attribute__((weak));
 
-static void __attribute__((used)) __do_init() {
+static void __attribute__((used)) __do_init(void) {
   static _Bool __initialized;
   if (__builtin_expect(__initialized, 0))
     return;
@@ -50,25 +50,29 @@ __attribute__((section(".init_array"),
                used)) static void (*__init)(void) = __do_init;
 #elif defined(__i386__) || defined(__x86_64__)
 __asm__(".pushsection .init,\"ax\",@progbits\n\t"
-    "call " __USER_LABEL_PREFIX__ "__do_init\n\t"
-    ".popsection");
+        "call __do_init\n\t"
+        ".popsection");
 #elif defined(__riscv)
 __asm__(".pushsection .init,\"ax\",%progbits\n\t"
-        "call " __USER_LABEL_PREFIX__ "__do_init\n\t"
+        "call __do_init\n\t"
         ".popsection");
 #elif defined(__arm__) || defined(__aarch64__)
 __asm__(".pushsection .init,\"ax\",%progbits\n\t"
-    "bl " __USER_LABEL_PREFIX__ "__do_init\n\t"
-    ".popsection");
+        "bl __do_init\n\t"
+        ".popsection");
+#elif defined(__mips__)
+__asm__(".pushsection .init,\"ax\",@progbits\n\t"
+        "jal __do_init\n\t"
+        ".popsection");
 #elif defined(__powerpc__) || defined(__powerpc64__)
 __asm__(".pushsection .init,\"ax\",@progbits\n\t"
-    "bl " __USER_LABEL_PREFIX__ "__do_init\n\t"
-    "nop\n\t"
-    ".popsection");
+        "bl __do_init\n\t"
+        "nop\n\t"
+        ".popsection");
 #elif defined(__sparc__)
 __asm__(".pushsection .init,\"ax\",@progbits\n\t"
-    "call " __USER_LABEL_PREFIX__ "__do_init\n\t"
-    ".popsection");
+        "call __do_init\n\t"
+        ".popsection");
 #else
 #error "crtbegin without .init_fini array unimplemented for this architecture"
 #endif // CRT_HAS_INITFINI_ARRAY
@@ -79,7 +83,7 @@ static fp __DTOR_LIST__[]
 extern fp __DTOR_LIST_END__[];
 #endif
 
-static void __attribute__((used)) __do_fini() {
+static void __attribute__((used)) __do_fini(void) {
   static _Bool __finalized;
   if (__builtin_expect(__finalized, 0))
     return;
@@ -103,25 +107,29 @@ __attribute__((section(".fini_array"),
                used)) static void (*__fini)(void) = __do_fini;
 #elif defined(__i386__) || defined(__x86_64__)
 __asm__(".pushsection .fini,\"ax\",@progbits\n\t"
-    "call " __USER_LABEL_PREFIX__ "__do_fini\n\t"
-    ".popsection");
+        "call __do_fini\n\t"
+        ".popsection");
 #elif defined(__arm__) || defined(__aarch64__)
 __asm__(".pushsection .fini,\"ax\",%progbits\n\t"
-    "bl " __USER_LABEL_PREFIX__ "__do_fini\n\t"
-    ".popsection");
+        "bl __do_fini\n\t"
+        ".popsection");
+#elif defined(__mips__)
+__asm__(".pushsection .fini,\"ax\",@progbits\n\t"
+        "jal __do_fini\n\t"
+        ".popsection");
 #elif defined(__powerpc__) || defined(__powerpc64__)
 __asm__(".pushsection .fini,\"ax\",@progbits\n\t"
-    "bl " __USER_LABEL_PREFIX__ "__do_fini\n\t"
-    "nop\n\t"
-    ".popsection");
+        "bl __do_fini\n\t"
+        "nop\n\t"
+        ".popsection");
 #elif defined(__riscv)
 __asm__(".pushsection .fini,\"ax\",@progbits\n\t"
-        "call " __USER_LABEL_PREFIX__ "__do_fini\n\t"
+        "call __do_fini\n\t"
         ".popsection");
 #elif defined(__sparc__)
 __asm__(".pushsection .fini,\"ax\",@progbits\n\t"
-    "call " __USER_LABEL_PREFIX__ "__do_fini\n\t"
-    ".popsection");
+        "call __do_fini\n\t"
+        ".popsection");
 #else
 #error "crtbegin without .init_fini array unimplemented for this architecture"
 #endif  // CRT_HAS_INIT_FINI_ARRAY

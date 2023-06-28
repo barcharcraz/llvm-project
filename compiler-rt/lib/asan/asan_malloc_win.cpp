@@ -2317,7 +2317,7 @@ void ReplaceSystemMalloc() {
   // TryToOverrideFunction("_CrtIsValidHeapPointer",
   // (uptr)_CrtIsValidHeapPointer); TryToOverrideFunction("_CrtIsValidPointer",
   // (uptr)_CrtIsValidPointer); TryToOverrideFunction("_CrtMemCheckpoint",
-  // (uptr)_CrtMemCheckpoint); TryToOverrideFunction("_CrtMemDifference",
+  // (uptr)_CrtMemCheckpoint); TryTo OverrideFunction("_CrtMemDifference",
   // (uptr)_CrtMemDifference);
   // TryToOverrideFunction("_CrtMemDumpAllObjectsSince",
   //                      (uptr)_CrtMemDumpAllObjectsSince);

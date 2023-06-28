@@ -11,23 +11,23 @@
 
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SetVector.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Object/COFF.h"
 #include "llvm/Support/CachePruning.h"
+#include "llvm/Support/VirtualFileSystem.h"
 #include <cstdint>
 #include <map>
 #include <set>
 #include <string>
 
-namespace lld {
-namespace coff {
+namespace lld::coff {
 
 using llvm::COFF::IMAGE_FILE_MACHINE_UNKNOWN;
 using llvm::COFF::WindowsSubsystem;
 using llvm::StringRef;
 class DefinedAbsolute;
-class DefinedRelative;
 class StringChunk;
 class Symbol;
 class InputFile;
@@ -36,8 +36,17 @@ class SectionChunk;
 // Short aliases.
 static const auto AMD64 = llvm::COFF::IMAGE_FILE_MACHINE_AMD64;
 static const auto ARM64 = llvm::COFF::IMAGE_FILE_MACHINE_ARM64;
+static const auto ARM64EC = llvm::COFF::IMAGE_FILE_MACHINE_ARM64EC;
+static const auto ARM64X = llvm::COFF::IMAGE_FILE_MACHINE_ARM64X;
 static const auto ARMNT = llvm::COFF::IMAGE_FILE_MACHINE_ARMNT;
 static const auto I386 = llvm::COFF::IMAGE_FILE_MACHINE_I386;
+
+enum class ExportSource {
+  Unset,
+  Directives,
+  Export,
+  ModuleDefinition,
+};
 
 // Represents an /export option.
 struct Export {
@@ -57,8 +66,7 @@ struct Export {
   StringRef forwardTo;
   StringChunk *forwardChunk = nullptr;
 
-  // True if this /export option was in .drectves section.
-  bool directives = false;
+  ExportSource source = ExportSource::Unset;
   StringRef symbolName;
   StringRef exportName; // Name in DLL
 
@@ -95,7 +103,9 @@ enum class ICFLevel {
 // Global configuration.
 struct Configuration {
   enum ManifestKind { Default, SideBySide, Embed, No };
-  bool is64() { return machine == AMD64 || machine == ARM64; }
+  bool is64() const {
+    return machine == AMD64 || llvm::COFF::isAnyArm64(machine);
+  }
 
   llvm::COFF::MachineTypes machine = IMAGE_FILE_MACHINE_UNKNOWN;
   size_t wordsize;
@@ -123,6 +133,7 @@ struct Configuration {
   bool showTiming = false;
   bool showSummary = false;
   unsigned debugTypes = static_cast<unsigned>(DebugType::None);
+  llvm::SmallVector<llvm::StringRef, 0> mllvmOpts;
   std::vector<std::string> natvisFiles;
   llvm::StringMap<std::string> namedStreams;
   llvm::SmallString<128> pdbAltPath;
@@ -140,6 +151,7 @@ struct Configuration {
   // True if we are creating a DLL.
   bool dll = false;
   StringRef implib;
+  bool noimplib = false;
   std::vector<Export> exports;
   bool hadExplicitExports;
   std::set<std::string> delayLoads;
@@ -159,6 +171,8 @@ struct Configuration {
 
   // Used for /opt:lldlto=N
   unsigned ltoo = 2;
+  // Used for /opt:lldltocgo=N
+  std::optional<unsigned> ltoCgo;
 
   // Used for /opt:lldltojobs=N
   std::string thinLTOJobs;
@@ -170,8 +184,6 @@ struct Configuration {
   // Used for /opt:lldltocachepolicy=policy
   llvm::CachePruningPolicy ltoCachePolicy;
 
-  // Used for /opt:[no]ltonewpassmanager
-  bool ltoNewPassManager = false;
   // Used for /opt:[no]ltodebugpassmanager
   bool ltoDebugPassManager = false;
 
@@ -209,11 +221,22 @@ struct Configuration {
   // Used for /map.
   std::string mapFile;
 
+  // Used for /mapinfo.
+  bool mapInfo = false;
+
   // Used for /thinlto-index-only:
   llvm::StringRef thinLTOIndexOnlyArg;
 
-  // Used for /thinlto-object-prefix-replace:
-  std::pair<llvm::StringRef, llvm::StringRef> thinLTOPrefixReplace;
+  // Used for /thinlto-prefix-replace:
+  // Replace the prefix in paths generated for ThinLTO, replacing
+  // thinLTOPrefixReplaceOld with thinLTOPrefixReplaceNew. If
+  // thinLTOPrefixReplaceNativeObject is defined, replace the prefix of object
+  // file paths written to the response file given in the
+  // --thinlto-index-only=${response} option with
+  // thinLTOPrefixReplaceNativeObject, instead of thinLTOPrefixReplaceNew.
+  llvm::StringRef thinLTOPrefixReplaceOld;
+  llvm::StringRef thinLTOPrefixReplaceNew;
+  llvm::StringRef thinLTOPrefixReplaceNativeObject;
 
   // Used for /thinlto-object-suffix-replace:
   std::pair<llvm::StringRef, llvm::StringRef> thinLTOObjectSuffixReplace;
@@ -238,6 +261,9 @@ struct Configuration {
 
   // Used for /print-symbol-order:
   StringRef printSymbolOrder;
+
+  // Used for /vfsoverlay:
+  std::unique_ptr<llvm::vfs::FileSystem> vfs;
 
   uint64_t align = 4096;
   uint64_t imageBase = -1;
@@ -282,11 +308,9 @@ struct Configuration {
   bool autoImport = false;
   bool pseudoRelocs = false;
   bool stdcallFixup = false;
+  bool writeCheckSum = false;
 };
 
-extern std::unique_ptr<Configuration> config;
-
-} // namespace coff
-} // namespace lld
+} // namespace lld::coff
 
 #endif

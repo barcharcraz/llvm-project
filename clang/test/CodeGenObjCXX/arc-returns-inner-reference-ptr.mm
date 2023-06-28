@@ -13,10 +13,8 @@ void foo() {
    int i = [(ptr) reference_to_interior_int];
 }
 
-// CHECK: [[T0:%.*]] = load {{%.*}} {{%.*}}, align 8
-// CHECK: [[T1:%.*]] = bitcast {{%.*}} [[T0]] to i8*
-// call i8* @llvm.objc.retainAutorelease(i8* [[T1]]) nounwind
-// CHECK: [[T2:%.*]] = load {{%.*}} {{%.*}}, align 8
-// CHECK: [[T3:%.*]] = bitcast {{%.*}} [[T2]] to i8*
-// call i8* @llvm.objc.retainAutorelease(i8* [[T3]]) nounwind
+// CHECK: [[T0:%.*]] = load {{.*}} {{%.*}}, align 8
+// call ptr @llvm.objc.retainAutorelease(ptr [[T0]]) nounwind
+// CHECK: [[T2:%.*]] = load {{.*}} {{%.*}}, align 8
+// call ptr @llvm.objc.retainAutorelease(ptr [[T2]]) nounwind
 

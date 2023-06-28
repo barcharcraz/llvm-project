@@ -28,7 +28,7 @@ typedef struct {
 @end
 
 // CHECK-LABEL: msgSend.call:
-// CHECK: [[CALL:%[^ ]+]] = call i1 bitcast (i8* (i8*, i8*, ...)* @objc_msgSend to
+// CHECK: [[CALL:%[^ ]+]] = call i1 @objc_msgSend
 // CHECK-NEXT: br label %msgSend.cont
 
 // CHECK-LABEL: msgSend.null-receiver:

@@ -5,13 +5,13 @@ from mlir.dialects.pdl import *
 
 
 def constructAndPrintInModule(f):
-  print("\nTEST:", f.__name__)
-  with Context(), Location.unknown():
-    module = Module.create()
-    with InsertionPoint(module.body):
-      f()
-    print(module)
-  return f
+    print("\nTEST:", f.__name__)
+    with Context(), Location.unknown():
+        module = Module.create()
+        with InsertionPoint(module.body):
+            f()
+        print(module)
+    return f
 
 
 # CHECK: module  {
@@ -27,15 +27,15 @@ def constructAndPrintInModule(f):
 # CHECK: }
 @constructAndPrintInModule
 def test_operations():
-  pattern = PatternOp(1, "operations")
-  with InsertionPoint(pattern.body):
-    attr = AttributeOp()
-    ty = TypeOp()
-    op0 = OperationOp(attributes={"attr": attr}, types=[ty])
-    op0_result = ResultOp(op0, 0)
-    input = OperandOp()
-    root = OperationOp(args=[op0_result, input])
-    RewriteOp(root, "rewriter")
+    pattern = PatternOp(1, "operations")
+    with InsertionPoint(pattern.body):
+        attr = AttributeOp()
+        ty = TypeOp()
+        op0 = OperationOp(attributes={"attr": attr}, types=[ty])
+        op0_result = ResultOp(op0, 0)
+        input = OperandOp()
+        root = OperationOp(args=[op0_result, input])
+        RewriteOp(root, "rewriter")
 
 
 # CHECK: module  {
@@ -47,39 +47,12 @@ def test_operations():
 # CHECK: }
 @constructAndPrintInModule
 def test_rewrite_with_args():
-  pattern = PatternOp(1, "rewrite_with_args")
-  with InsertionPoint(pattern.body):
-    input = OperandOp()
-    root = OperationOp(args=[input])
-    RewriteOp(root, "rewriter", args=[input])
+    pattern = PatternOp(1, "rewrite_with_args")
+    with InsertionPoint(pattern.body):
+        input = OperandOp()
+        root = OperationOp(args=[input])
+        RewriteOp(root, "rewriter", args=[input])
 
-# CHECK: module  {
-# CHECK:   pdl.pattern @rewrite_with_params : benefit(1)  {
-# CHECK:     %0 = operation
-# CHECK:     rewrite %0 with "rewriter" ["I am param"]
-# CHECK:   }
-# CHECK: }
-@constructAndPrintInModule
-def test_rewrite_with_params():
-  pattern = PatternOp(1, "rewrite_with_params")
-  with InsertionPoint(pattern.body):
-    op = OperationOp()
-    RewriteOp(op, "rewriter", params=[StringAttr.get("I am param")])
-
-# CHECK: module  {
-# CHECK:   pdl.pattern @rewrite_with_args_and_params : benefit(1)  {
-# CHECK:     %0 = operand
-# CHECK:     %1 = operation(%0 : !pdl.value)
-# CHECK:     rewrite %1 with "rewriter" ["I am param"](%0 : !pdl.value)
-# CHECK:   }
-# CHECK: }
-@constructAndPrintInModule
-def test_rewrite_with_args_and_params():
-  pattern = PatternOp(1, "rewrite_with_args_and_params")
-  with InsertionPoint(pattern.body):
-    input = OperandOp()
-    root = OperationOp(args=[input])
-    RewriteOp(root, "rewriter", params=[StringAttr.get("I am param")], args=[input])
 
 # CHECK: module  {
 # CHECK:   pdl.pattern @rewrite_multi_root_optimal : benefit(1)  {
@@ -92,23 +65,24 @@ def test_rewrite_with_args_and_params():
 # CHECK:     %6 = operation(%1 : !pdl.value)  -> (%2 : !pdl.type)
 # CHECK:     %7 = result 0 of %6
 # CHECK:     %8 = operation(%4, %7 : !pdl.value, !pdl.value)
-# CHECK:     rewrite with "rewriter" ["I am param"](%5, %8 : !pdl.operation, !pdl.operation)
+# CHECK:     rewrite with "rewriter"(%5, %8 : !pdl.operation, !pdl.operation)
 # CHECK:   }
 # CHECK: }
 @constructAndPrintInModule
 def test_rewrite_multi_root_optimal():
-  pattern = PatternOp(1, "rewrite_multi_root_optimal")
-  with InsertionPoint(pattern.body):
-    input1 = OperandOp()
-    input2 = OperandOp()
-    ty = TypeOp()
-    op1 = OperationOp(args=[input1], types=[ty])
-    val1 = ResultOp(op1, 0)
-    root1 = OperationOp(args=[val1])
-    op2 = OperationOp(args=[input2], types=[ty])
-    val2 = ResultOp(op2, 0)
-    root2 = OperationOp(args=[val1, val2])
-    RewriteOp(name="rewriter", params=[StringAttr.get("I am param")], args=[root1, root2])
+    pattern = PatternOp(1, "rewrite_multi_root_optimal")
+    with InsertionPoint(pattern.body):
+        input1 = OperandOp()
+        input2 = OperandOp()
+        ty = TypeOp()
+        op1 = OperationOp(args=[input1], types=[ty])
+        val1 = ResultOp(op1, 0)
+        root1 = OperationOp(args=[val1])
+        op2 = OperationOp(args=[input2], types=[ty])
+        val2 = ResultOp(op2, 0)
+        root2 = OperationOp(args=[val1, val2])
+        RewriteOp(name="rewriter", args=[root1, root2])
+
 
 # CHECK: module  {
 # CHECK:   pdl.pattern @rewrite_multi_root_forced : benefit(1)  {
@@ -121,23 +95,24 @@ def test_rewrite_multi_root_optimal():
 # CHECK:     %6 = operation(%1 : !pdl.value)  -> (%2 : !pdl.type)
 # CHECK:     %7 = result 0 of %6
 # CHECK:     %8 = operation(%4, %7 : !pdl.value, !pdl.value)
-# CHECK:     rewrite %5 with "rewriter" ["I am param"](%8 : !pdl.operation)
+# CHECK:     rewrite %5 with "rewriter"(%8 : !pdl.operation)
 # CHECK:   }
 # CHECK: }
 @constructAndPrintInModule
 def test_rewrite_multi_root_forced():
-  pattern = PatternOp(1, "rewrite_multi_root_forced")
-  with InsertionPoint(pattern.body):
-    input1 = OperandOp()
-    input2 = OperandOp()
-    ty = TypeOp()
-    op1 = OperationOp(args=[input1], types=[ty])
-    val1 = ResultOp(op1, 0)
-    root1 = OperationOp(args=[val1])
-    op2 = OperationOp(args=[input2], types=[ty])
-    val2 = ResultOp(op2, 0)
-    root2 = OperationOp(args=[val1, val2])
-    RewriteOp(root1, name="rewriter", params=[StringAttr.get("I am param")], args=[root2])
+    pattern = PatternOp(1, "rewrite_multi_root_forced")
+    with InsertionPoint(pattern.body):
+        input1 = OperandOp()
+        input2 = OperandOp()
+        ty = TypeOp()
+        op1 = OperationOp(args=[input1], types=[ty])
+        val1 = ResultOp(op1, 0)
+        root1 = OperationOp(args=[val1])
+        op2 = OperationOp(args=[input2], types=[ty])
+        val2 = ResultOp(op2, 0)
+        root2 = OperationOp(args=[val1, val2])
+        RewriteOp(root1, name="rewriter", args=[root2])
+
 
 # CHECK: module  {
 # CHECK:   pdl.pattern @rewrite_add_body : benefit(1)  {
@@ -153,16 +128,17 @@ def test_rewrite_multi_root_forced():
 # CHECK: }
 @constructAndPrintInModule
 def test_rewrite_add_body():
-  pattern = PatternOp(1, "rewrite_add_body")
-  with InsertionPoint(pattern.body):
-    ty1 = TypeOp(IntegerType.get_signless(32))
-    ty2 = TypeOp()
-    root = OperationOp(types=[ty1, ty2])
-    rewrite = RewriteOp(root)
-    with InsertionPoint(rewrite.add_body()):
-      ty3 = TypeOp()
-      newOp = OperationOp(name="foo.op", types=[ty1, ty3])
-      ReplaceOp(root, with_op=newOp)
+    pattern = PatternOp(1, "rewrite_add_body")
+    with InsertionPoint(pattern.body):
+        ty1 = TypeOp(IntegerType.get_signless(32))
+        ty2 = TypeOp()
+        root = OperationOp(types=[ty1, ty2])
+        rewrite = RewriteOp(root)
+        with InsertionPoint(rewrite.add_body()):
+            ty3 = TypeOp()
+            newOp = OperationOp(name="foo.op", types=[ty1, ty3])
+            ReplaceOp(root, with_op=newOp)
+
 
 # CHECK: module  {
 # CHECK:   pdl.pattern @rewrite_type : benefit(1)  {
@@ -176,14 +152,15 @@ def test_rewrite_add_body():
 # CHECK: }
 @constructAndPrintInModule
 def test_rewrite_type():
-  pattern = PatternOp(1, "rewrite_type")
-  with InsertionPoint(pattern.body):
-    ty1 = TypeOp(IntegerType.get_signless(32))
-    ty2 = TypeOp()
-    root = OperationOp(types=[ty1, ty2])
-    rewrite = RewriteOp(root)
-    with InsertionPoint(rewrite.add_body()):
-      newOp = OperationOp(name="foo.op", types=[ty1, ty2])
+    pattern = PatternOp(1, "rewrite_type")
+    with InsertionPoint(pattern.body):
+        ty1 = TypeOp(IntegerType.get_signless(32))
+        ty2 = TypeOp()
+        root = OperationOp(types=[ty1, ty2])
+        rewrite = RewriteOp(root)
+        with InsertionPoint(rewrite.add_body()):
+            newOp = OperationOp(name="foo.op", types=[ty1, ty2])
+
 
 # CHECK: module  {
 # CHECK:   pdl.pattern @rewrite_types : benefit(1)  {
@@ -197,14 +174,17 @@ def test_rewrite_type():
 # CHECK: }
 @constructAndPrintInModule
 def test_rewrite_types():
-  pattern = PatternOp(1, "rewrite_types")
-  with InsertionPoint(pattern.body):
-    types = TypesOp()
-    root = OperationOp(types=[types])
-    rewrite = RewriteOp(root)
-    with InsertionPoint(rewrite.add_body()):
-      otherTypes = TypesOp([IntegerType.get_signless(32), IntegerType.get_signless(64)])
-      newOp = OperationOp(name="foo.op", types=[types, otherTypes])
+    pattern = PatternOp(1, "rewrite_types")
+    with InsertionPoint(pattern.body):
+        types = TypesOp()
+        root = OperationOp(types=[types])
+        rewrite = RewriteOp(root)
+        with InsertionPoint(rewrite.add_body()):
+            otherTypes = TypesOp(
+                [IntegerType.get_signless(32), IntegerType.get_signless(64)]
+            )
+            newOp = OperationOp(name="foo.op", types=[types, otherTypes])
+
 
 # CHECK: module  {
 # CHECK:   pdl.pattern @rewrite_operands : benefit(1)  {
@@ -218,14 +198,15 @@ def test_rewrite_types():
 # CHECK: }
 @constructAndPrintInModule
 def test_rewrite_operands():
-  pattern = PatternOp(1, "rewrite_operands")
-  with InsertionPoint(pattern.body):
-    types = TypesOp()
-    operands = OperandsOp(types)
-    root = OperationOp(args=[operands])
-    rewrite = RewriteOp(root)
-    with InsertionPoint(rewrite.add_body()):
-      newOp = OperationOp(name="foo.op", types=[types])
+    pattern = PatternOp(1, "rewrite_operands")
+    with InsertionPoint(pattern.body):
+        types = TypesOp()
+        operands = OperandsOp(types)
+        root = OperationOp(args=[operands])
+        rewrite = RewriteOp(root)
+        with InsertionPoint(rewrite.add_body()):
+            newOp = OperationOp(name="foo.op", types=[types])
+
 
 # CHECK: module  {
 # CHECK:   pdl.pattern @native_rewrite : benefit(1)  {
@@ -237,31 +218,33 @@ def test_rewrite_operands():
 # CHECK: }
 @constructAndPrintInModule
 def test_native_rewrite():
-  pattern = PatternOp(1, "native_rewrite")
-  with InsertionPoint(pattern.body):
-    root = OperationOp()
-    rewrite = RewriteOp(root)
-    with InsertionPoint(rewrite.add_body()):
-      ApplyNativeRewriteOp([], "NativeRewrite", args=[root])
+    pattern = PatternOp(1, "native_rewrite")
+    with InsertionPoint(pattern.body):
+        root = OperationOp()
+        rewrite = RewriteOp(root)
+        with InsertionPoint(rewrite.add_body()):
+            ApplyNativeRewriteOp([], "NativeRewrite", args=[root])
+
 
 # CHECK: module  {
 # CHECK:   pdl.pattern @attribute_with_value : benefit(1)  {
 # CHECK:     %0 = operation
 # CHECK:     rewrite %0  {
-# CHECK:       %1 = attribute "value"
+# CHECK:       %1 = attribute = "value"
 # CHECK:       apply_native_rewrite "NativeRewrite"(%1 : !pdl.attribute)
 # CHECK:     }
 # CHECK:   }
 # CHECK: }
 @constructAndPrintInModule
 def test_attribute_with_value():
-  pattern = PatternOp(1, "attribute_with_value")
-  with InsertionPoint(pattern.body):
-    root = OperationOp()
-    rewrite = RewriteOp(root)
-    with InsertionPoint(rewrite.add_body()):
-      attr = AttributeOp(value=Attribute.parse('"value"'))
-      ApplyNativeRewriteOp([], "NativeRewrite", args=[attr])
+    pattern = PatternOp(1, "attribute_with_value")
+    with InsertionPoint(pattern.body):
+        root = OperationOp()
+        rewrite = RewriteOp(root)
+        with InsertionPoint(rewrite.add_body()):
+            attr = AttributeOp(value=Attribute.parse('"value"'))
+            ApplyNativeRewriteOp([], "NativeRewrite", args=[attr])
+
 
 # CHECK: module  {
 # CHECK:   pdl.pattern @erase : benefit(1)  {
@@ -273,12 +256,13 @@ def test_attribute_with_value():
 # CHECK: }
 @constructAndPrintInModule
 def test_erase():
-  pattern = PatternOp(1, "erase")
-  with InsertionPoint(pattern.body):
-    root = OperationOp()
-    rewrite = RewriteOp(root)
-    with InsertionPoint(rewrite.add_body()):
-      EraseOp(root)
+    pattern = PatternOp(1, "erase")
+    with InsertionPoint(pattern.body):
+        root = OperationOp()
+        rewrite = RewriteOp(root)
+        with InsertionPoint(rewrite.add_body()):
+            EraseOp(root)
+
 
 # CHECK: module  {
 # CHECK:   pdl.pattern @operation_results : benefit(1)  {
@@ -291,28 +275,29 @@ def test_erase():
 # CHECK: }
 @constructAndPrintInModule
 def test_operation_results():
-  valueRange = RangeType.get(ValueType.get())
-  pattern = PatternOp(1, "operation_results")
-  with InsertionPoint(pattern.body):
-    types = TypesOp()
-    inputOp = OperationOp(types=[types])
-    results = ResultsOp(valueRange, inputOp)
-    root = OperationOp(args=[results])
-    RewriteOp(root, name="rewriter")
+    valueRange = RangeType.get(ValueType.get())
+    pattern = PatternOp(1, "operation_results")
+    with InsertionPoint(pattern.body):
+        types = TypesOp()
+        inputOp = OperationOp(types=[types])
+        results = ResultsOp(valueRange, inputOp)
+        root = OperationOp(args=[results])
+        RewriteOp(root, name="rewriter")
+
 
 # CHECK: module  {
 # CHECK:   pdl.pattern : benefit(1)  {
 # CHECK:     %0 = type
-# CHECK:     apply_native_constraint "typeConstraint" [](%0 : !pdl.type)
+# CHECK:     apply_native_constraint "typeConstraint"(%0 : !pdl.type)
 # CHECK:     %1 = operation  -> (%0 : !pdl.type)
 # CHECK:     rewrite %1 with "rewrite"
 # CHECK:   }
 # CHECK: }
 @constructAndPrintInModule
 def test_apply_native_constraint():
-  pattern = PatternOp(1)
-  with InsertionPoint(pattern.body):
-    resultType = TypeOp()
-    ApplyNativeConstraintOp("typeConstraint", args=[resultType], params=[])
-    root = OperationOp(types=[resultType])
-    RewriteOp(root, name="rewrite")
+    pattern = PatternOp(1)
+    with InsertionPoint(pattern.body):
+        resultType = TypeOp()
+        ApplyNativeConstraintOp("typeConstraint", args=[resultType])
+        root = OperationOp(types=[resultType])
+        RewriteOp(root, name="rewrite")

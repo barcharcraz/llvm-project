@@ -90,7 +90,7 @@
 // WARN-OMIT-LEAF-7S-NOT: warning: optimization flag '-momit-leaf-frame-pointer' is not supported for target 'armv7s'
 // WARN-OMIT-LEAF-7S: "-mframe-pointer=non-leaf"
 
-// On AArch64, PS4, and VE, default to omitting the frame pointer on leaf
+// On AArch64, PS4, PS5, and VE, default to omitting the frame pointer on leaf
 // functions
 // RUN: %clang -### -target aarch64 -S %s 2>&1 | \
 // RUN:   FileCheck --check-prefix=KEEP-NON-LEAF %s
@@ -98,14 +98,38 @@
 // RUN:   FileCheck --check-prefix=KEEP-NON-LEAF %s
 // RUN: %clang -### -target x86_64-scei-ps4 -S -O2 %s 2>&1 | \
 // RUN:   FileCheck --check-prefix=KEEP-NON-LEAF %s
+// RUN: %clang -### -target x86_64-sie-ps5 -S %s 2>&1 | \
+// RUN:   FileCheck --check-prefix=KEEP-NON-LEAF %s
+// RUN: %clang -### -target x86_64-sie-ps5 -S -O2 %s 2>&1 | \
+// RUN:   FileCheck --check-prefix=KEEP-NON-LEAF %s
 // RUN: %clang -### -target aarch64-apple-darwin -arch arm64_32 -S %s 2>&1 | \
 // RUN:   FileCheck --check-prefix=KEEP-NON-LEAF %s
 // RUN: %clang -### -target ve-unknown-linux-gnu -S %s 2>&1 | \
+// RUN:   FileCheck --check-prefix=KEEP-NON-LEAF %s
+// RUN: %clang -### --target=aarch64-linux-android -S %s 2>&1 | \
+// RUN:   FileCheck --check-prefix=KEEP-NON-LEAF %s
+// RUN: %clang -### --target=aarch64-linux-android -S -O2 %s 2>&1 | \
+// RUN:   FileCheck --check-prefix=KEEP-NON-LEAF %s
+// RUN: %clang -### --target=aarch64-linux-android -S -Os %s 2>&1 | \
 // RUN:   FileCheck --check-prefix=KEEP-NON-LEAF %s
 
 // RUN: %clang -### -target powerpc64 -S %s 2>&1 | \
 // RUN:   FileCheck --check-prefix=KEEP-ALL %s
 // RUN: %clang -### -target powerpc64 -S -O1 %s 2>&1 | \
+// RUN:   FileCheck --check-prefix=KEEP-NONE %s
+
+// SPARC targets omit the frame pointer when optimizations are enabled.
+// RUN: %clang -### -target sparc -S %s 2>&1 | \
+// RUN:   FileCheck --check-prefix=KEEP-ALL %s
+// RUN: %clang -### -target sparc -S -O1 %s 2>&1 | \
+// RUN:   FileCheck --check-prefix=KEEP-NONE %s
+// RUN: %clang -### -target sparcel -S %s 2>&1 | \
+// RUN:   FileCheck --check-prefix=KEEP-ALL %s
+// RUN: %clang -### -target sparcel -S -O1 %s 2>&1 | \
+// RUN:   FileCheck --check-prefix=KEEP-NONE %s
+// RUN: %clang -### -target sparc64 -S %s 2>&1 | \
+// RUN:   FileCheck --check-prefix=KEEP-ALL %s
+// RUN: %clang -### -target sparc64 -S -O1 %s 2>&1 | \
 // RUN:   FileCheck --check-prefix=KEEP-NONE %s
 
 // For AAarch32 (A32, T32) linux targets, default omit frame pointer when
@@ -135,6 +159,9 @@
 // RUN:   FileCheck --check-prefix=KEEP-ALL %s
 // RUN: %clang -### -target armv7a-linux-androideabi- -mthumb -mbig-endian -O1 -S %s 2>&1 | \
 // RUN:   FileCheck --check-prefix=KEEP-ALL %s
-
+// RUN: %clang -### --target=riscv64-linux-android -O1 -S %s 2>&1 | \
+// RUN:   FileCheck --check-prefix=KEEP-NON-LEAF %s
+// RUN: %clang -### --target=riscv64-linux-android -mbig-endian -O1 -S %s 2>&1 | \
+// RUN:   FileCheck --check-prefix=KEEP-NON-LEAF %s
 void f0() {}
 void f1() { f0(); }

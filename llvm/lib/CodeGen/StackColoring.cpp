@@ -36,14 +36,12 @@
 #include "llvm/CodeGen/MachineMemOperand.h"
 #include "llvm/CodeGen/MachineOperand.h"
 #include "llvm/CodeGen/Passes.h"
-#include "llvm/CodeGen/SelectionDAGNodes.h"
 #include "llvm/CodeGen/SlotIndexes.h"
 #include "llvm/CodeGen/TargetOpcodes.h"
 #include "llvm/CodeGen/WinEHFuncInfo.h"
 #include "llvm/Config/llvm-config.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DebugInfoMetadata.h"
-#include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Use.h"
@@ -409,8 +407,8 @@ namespace {
 /// StackColoring - A machine pass for merging disjoint stack allocations,
 /// marked by the LIFETIME_START and LIFETIME_END pseudo instructions.
 class StackColoring : public MachineFunctionPass {
-  MachineFrameInfo *MFI;
-  MachineFunction *MF;
+  MachineFrameInfo *MFI = nullptr;
+  MachineFunction *MF = nullptr;
 
   /// A class representing liveness information for a single basic block.
   /// Each bit in the BitVector represents the liveness property
@@ -450,7 +448,7 @@ class StackColoring : public MachineFunctionPass {
   VNInfo::Allocator VNInfoAllocator;
 
   /// SlotIndex analysis object.
-  SlotIndexes *Indexes;
+  SlotIndexes *Indexes = nullptr;
 
   /// The list of lifetime markers found. These markers are to be removed
   /// once the coloring is done.
@@ -937,12 +935,13 @@ void StackColoring::remapInstructions(DenseMap<int, int> &SlotRemap) {
 
   // Remap debug information that refers to stack slots.
   for (auto &VI : MF->getVariableDbgInfo()) {
-    if (!VI.Var)
+    if (!VI.Var || !VI.inStackSlot())
       continue;
-    if (SlotRemap.count(VI.Slot)) {
+    int Slot = VI.getStackSlot();
+    if (SlotRemap.count(Slot)) {
       LLVM_DEBUG(dbgs() << "Remapping debug info for ["
                         << cast<DILocalVariable>(VI.Var)->getName() << "].\n");
-      VI.Slot = SlotRemap[VI.Slot];
+      VI.updateStackSlot(SlotRemap[Slot]);
       FixedDbg++;
     }
   }
@@ -1145,6 +1144,9 @@ void StackColoring::remapInstructions(DenseMap<int, int> &SlotRemap) {
   LLVM_DEBUG(dbgs() << "Fixed " << FixedMemOp << " machine memory operands.\n");
   LLVM_DEBUG(dbgs() << "Fixed " << FixedDbg << " debug locations.\n");
   LLVM_DEBUG(dbgs() << "Fixed " << FixedInstr << " machine instructions.\n");
+  (void) FixedMemOp;
+  (void) FixedDbg;
+  (void) FixedInstr;
 }
 
 void StackColoring::removeInvalidSlotRanges() {
@@ -1319,6 +1321,11 @@ bool StackColoring::runOnMachineFunction(MachineFunction &Func) {
 
         int FirstSlot = SortedSlots[I];
         int SecondSlot = SortedSlots[J];
+
+        // Objects with different stack IDs cannot be merged.
+        if (MFI->getStackID(FirstSlot) != MFI->getStackID(SecondSlot))
+          continue;
+
         LiveInterval *First = &*Intervals[FirstSlot];
         LiveInterval *Second = &*Intervals[SecondSlot];
         auto &FirstS = LiveStarts[FirstSlot];

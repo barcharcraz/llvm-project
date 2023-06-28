@@ -75,7 +75,7 @@ public:
   void applyClamp(MachineInstr &MI, Register &Reg);
 
 private:
-  AMDGPU::SIModeRegisterDefaults getMode();
+  SIModeRegisterDefaults getMode();
   bool getIEEE();
   bool getDX10Clamp();
   bool isFminnumIeee(const MachineInstr &MI);
@@ -153,12 +153,15 @@ bool AMDGPURegBankCombinerHelper::matchIntMinMaxToMed3(
   if (!isVgprRegBank(Dst))
     return false;
 
-  if (MRI.getType(Dst).isVector())
+  // med3 for i16 is only available on gfx9+, and not available for v2i16.
+  LLT Ty = MRI.getType(Dst);
+  if ((Ty != LLT::scalar(16) || !Subtarget.hasMed3_16()) &&
+      Ty != LLT::scalar(32))
     return false;
 
   MinMaxMedOpc OpcodeTriple = getMinMaxPair(MI.getOpcode());
   Register Val;
-  Optional<ValueAndVReg> K0, K1;
+  std::optional<ValueAndVReg> K0, K1;
   // Match min(max(Val, K0), K1) or max(min(Val, K1), K0). Then see if K0 <= K1.
   if (!matchMed<GCstAndRegMatch>(MI, MRI, OpcodeTriple, Val, K0, K1))
     return false;
@@ -203,7 +206,7 @@ bool AMDGPURegBankCombinerHelper::matchFPMinMaxToMed3(
   auto OpcodeTriple = getMinMaxPair(MI.getOpcode());
 
   Register Val;
-  Optional<FPValueAndVReg> K0, K1;
+  std::optional<FPValueAndVReg> K0, K1;
   // Match min(max(Val, K0), K1) or max(min(Val, K1), K0). Then see if K0 <= K1.
   if (!matchMed<GFCstAndRegMatch>(MI, MRI, OpcodeTriple, Val, K0, K1))
     return false;
@@ -235,7 +238,7 @@ bool AMDGPURegBankCombinerHelper::matchFPMinMaxToClamp(MachineInstr &MI,
   // Clamp is available on all types after regbankselect (f16, f32, f64, v2f16).
   auto OpcodeTriple = getMinMaxPair(MI.getOpcode());
   Register Val;
-  Optional<FPValueAndVReg> K0, K1;
+  std::optional<FPValueAndVReg> K0, K1;
   // Match min(max(Val, K0), K1) or max(min(Val, K1), K0).
   if (!matchMed<GFCstOrSplatGFCstMatch>(MI, MRI, OpcodeTriple, Val, K0, K1))
     return false;
@@ -268,14 +271,11 @@ bool AMDGPURegBankCombinerHelper::matchFPMinMaxToClamp(MachineInstr &MI,
 // min(min(0.0, 1.0), NaN) = min(0.0, NaN) = 0.0
 bool AMDGPURegBankCombinerHelper::matchFPMed3ToClamp(MachineInstr &MI,
                                                      Register &Reg) {
-  if (MI.getIntrinsicID() != Intrinsic::amdgcn_fmed3)
-    return false;
-
   // In llvm-ir, clamp is often represented as an intrinsic call to
   // @llvm.amdgcn.fmed3.f32(%Val, 0.0, 1.0). Check for other operand orders.
-  MachineInstr *Src0 = getDefIgnoringCopies(MI.getOperand(2).getReg(), MRI);
-  MachineInstr *Src1 = getDefIgnoringCopies(MI.getOperand(3).getReg(), MRI);
-  MachineInstr *Src2 = getDefIgnoringCopies(MI.getOperand(4).getReg(), MRI);
+  MachineInstr *Src0 = getDefIgnoringCopies(MI.getOperand(1).getReg(), MRI);
+  MachineInstr *Src1 = getDefIgnoringCopies(MI.getOperand(2).getReg(), MRI);
+  MachineInstr *Src2 = getDefIgnoringCopies(MI.getOperand(3).getReg(), MRI);
 
   if (isFCst(Src0) && !isFCst(Src1))
     std::swap(Src0, Src1);
@@ -325,7 +325,7 @@ void AMDGPURegBankCombinerHelper::applyMed3(MachineInstr &MI,
   MI.eraseFromParent();
 }
 
-AMDGPU::SIModeRegisterDefaults AMDGPURegBankCombinerHelper::getMode() {
+SIModeRegisterDefaults AMDGPURegBankCombinerHelper::getMode() {
   return MF.getInfo<SIMachineFunctionInfo>()->getMode();
 }
 
@@ -396,7 +396,7 @@ public:
 bool AMDGPURegBankCombinerInfo::combine(GISelChangeObserver &Observer,
                                               MachineInstr &MI,
                                               MachineIRBuilder &B) const {
-  CombinerHelper Helper(Observer, B, KB, MDT);
+  CombinerHelper Helper(Observer, B, /* IsPreLegalize*/ false, KB, MDT);
   AMDGPURegBankCombinerHelper RegBankHelper(B, Helper);
   AMDGPUGenRegBankCombinerHelper Generated(GeneratedRuleCfg, Helper,
                                            RegBankHelper);

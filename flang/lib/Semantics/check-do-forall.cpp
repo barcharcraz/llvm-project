@@ -7,6 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "check-do-forall.h"
+#include "definable.h"
 #include "flang/Common/template.h"
 #include "flang/Evaluate/call.h"
 #include "flang/Evaluate/expression.h"
@@ -114,19 +115,6 @@ public:
   // invocation of an IMPURE final subroutine. (C1139)
   //
 
-  // Only to be called for symbols with ObjectEntityDetails
-  static bool HasImpureFinal(const Symbol &original) {
-    const Symbol &symbol{ResolveAssociations(original)};
-    if (symbol.has<ObjectEntityDetails>()) {
-      if (const DeclTypeSpec * symType{symbol.GetType()}) {
-        if (const DerivedTypeSpec * derived{symType->AsDerived()}) {
-          return semantics::HasImpureFinal(*derived);
-        }
-      }
-    }
-    return false;
-  }
-
   // Predicate for deallocations caused by block exit and direct deallocation
   static bool DeallocateAll(const Symbol &) { return true; }
 
@@ -165,11 +153,11 @@ public:
     return false;
   }
 
-  void SayDeallocateWithImpureFinal(const Symbol &entity, const char *reason) {
+  void SayDeallocateWithImpureFinal(
+      const Symbol &entity, const char *reason, const Symbol &impure) {
     context_.SayWithDecl(entity, currentStatementSourcePosition_,
-        "Deallocation of an entity with an IMPURE FINAL procedure"
-        " caused by %s not allowed in DO CONCURRENT"_err_en_US,
-        reason);
+        "Deallocation of an entity with an IMPURE FINAL procedure '%s' caused by %s not allowed in DO CONCURRENT"_err_en_US,
+        impure.name(), reason);
   }
 
   void SayDeallocateOfPolymorph(
@@ -198,8 +186,8 @@ public:
             MightDeallocatePolymorphic(entity, DeallocateAll)) {
           SayDeallocateOfPolymorph(endBlockStmt.source, entity, reason);
         }
-        if (HasImpureFinal(entity)) {
-          SayDeallocateWithImpureFinal(entity, reason);
+        if (const Symbol * impure{HasImpureFinal(entity)}) {
+          SayDeallocateWithImpureFinal(entity, reason, *impure);
         }
       }
     }
@@ -214,8 +202,18 @@ public:
       if (MightDeallocatePolymorphic(*entity, DeallocateNonCoarray)) {
         SayDeallocateOfPolymorph(variable.GetSource(), *entity, reason);
       }
-      if (HasImpureFinal(*entity)) {
-        SayDeallocateWithImpureFinal(*entity, reason);
+      if (const Symbol * impure{HasImpureFinal(*entity)}) {
+        SayDeallocateWithImpureFinal(*entity, reason, *impure);
+      }
+    }
+    if (const auto *assignment{GetAssignment(stmt)}) {
+      if (const auto *call{
+              std::get_if<evaluate::ProcedureRef>(&assignment->u)}) {
+        if (auto bad{FindImpureCall(context_.foldingContext(), *call)}) {
+          context_.Say(currentStatementSourcePosition_,
+              "The defined assignment subroutine '%s' is not pure"_err_en_US,
+              *bad);
+        }
       }
     }
   }
@@ -237,8 +235,8 @@ public:
           SayDeallocateOfPolymorph(
               currentStatementSourcePosition_, entity, reason);
         }
-        if (HasImpureFinal(entity)) {
-          SayDeallocateWithImpureFinal(entity, reason);
+        if (const Symbol * impure{HasImpureFinal(entity)}) {
+          SayDeallocateWithImpureFinal(entity, reason, *impure);
         }
       }
     }
@@ -279,7 +277,8 @@ public:
             " CONCURRENT"_err_en_US,
             doConcurrentSourcePosition_);
       }
-      if (name->symbol && fromScope(*name->symbol, "ieee_exceptions"s)) {
+      if (name->symbol &&
+          fromScope(*name->symbol, "__fortran_ieee_exceptions"s)) {
         if (name->source == "ieee_set_halting_mode") {
           SayWithDo(context_, currentStatementSourcePosition_,
               "IEEE_SET_HALTING_MODE is not allowed in DO "
@@ -429,10 +428,10 @@ public:
   }
 
   void Check(const parser::ForallAssignmentStmt &stmt) {
-    const evaluate::Assignment *assignment{std::visit(
-        common::visitors{[&](const auto &x) { return GetAssignment(x); }},
-        stmt.u)};
-    if (assignment) {
+    if (const evaluate::Assignment *
+        assignment{common::visit(
+            common::visitors{[&](const auto &x) { return GetAssignment(x); }},
+            stmt.u)}) {
       CheckForallIndexesUsed(*assignment);
       CheckForImpureCall(assignment->lhs);
       CheckForImpureCall(assignment->rhs);
@@ -440,23 +439,24 @@ public:
               std::get_if<evaluate::ProcedureRef>(&assignment->u)}) {
         CheckForImpureCall(*proc);
       }
-      std::visit(common::visitors{
-                     [](const evaluate::Assignment::Intrinsic &) {},
-                     [&](const evaluate::ProcedureRef &proc) {
-                       CheckForImpureCall(proc);
-                     },
-                     [&](const evaluate::Assignment::BoundsSpec &bounds) {
-                       for (const auto &bound : bounds) {
-                         CheckForImpureCall(SomeExpr{bound});
-                       }
-                     },
-                     [&](const evaluate::Assignment::BoundsRemapping &bounds) {
-                       for (const auto &bound : bounds) {
-                         CheckForImpureCall(SomeExpr{bound.first});
-                         CheckForImpureCall(SomeExpr{bound.second});
-                       }
-                     },
-                 },
+      common::visit(
+          common::visitors{
+              [](const evaluate::Assignment::Intrinsic &) {},
+              [&](const evaluate::ProcedureRef &proc) {
+                CheckForImpureCall(proc);
+              },
+              [&](const evaluate::Assignment::BoundsSpec &bounds) {
+                for (const auto &bound : bounds) {
+                  CheckForImpureCall(SomeExpr{bound});
+                }
+              },
+              [&](const evaluate::Assignment::BoundsRemapping &bounds) {
+                for (const auto &bound : bounds) {
+                  CheckForImpureCall(SomeExpr{bound.first});
+                  CheckForImpureCall(SomeExpr{bound.second});
+                }
+              },
+          },
           assignment->u);
     }
   }
@@ -467,12 +467,11 @@ private:
   }
 
   void CheckDoControl(const parser::CharBlock &sourceLocation, bool isReal) {
-    const bool warn{context_.warnOnNonstandardUsage() ||
-        context_.ShouldWarn(common::LanguageFeature::RealDoControls)};
-    if (isReal && !warn) {
-      // No messages for the default case
-    } else if (isReal && warn) {
-      context_.Say(sourceLocation, "DO controls should be INTEGER"_en_US);
+    if (isReal) {
+      if (context_.ShouldWarn(common::LanguageFeature::RealDoControls)) {
+        context_.Say(
+            sourceLocation, "DO controls should be INTEGER"_port_en_US);
+      }
     } else {
       SayBadDoControl(sourceLocation);
     }
@@ -484,6 +483,14 @@ private:
       if (!IsVariableName(*symbol)) {
         context_.Say(
             sourceLocation, "DO control must be an INTEGER variable"_err_en_US);
+      } else if (auto why{WhyNotDefinable(sourceLocation,
+                     context_.FindScope(sourceLocation), DefinabilityFlags{},
+                     *symbol)}) {
+        context_
+            .Say(sourceLocation,
+                "'%s' may not be used as a DO variable"_err_en_US,
+                symbol->name())
+            .Attach(std::move(*why));
       } else {
         const DeclTypeSpec *symType{symbol->GetType()};
         if (!symType) {
@@ -500,7 +507,7 @@ private:
 
   // Semantic checks for the limit and step expressions
   void CheckDoExpression(const parser::ScalarExpr &scalarExpression) {
-    if (const SomeExpr * expr{GetExpr(scalarExpression)}) {
+    if (const SomeExpr * expr{GetExpr(context_, scalarExpression)}) {
       if (!ExprHasTypeCategory(*expr, TypeCategory::Integer)) {
         // No warnings or errors for type INTEGER
         const parser::CharBlock &loc{scalarExpression.thing.value().source};
@@ -520,7 +527,7 @@ private:
       CheckDoExpression(*bounds.step);
       if (IsZero(*bounds.step)) {
         context_.Say(bounds.step->thing.value().source,
-            "DO step expression should not be zero"_en_US);
+            "DO step expression should not be zero"_warn_en_US);
       }
     }
   }
@@ -568,10 +575,10 @@ private:
     return symbols;
   }
 
-  static UnorderedSymbolSet GatherSymbolsFromExpression(
-      const parser::Expr &expression) {
+  UnorderedSymbolSet GatherSymbolsFromExpression(
+      const parser::Expr &expression) const {
     UnorderedSymbolSet result;
-    if (const auto *expr{GetExpr(expression)}) {
+    if (const auto *expr{GetExpr(context_, expression)}) {
       for (const Symbol &symbol : evaluate::CollectSymbols(*expr)) {
         result.insert(ResolveAssociations(symbol));
       }
@@ -645,7 +652,7 @@ private:
         if (hasDefaultNone) {
           // C1127, you can only have one DEFAULT(NONE)
           context_.Say(currentStatementSourcePosition_,
-              "Only one DEFAULT(NONE) may appear"_en_US);
+              "Only one DEFAULT(NONE) may appear"_port_en_US);
           break;
         }
         hasDefaultNone = true;
@@ -736,7 +743,7 @@ private:
     SymbolVector indexVars{context_.GetIndexVars(IndexVarKind::FORALL)};
     if (!indexVars.empty()) {
       UnorderedSymbolSet symbols{evaluate::CollectSymbols(assignment.lhs)};
-      std::visit(
+      common::visit(
           common::visitors{
               [&](const evaluate::Assignment::BoundsSpec &spec) {
                 for (const auto &bound : spec) {
@@ -768,9 +775,8 @@ private:
           assignment.u);
       for (const Symbol &index : indexVars) {
         if (symbols.count(index) == 0) {
-          context_.Say(
-              "Warning: FORALL index variable '%s' not used on left-hand side"
-              " of assignment"_en_US,
+          context_.Say("FORALL index variable '%s' not used on left-hand side"
+                       " of assignment"_warn_en_US,
               index.name());
         }
       }
@@ -828,7 +834,7 @@ static parser::CharBlock GetConstructPosition(const A &a) {
 }
 
 static parser::CharBlock GetNodePosition(const ConstructNode &construct) {
-  return std::visit(
+  return common::visit(
       [&](const auto &x) { return GetConstructPosition(*x); }, construct);
 }
 
@@ -859,24 +865,24 @@ static bool ConstructIsDoConcurrent(const ConstructNode &construct) {
 // leave DO CONCURRENT, CRITICAL, or CHANGE TEAM constructs.
 void DoForallChecker::CheckForBadLeave(
     StmtType stmtType, const ConstructNode &construct) const {
-  std::visit(common::visitors{
-                 [&](const parser::DoConstruct *doConstructPtr) {
-                   if (doConstructPtr->IsDoConcurrent()) {
-                     // C1135 and C1167 -- CYCLE and EXIT statements can't leave
-                     // a DO CONCURRENT
-                     SayBadLeave(stmtType, "DO CONCURRENT", construct);
-                   }
-                 },
-                 [&](const parser::CriticalConstruct *) {
-                   // C1135 and C1168 -- similarly, for CRITICAL
-                   SayBadLeave(stmtType, "CRITICAL", construct);
-                 },
-                 [&](const parser::ChangeTeamConstruct *) {
-                   // C1135 and C1168 -- similarly, for CHANGE TEAM
-                   SayBadLeave(stmtType, "CHANGE TEAM", construct);
-                 },
-                 [](const auto *) {},
-             },
+  common::visit(common::visitors{
+                    [&](const parser::DoConstruct *doConstructPtr) {
+                      if (doConstructPtr->IsDoConcurrent()) {
+                        // C1135 and C1167 -- CYCLE and EXIT statements can't
+                        // leave a DO CONCURRENT
+                        SayBadLeave(stmtType, "DO CONCURRENT", construct);
+                      }
+                    },
+                    [&](const parser::CriticalConstruct *) {
+                      // C1135 and C1168 -- similarly, for CRITICAL
+                      SayBadLeave(stmtType, "CRITICAL", construct);
+                    },
+                    [&](const parser::ChangeTeamConstruct *) {
+                      // C1135 and C1168 -- similarly, for CHANGE TEAM
+                      SayBadLeave(stmtType, "CHANGE TEAM", construct);
+                    },
+                    [](const auto *) {},
+                },
       construct);
 }
 
@@ -969,7 +975,7 @@ static void CheckIfArgIsDoVar(const evaluate::ActualArgument &arg,
 void DoForallChecker::Leave(const parser::CallStmt &callStmt) {
   if (const auto &typedCall{callStmt.typedCall}) {
     const auto &parsedArgs{
-        std::get<std::list<parser::ActualArgSpec>>(callStmt.v.t)};
+        std::get<std::list<parser::ActualArgSpec>>(callStmt.call.t)};
     auto parsedArgIter{parsedArgs.begin()};
     const evaluate::ActualArguments &checkedArgs{typedCall->arguments()};
     for (const auto &checkedOptionalArg : checkedArgs) {
@@ -1022,7 +1028,7 @@ void DoForallChecker::Enter(const parser::Expr &parsedExpr) { ++exprDepth_; }
 void DoForallChecker::Leave(const parser::Expr &parsedExpr) {
   CHECK(exprDepth_ > 0);
   if (--exprDepth_ == 0) { // Only check top level expressions
-    if (const SomeExpr * expr{GetExpr(parsedExpr)}) {
+    if (const SomeExpr * expr{GetExpr(context_, parsedExpr)}) {
       ActualArgumentSet argSet{CollectActualArguments(*expr)};
       for (const evaluate::ActualArgumentRef &argRef : argSet) {
         CheckIfArgIsDoVar(*argRef, parsedExpr.source, context_);

@@ -15,9 +15,7 @@
 using namespace clang::ast_matchers;
 using namespace clang::tidy::matchers;
 
-namespace clang {
-namespace tidy {
-namespace bugprone {
+namespace clang::tidy::bugprone {
 
 namespace {
 
@@ -27,7 +25,8 @@ handleFrom(const ast_matchers::internal::Matcher<RecordDecl> &IsAHandle,
   return expr(
       anyOf(cxxConstructExpr(hasDeclaration(cxxMethodDecl(ofClass(IsAHandle))),
                              hasArgument(0, Arg)),
-            cxxMemberCallExpr(hasType(cxxRecordDecl(IsAHandle)),
+            cxxMemberCallExpr(hasType(hasUnqualifiedDesugaredType(recordType(
+                                  hasDeclaration(cxxRecordDecl(IsAHandle))))),
                               callee(memberExpr(member(cxxConversionDecl()))),
                               on(Arg))));
 }
@@ -94,9 +93,7 @@ DanglingHandleCheck::DanglingHandleCheck(StringRef Name,
       HandleClasses(utils::options::parseStringList(Options.get(
           "HandleClasses",
           "std::basic_string_view;std::experimental::basic_string_view"))),
-      IsAHandle(cxxRecordDecl(hasAnyName(std::vector<StringRef>(
-                                  HandleClasses.begin(), HandleClasses.end())))
-                    .bind("handle")) {}
+      IsAHandle(cxxRecordDecl(hasAnyName(HandleClasses)).bind("handle")) {}
 
 void DanglingHandleCheck::storeOptions(ClangTidyOptions::OptionMap &Opts) {
   Options.store(Opts, "HandleClasses",
@@ -189,6 +186,4 @@ void DanglingHandleCheck::check(const MatchFinder::MatchResult &Result) {
       << Handle->getQualifiedNameAsString();
 }
 
-} // namespace bugprone
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::bugprone

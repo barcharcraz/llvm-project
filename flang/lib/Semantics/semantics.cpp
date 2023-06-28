@@ -16,6 +16,7 @@
 #include "check-arithmeticif.h"
 #include "check-case.h"
 #include "check-coarray.h"
+#include "check-cuda.h"
 #include "check-data.h"
 #include "check-deallocate.h"
 #include "check-declarations.h"
@@ -42,6 +43,8 @@
 #include "flang/Semantics/scope.h"
 #include "flang/Semantics/symbol.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/TargetParser/Host.h"
+#include "llvm/TargetParser/Triple.h"
 
 namespace Fortran::semantics {
 
@@ -67,12 +70,13 @@ static void GetSymbolNames(const Scope &scope, NameToSymbolMap &symbols) {
 // children are visited, Leave is called after. No two checkers may have the
 // same Enter or Leave function. Each checker must be constructible from
 // SemanticsContext and have BaseChecker as a virtual base class.
-template <typename... C> class SemanticsVisitor : public virtual C... {
+template <typename... C>
+class SemanticsVisitor : public virtual BaseChecker, public virtual C... {
 public:
-  using C::Enter...;
-  using C::Leave...;
   using BaseChecker::Enter;
   using BaseChecker::Leave;
+  using C::Enter...;
+  using C::Leave...;
   SemanticsVisitor(SemanticsContext &context)
       : C{context}..., context_{context} {}
 
@@ -156,12 +160,14 @@ private:
 };
 
 using StatementSemanticsPass1 = ExprChecker;
-using StatementSemanticsPass2 = SemanticsVisitor<AccStructureChecker,
-    AllocateChecker, ArithmeticIfStmtChecker, AssignmentChecker, CaseChecker,
-    CoarrayChecker, DataChecker, DeallocateChecker, DoForallChecker,
-    IfStmtChecker, IoChecker, MiscChecker, NamelistChecker, NullifyChecker,
-    OmpStructureChecker, PurityChecker, ReturnStmtChecker,
-    SelectRankConstructChecker, SelectTypeChecker, StopChecker>;
+using StatementSemanticsPass2 = SemanticsVisitor<AllocateChecker,
+    ArithmeticIfStmtChecker, AssignmentChecker, CaseChecker, CoarrayChecker,
+    DataChecker, DeallocateChecker, DoForallChecker, IfStmtChecker, IoChecker,
+    MiscChecker, NamelistChecker, NullifyChecker, PurityChecker,
+    ReturnStmtChecker, SelectRankConstructChecker, SelectTypeChecker,
+    StopChecker>;
+using StatementSemanticsPass3 =
+    SemanticsVisitor<AccStructureChecker, OmpStructureChecker, CUDAChecker>;
 
 static bool PerformStatementSemantics(
     SemanticsContext &context, parser::Program &program) {
@@ -172,11 +178,119 @@ static bool PerformStatementSemantics(
   StatementSemanticsPass1{context}.Walk(program);
   StatementSemanticsPass2 pass2{context};
   pass2.Walk(program);
+  if (context.languageFeatures().IsEnabled(common::LanguageFeature::OpenACC) ||
+      context.languageFeatures().IsEnabled(common::LanguageFeature::OpenMP) ||
+      context.languageFeatures().IsEnabled(common::LanguageFeature::CUDA)) {
+    StatementSemanticsPass3{context}.Walk(program);
+  }
   if (!context.AnyFatalError()) {
     pass2.CompileDataInitializationsIntoInitializers();
   }
   return !context.AnyFatalError();
 }
+
+/// This class keeps track of the common block appearances with the biggest size
+/// and with an initial value (if any) in a program. This allows reporting
+/// conflicting initialization and warning about appearances of a same
+/// named common block with different sizes. The biggest common block size and
+/// initialization (if any) can later be provided so that lowering can generate
+/// the correct symbol size and initial values, even when named common blocks
+/// appears with different sizes and are initialized outside of block data.
+class CommonBlockMap {
+private:
+  struct CommonBlockInfo {
+    // Common block symbol for the appearance with the biggest size.
+    SymbolRef biggestSize;
+    // Common block symbol for the appearance with the initialized members (if
+    // any).
+    std::optional<SymbolRef> initialization;
+  };
+
+public:
+  void MapCommonBlockAndCheckConflicts(
+      SemanticsContext &context, const Symbol &common) {
+    const Symbol *isInitialized{CommonBlockIsInitialized(common)};
+    auto [it, firstAppearance] = commonBlocks_.insert({common.name(),
+        isInitialized ? CommonBlockInfo{common, common}
+                      : CommonBlockInfo{common, std::nullopt}});
+    if (!firstAppearance) {
+      CommonBlockInfo &info{it->second};
+      if (isInitialized) {
+        if (info.initialization.has_value() &&
+            &**info.initialization != &common) {
+          // Use the location of the initialization in the error message because
+          // common block symbols may have no location if they are blank
+          // commons.
+          const Symbol &previousInit{
+              DEREF(CommonBlockIsInitialized(**info.initialization))};
+          context
+              .Say(isInitialized->name(),
+                  "Multiple initialization of COMMON block /%s/"_err_en_US,
+                  common.name())
+              .Attach(previousInit.name(),
+                  "Previous initialization of COMMON block /%s/"_en_US,
+                  common.name());
+        } else {
+          info.initialization = common;
+        }
+      }
+      if (common.size() != info.biggestSize->size() && !common.name().empty()) {
+        context
+            .Say(common.name(),
+                "A named COMMON block should have the same size everywhere it appears (%zd bytes here)"_port_en_US,
+                common.size())
+            .Attach(info.biggestSize->name(),
+                "Previously defined with a size of %zd bytes"_en_US,
+                info.biggestSize->size());
+      }
+      if (common.size() > info.biggestSize->size()) {
+        info.biggestSize = common;
+      }
+    }
+  }
+
+  CommonBlockList GetCommonBlocks() const {
+    CommonBlockList result;
+    for (const auto &[_, blockInfo] : commonBlocks_) {
+      result.emplace_back(
+          std::make_pair(blockInfo.initialization ? *blockInfo.initialization
+                                                  : blockInfo.biggestSize,
+              blockInfo.biggestSize->size()));
+    }
+    return result;
+  }
+
+private:
+  /// Return the symbol of an initialized member if a COMMON block
+  /// is initalized. Otherwise, return nullptr.
+  static Symbol *CommonBlockIsInitialized(const Symbol &common) {
+    const auto &commonDetails =
+        common.get<Fortran::semantics::CommonBlockDetails>();
+
+    for (const auto &member : commonDetails.objects()) {
+      if (IsInitialized(*member)) {
+        return &*member;
+      }
+    }
+
+    // Common block may be initialized via initialized variables that are in an
+    // equivalence with the common block members.
+    for (const Fortran::semantics::EquivalenceSet &set :
+        common.owner().equivalenceSets()) {
+      for (const Fortran::semantics::EquivalenceObject &obj : set) {
+        if (!obj.symbol.test(
+                Fortran::semantics::Symbol::Flag::CompilerCreated)) {
+          if (FindCommonBlockContaining(obj.symbol) == &common &&
+              IsInitialized(obj.symbol)) {
+            return &obj.symbol;
+          }
+        }
+      }
+    }
+    return nullptr;
+  }
+  std::map<SourceName, CommonBlockInfo> commonBlocks_;
+};
 
 SemanticsContext::SemanticsContext(
     const common::IntrinsicTypeDefaultKinds &defaultKinds,
@@ -187,8 +301,8 @@ SemanticsContext::SemanticsContext(
       intrinsics_{evaluate::IntrinsicProcTable::Configure(defaultKinds_)},
       globalScope_{*this}, intrinsicModulesScope_{globalScope_.MakeScope(
                                Scope::Kind::IntrinsicModules, nullptr)},
-      foldingContext_{
-          parser::ContextualMessages{&messages_}, defaultKinds_, intrinsics_} {}
+      foldingContext_{parser::ContextualMessages{&messages_}, defaultKinds_,
+          intrinsics_, targetCharacteristics_} {}
 
 SemanticsContext::~SemanticsContext() {}
 
@@ -253,6 +367,16 @@ Scope &SemanticsContext::FindScope(parser::CharBlock source) {
   }
 }
 
+bool SemanticsContext::IsInModuleFile(parser::CharBlock source) const {
+  for (const Scope *scope{&FindScope(source)}; !scope->IsGlobal();
+       scope = &scope->parent()) {
+    if (scope->IsModuleFile()) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void SemanticsContext::PopConstruct() {
   CHECK(!constructStack_.empty());
   constructStack_.pop_back();
@@ -271,8 +395,8 @@ void SemanticsContext::CheckIndexVarRedefine(const parser::CharBlock &location,
 
 void SemanticsContext::WarnIndexVarRedefine(
     const parser::CharBlock &location, const Symbol &variable) {
-  CheckIndexVarRedefine(
-      location, variable, "Possible redefinition of %s variable '%s'"_en_US);
+  CheckIndexVarRedefine(location, variable,
+      "Possible redefinition of %s variable '%s'"_warn_en_US);
 }
 
 void SemanticsContext::CheckIndexVarRedefine(
@@ -355,6 +479,30 @@ void SemanticsContext::UseFortranBuiltinsModule() {
   }
 }
 
+void SemanticsContext::UsePPCBuiltinTypesModule() {
+  if (ppcBuiltinTypesScope_ == nullptr) {
+    ppcBuiltinTypesScope_ = GetBuiltinModule("__ppc_types");
+  }
+}
+
+const Scope &SemanticsContext::GetCUDABuiltinsScope() {
+  if (!cudaBuiltinsScope_) {
+    cudaBuiltinsScope_ = GetBuiltinModule("__cuda_builtins");
+    CHECK(cudaBuiltinsScope_.value() != nullptr);
+  }
+  return **cudaBuiltinsScope_;
+}
+
+void SemanticsContext::UsePPCBuiltinsModule() {
+  if (ppcBuiltinsScope_ == nullptr) {
+    ppcBuiltinsScope_ = GetBuiltinModule("__ppc_intrinsics");
+  }
+}
+
+parser::Program &SemanticsContext::SaveParseTree(parser::Program &&tree) {
+  return modFileParseTrees_.emplace_back(std::move(tree));
+}
+
 bool Semantics::Perform() {
   // Implicitly USE the __Fortran_builtins module so that special types
   // (e.g., __builtin_team_type) are available to semantics, esp. for
@@ -363,17 +511,33 @@ bool Semantics::Perform() {
     const auto *frontModule{std::get_if<common::Indirection<parser::Module>>(
         &program_.v.front().u)};
     if (frontModule &&
-        std::get<parser::Statement<parser::ModuleStmt>>(frontModule->value().t)
-                .statement.v.source == "__fortran_builtins") {
+        (std::get<parser::Statement<parser::ModuleStmt>>(frontModule->value().t)
+                    .statement.v.source == "__fortran_builtins" ||
+            std::get<parser::Statement<parser::ModuleStmt>>(
+                frontModule->value().t)
+                    .statement.v.source == "__ppc_types")) {
       // Don't try to read the builtins module when we're actually building it.
+    } else if (frontModule &&
+        std::get<parser::Statement<parser::ModuleStmt>>(frontModule->value().t)
+                .statement.v.source == "__fortran_ppc_intrinsics") {
+      // The derived type definition for the vectors is needed.
+      context_.UsePPCBuiltinTypesModule();
     } else {
       context_.UseFortranBuiltinsModule();
+      llvm::Triple targetTriple{llvm::Triple(
+          llvm::Triple::normalize(llvm::sys::getDefaultTargetTriple()))};
+      // Only use __ppc_intrinsics module when targetting PowerPC arch
+      if (context_.targetCharacteristics().isPPC()) {
+        context_.UsePPCBuiltinTypesModule();
+        context_.UsePPCBuiltinsModule();
+      }
     }
   }
   return ValidateLabels(context_, program_) &&
       parser::CanonicalizeDo(program_) && // force line break
       CanonicalizeAcc(context_.messages(), program_) &&
       CanonicalizeOmp(context_.messages(), program_) &&
+      CanonicalizeCUDA(program_) &&
       PerformStatementSemantics(context_, program_) &&
       ModFileWriter{context_}.WriteAll();
 }
@@ -415,7 +579,7 @@ void DoDumpSymbols(llvm::raw_ostream &os, const Scope &scope, int indent) {
   if (scope.derivedTypeSpec()) {
     os << " instantiation of " << *scope.derivedTypeSpec();
   }
-  os << '\n';
+  os << " sourceRange=" << scope.sourceRange().size() << " bytes\n";
   ++indent;
   for (const auto &pair : scope) {
     const auto &symbol{*pair.second};
@@ -465,4 +629,19 @@ static void PutIndent(llvm::raw_ostream &os, int indent) {
     os << "  ";
   }
 }
+
+void SemanticsContext::MapCommonBlockAndCheckConflicts(const Symbol &common) {
+  if (!commonBlockMap_) {
+    commonBlockMap_ = std::make_unique<CommonBlockMap>();
+  }
+  commonBlockMap_->MapCommonBlockAndCheckConflicts(*this, common);
+}
+
+CommonBlockList SemanticsContext::GetCommonBlocks() const {
+  if (commonBlockMap_) {
+    return commonBlockMap_->GetCommonBlocks();
+  }
+  return {};
+}
+
 } // namespace Fortran::semantics

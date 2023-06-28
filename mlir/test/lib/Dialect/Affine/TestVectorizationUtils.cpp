@@ -16,6 +16,8 @@
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Affine/LoopUtils.h"
 #include "mlir/Dialect/Affine/Utils.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Utils/IndexingUtils.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/Dialect/Vector/Utils/VectorUtils.h"
 #include "mlir/IR/Builders.h"
@@ -31,13 +33,14 @@
 #define DEBUG_TYPE "affine-super-vectorizer-test"
 
 using namespace mlir;
+using namespace mlir::affine;
 
 static llvm::cl::OptionCategory clOptionsCategory(DEBUG_TYPE " options");
 
 static llvm::cl::list<int> clTestVectorShapeRatio(
     "vector-shape-ratio",
     llvm::cl::desc("Specify the HW vector size for vectorization"),
-    llvm::cl::ZeroOrMore, llvm::cl::cat(clOptionsCategory));
+    llvm::cl::cat(clOptionsCategory));
 static llvm::cl::opt<bool> clTestForwardSlicingAnalysis(
     "forward-slicing",
     llvm::cl::desc("Enable testing forward static slicing and topological sort "
@@ -69,7 +72,9 @@ static llvm::cl::opt<bool> clTestVecAffineLoopNest(
 
 namespace {
 struct VectorizerTestPass
-    : public PassWrapper<VectorizerTestPass, OperationPass<FuncOp>> {
+    : public PassWrapper<VectorizerTestPass, OperationPass<func::FuncOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(VectorizerTestPass)
+
   static constexpr auto kTestAffineMapOpName = "test_affine_map";
   static constexpr auto kTestAffineMapAttrName = "affine_map";
   void getDependentDialects(DialectRegistry &registry) const override {
@@ -88,14 +93,14 @@ struct VectorizerTestPass
   void testComposeMaps(llvm::raw_ostream &outs);
 
   /// Test for 'vectorizeAffineLoopNest' utility.
-  void testVecAffineLoopNest();
+  void testVecAffineLoopNest(llvm::raw_ostream &outs);
 };
 
 } // namespace
 
 void VectorizerTestPass::testVectorShapeRatio(llvm::raw_ostream &outs) {
   auto f = getOperation();
-  using matcher::Op;
+  using affine::matcher::Op;
   SmallVector<int64_t, 8> shape(clTestVectorShapeRatio.begin(),
                                 clTestVectorShapeRatio.end());
   auto subVectorType =
@@ -105,7 +110,7 @@ void VectorizerTestPass::testVectorShapeRatio(llvm::raw_ostream &outs) {
   auto filter = [&](Operation &op) {
     assert(subVectorType.getElementType().isF32() &&
            "Only f32 supported for now");
-    if (!matcher::operatesOnSuperVectorsOf(op, subVectorType)) {
+    if (!mlir::matcher::operatesOnSuperVectorsOf(op, subVectorType)) {
       return false;
     }
     if (op.getNumResults() != 1) {
@@ -122,9 +127,10 @@ void VectorizerTestPass::testVectorShapeRatio(llvm::raw_ostream &outs) {
     // As a consequence we write only Ops with a single return type for the
     // purpose of this test. If we need to test more intricate behavior in the
     // future we can always extend.
-    auto superVectorType = opInst->getResult(0).getType().cast<VectorType>();
-    auto ratio = shapeRatio(superVectorType, subVectorType);
-    if (!ratio.hasValue()) {
+    auto superVectorType = cast<VectorType>(opInst->getResult(0).getType());
+    auto ratio =
+        computeShapeRatio(superVectorType.getShape(), subVectorType.getShape());
+    if (!ratio) {
       opInst->emitRemark("NOT MATCHED");
     } else {
       outs << "\nmatched: " << *opInst << " with shape ratio: ";
@@ -134,7 +140,7 @@ void VectorizerTestPass::testVectorShapeRatio(llvm::raw_ostream &outs) {
 }
 
 static NestedPattern patternTestSlicingOps() {
-  using matcher::Op;
+  using affine::matcher::Op;
   // Match all operations with the kTestSlicingOpName name.
   auto filter = [](Operation &op) {
     // Just use a custom op name for this test, it makes life easier.
@@ -197,7 +203,7 @@ static bool customOpWithAffineMapAttribute(Operation &op) {
 void VectorizerTestPass::testComposeMaps(llvm::raw_ostream &outs) {
   auto f = getOperation();
 
-  using matcher::Op;
+  using affine::matcher::Op;
   auto pattern = Op(customOpWithAffineMapAttribute);
   SmallVector<NestedMatch, 8> matches;
   pattern.match(f, &matches);
@@ -205,11 +211,14 @@ void VectorizerTestPass::testComposeMaps(llvm::raw_ostream &outs) {
   maps.reserve(matches.size());
   for (auto m : llvm::reverse(matches)) {
     auto *opInst = m.getMatchedOperation();
-    auto map = opInst->getAttr(VectorizerTestPass::kTestAffineMapAttrName)
-                   .cast<AffineMapAttr>()
+    auto map = cast<AffineMapAttr>(
+                   opInst->getAttr(VectorizerTestPass::kTestAffineMapAttrName))
                    .getValue();
     maps.push_back(map);
   }
+  if (maps.empty())
+    // Nothing to compose
+    return;
   AffineMap res;
   for (auto m : maps) {
     res = res ? res.compose(m) : m;
@@ -218,7 +227,7 @@ void VectorizerTestPass::testComposeMaps(llvm::raw_ostream &outs) {
 }
 
 /// Test for 'vectorizeAffineLoopNest' utility.
-void VectorizerTestPass::testVecAffineLoopNest() {
+void VectorizerTestPass::testVecAffineLoopNest(llvm::raw_ostream &outs) {
   std::vector<SmallVector<AffineForOp, 2>> loops;
   gatherLoops(getOperation(), loops);
 
@@ -231,6 +240,13 @@ void VectorizerTestPass::testVecAffineLoopNest() {
   VectorizationStrategy strategy;
   strategy.vectorSizes.push_back(4 /*vectorization factor*/);
   strategy.loopToVectorDim[outermostLoop] = 0;
+
+  ReductionLoopMap reductionLoops;
+  SmallVector<LoopReduction, 2> reductions;
+  if (!isLoopParallel(outermostLoop, &reductions)) {
+    outs << "Outermost loop cannot be parallel\n";
+    return;
+  }
   std::vector<SmallVector<AffineForOp, 2>> loopsToVectorize;
   loopsToVectorize.push_back({outermostLoop});
   (void)vectorizeAffineLoopNest(loopsToVectorize, strategy);
@@ -238,7 +254,7 @@ void VectorizerTestPass::testVecAffineLoopNest() {
 
 void VectorizerTestPass::runOnOperation() {
   // Only support single block functions at this point.
-  FuncOp f = getOperation();
+  func::FuncOp f = getOperation();
   if (!llvm::hasSingleElement(f))
     return;
 
@@ -265,7 +281,7 @@ void VectorizerTestPass::runOnOperation() {
   }
 
   if (clTestVecAffineLoopNest)
-    testVecAffineLoopNest();
+    testVecAffineLoopNest(outs);
 
   if (!outs.str().empty()) {
     emitRemark(UnknownLoc::get(&getContext()), outs.str());

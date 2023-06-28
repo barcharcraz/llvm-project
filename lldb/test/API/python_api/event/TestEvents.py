@@ -2,9 +2,6 @@
 Test lldb Python event APIs.
 """
 
-from __future__ import print_function
-
-
 import re
 import lldb
 from lldbsuite.test.decorators import *
@@ -12,11 +9,8 @@ from lldbsuite.test.lldbtest import *
 from lldbsuite.test import lldbutil
 
 
-@skipIfLinux   # llvm.org/pr25924, sometimes generating SIGSEGV
-@skipIfDarwin
+@skipIfLinux  # llvm.org/pr25924, sometimes generating SIGSEGV
 class EventAPITestCase(TestBase):
-
-    mydir = TestBase.compute_mydir(__file__)
     NO_DEBUG_INFO_TESTCASE = True
 
     def setUp(self):
@@ -24,12 +18,13 @@ class EventAPITestCase(TestBase):
         TestBase.setUp(self)
         # Find the line number to of function 'c'.
         self.line = line_number(
-            'main.c', '// Find the line number of function "c" here.')
+            "main.c", '// Find the line number of function "c" here.'
+        )
 
     @expectedFailureAll(
-        oslist=["linux"],
-        bugnumber="llvm.org/pr23730 Flaky, fails ~1/10 cases")
-    @skipIfWindows # This is flakey on Windows AND when it fails, it hangs: llvm.org/pr38373
+        oslist=["linux"], bugnumber="llvm.org/pr23730 Flaky, fails ~1/10 cases"
+    )
+    @skipIfWindows  # This is flakey on Windows AND when it fails, it hangs: llvm.org/pr38373
     @skipIfNetBSD
     def test_listen_for_and_print_event(self):
         """Exercise SBEvent API."""
@@ -43,27 +38,27 @@ class EventAPITestCase(TestBase):
         self.assertTrue(target, VALID_TARGET)
 
         # Now create a breakpoint on main.c by name 'c'.
-        breakpoint = target.BreakpointCreateByName('c', 'a.out')
+        breakpoint = target.BreakpointCreateByName("c", "a.out")
 
         listener = lldb.SBListener("my listener")
 
         # Now launch the process, and do not stop at the entry point.
         error = lldb.SBError()
         flags = target.GetLaunchInfo().GetLaunchFlags()
-        process = target.Launch(listener,
-                                None,      # argv
-                                None,      # envp
-                                None,      # stdin_path
-                                None,      # stdout_path
-                                None,      # stderr_path
-                                None,      # working directory
-                                flags,     # launch flags
-                                False,     # Stop at entry
-                                error)     # error
+        process = target.Launch(
+            listener,
+            None,  # argv
+            None,  # envp
+            None,  # stdin_path
+            None,  # stdout_path
+            None,  # stderr_path
+            None,  # working directory
+            flags,  # launch flags
+            False,  # Stop at entry
+            error,
+        )  # error
 
-        self.assertEqual(
-            process.GetState(), lldb.eStateStopped,
-            PROCESS_STOPPED)
+        self.assertEqual(process.GetState(), lldb.eStateStopped, PROCESS_STOPPED)
 
         # Create an empty event object.
         event = lldb.SBEvent()
@@ -76,7 +71,6 @@ class EventAPITestCase(TestBase):
         import threading
 
         class MyListeningThread(threading.Thread):
-
             def run(self):
                 count = 0
                 # Let's only try at most 4 times to retrieve any kind of event.
@@ -91,8 +85,8 @@ class EventAPITestCase(TestBase):
                             print("Event data flavor:", event.GetDataFlavor())
                             print(
                                 "Process state:",
-                                lldbutil.state_type_to_str(
-                                    process.GetState()))
+                                lldbutil.state_type_to_str(process.GetState()),
+                            )
                             print()
                     else:
                         if traceOn:
@@ -119,7 +113,7 @@ class EventAPITestCase(TestBase):
         # Shouldn't we be testing against some kind of expectation here?
 
     @expectedFlakeyLinux("llvm.org/pr23730")  # Flaky, fails ~1/100 cases
-    @skipIfWindows # This is flakey on Windows AND when it fails, it hangs: llvm.org/pr38373
+    @skipIfWindows  # This is flakey on Windows AND when it fails, it hangs: llvm.org/pr38373
     @skipIfNetBSD
     def test_wait_for_event(self):
         """Exercise SBListener.WaitForEvent() API."""
@@ -133,11 +127,11 @@ class EventAPITestCase(TestBase):
         self.assertTrue(target, VALID_TARGET)
 
         # Now create a breakpoint on main.c by name 'c'.
-        breakpoint = target.BreakpointCreateByName('c', 'a.out')
+        breakpoint = target.BreakpointCreateByName("c", "a.out")
         self.trace("breakpoint:", breakpoint)
-        self.assertTrue(breakpoint and
-                        breakpoint.GetNumLocations() == 1,
-                        VALID_BREAKPOINT)
+        self.assertTrue(
+            breakpoint and breakpoint.GetNumLocations() == 1, VALID_BREAKPOINT
+        )
 
         # Get the debugger listener.
         listener = self.dbg.GetListener()
@@ -145,16 +139,18 @@ class EventAPITestCase(TestBase):
         # Now launch the process, and do not stop at entry point.
         error = lldb.SBError()
         flags = target.GetLaunchInfo().GetLaunchFlags()
-        process = target.Launch(listener,
-                                None,      # argv
-                                None,      # envp
-                                None,      # stdin_path
-                                None,      # stdout_path
-                                None,      # stderr_path
-                                None,      # working directory
-                                flags,     # launch flags
-                                False,     # Stop at entry
-                                error)     # error
+        process = target.Launch(
+            listener,
+            None,  # argv
+            None,  # envp
+            None,  # stdin_path
+            None,  # stdout_path
+            None,  # stderr_path
+            None,  # working directory
+            flags,  # launch flags
+            False,  # Stop at entry
+            error,
+        )  # error
         self.assertTrue(error.Success() and process, PROCESS_IS_VALID)
 
         # Create an empty event object.
@@ -165,15 +161,16 @@ class EventAPITestCase(TestBase):
         import threading
 
         class MyListeningThread(threading.Thread):
-
             def run(self):
                 count = 0
                 # Let's only try at most 3 times to retrieve any kind of event.
                 while not count > 3:
                     if listener.WaitForEvent(5, event):
-                        self.trace("Got a valid event:", event)
-                        self.trace("Event data flavor:", event.GetDataFlavor())
-                        self.trace("Event type:", lldbutil.state_type_to_str(event.GetType()))
+                        self.context.trace("Got a valid event:", event)
+                        self.context.trace("Event data flavor:", event.GetDataFlavor())
+                        self.context.trace(
+                            "Event type:", lldbutil.state_type_to_str(event.GetType())
+                        )
                         listener.Clear()
                         return
                     count = count + 1
@@ -187,19 +184,18 @@ class EventAPITestCase(TestBase):
 
         # Let's start the listening thread to retrieve the event.
         my_thread = MyListeningThread()
+        my_thread.context = self
         my_thread.start()
 
         # Wait until the 'MyListeningThread' terminates.
         my_thread.join()
 
-        self.assertTrue(event,
-                        "My listening thread successfully received an event")
+        self.assertTrue(event, "My listening thread successfully received an event")
 
     @expectedFailureAll(
-        oslist=["linux"],
-        bugnumber="llvm.org/pr23617 Flaky, fails ~1/10 cases")
-    @skipIfWindows # This is flakey on Windows AND when it fails, it hangs: llvm.org/pr38373
-    @expectedFailureAll(oslist=["freebsd"], bugnumber="llvm.org/pr48417")
+        oslist=["linux"], bugnumber="llvm.org/pr23617 Flaky, fails ~1/10 cases"
+    )
+    @skipIfWindows  # This is flakey on Windows AND when it fails, it hangs: llvm.org/pr38373
     @expectedFailureNetBSD
     def test_add_listener_to_broadcaster(self):
         """Exercise some SBBroadcaster APIs."""
@@ -213,27 +209,29 @@ class EventAPITestCase(TestBase):
         self.assertTrue(target, VALID_TARGET)
 
         # Now create a breakpoint on main.c by name 'c'.
-        breakpoint = target.BreakpointCreateByName('c', 'a.out')
+        breakpoint = target.BreakpointCreateByName("c", "a.out")
         self.trace("breakpoint:", breakpoint)
-        self.assertTrue(breakpoint and
-                        breakpoint.GetNumLocations() == 1,
-                        VALID_BREAKPOINT)
+        self.assertTrue(
+            breakpoint and breakpoint.GetNumLocations() == 1, VALID_BREAKPOINT
+        )
 
         listener = lldb.SBListener("my listener")
 
         # Now launch the process, and do not stop at the entry point.
         error = lldb.SBError()
         flags = target.GetLaunchInfo().GetLaunchFlags()
-        process = target.Launch(listener,
-                                None,      # argv
-                                None,      # envp
-                                None,      # stdin_path
-                                None,      # stdout_path
-                                None,      # stderr_path
-                                None,      # working directory
-                                flags,     # launch flags
-                                False,     # Stop at entry
-                                error)     # error
+        process = target.Launch(
+            listener,
+            None,  # argv
+            None,  # envp
+            None,  # stdin_path
+            None,  # stdout_path
+            None,  # stderr_path
+            None,  # working directory
+            flags,  # launch flags
+            False,  # Stop at entry
+            error,
+        )  # error
 
         # Create an empty event object.
         event = lldb.SBEvent()
@@ -254,9 +252,8 @@ class EventAPITestCase(TestBase):
         import threading
 
         class MyListeningThread(threading.Thread):
-
             def run(self):
-                self.trace("Running MyListeningThread:", self)
+                self.context.trace("Running MyListeningThread:", self)
 
                 # Regular expression pattern for the event description.
                 pattern = re.compile("data = {.*, state = (.*)}$")
@@ -266,26 +263,27 @@ class EventAPITestCase(TestBase):
                 while True:
                     if listener.WaitForEvent(5, event):
                         desc = lldbutil.get_description(event)
-                        self.trace("Event description:", desc)
+                        self.context.trace("Event description:", desc)
                         match = pattern.search(desc)
                         if not match:
                             break
-                        if match.group(1) == 'connected':
+                        if match.group(1) == "connected":
                             # When debugging remote targets with lldb-server, we
                             # first get the 'connected' event.
                             self.context.assertTrue(self.context.state is None)
-                            self.context.state = 'connected'
+                            self.context.state = "connected"
                             continue
-                        elif match.group(1) == 'running':
+                        elif match.group(1) == "running":
                             self.context.assertTrue(
-                                self.context.state is None or self.context.state == 'connected')
-                            self.context.state = 'running'
+                                self.context.state is None
+                                or self.context.state == "connected"
+                            )
+                            self.context.state = "running"
                             continue
-                        elif match.group(1) == 'stopped':
-                            self.context.assertTrue(
-                                self.context.state == 'running')
+                        elif match.group(1) == "stopped":
+                            self.context.assertTrue(self.context.state == "running")
                             # Whoopee, both events have been received!
-                            self.context.state = 'stopped'
+                            self.context.state = "stopped"
                             break
                         else:
                             break
@@ -312,5 +310,6 @@ class EventAPITestCase(TestBase):
         my_thread.join()
 
         # The final judgement. :-)
-        self.assertEqual(self.state, 'stopped',
-                        "Both expected state changed events received")
+        self.assertEqual(
+            self.state, "stopped", "Both expected state changed events received"
+        )
