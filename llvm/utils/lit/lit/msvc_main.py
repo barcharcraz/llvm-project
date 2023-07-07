@@ -350,9 +350,11 @@ arch_specific_features = []
 if opts.testTargetArch == "x86_64":
     litConfig.bits = "64"
     arch_specific_features = ['asan-64-bits', 'x86_64-target-arch', 'msvc-host-x86_64']
+    ml_exe = "ml64.exe"
 elif opts.testTargetArch == "i386":
     litConfig.bits = "32"
     arch_specific_features =  ['asan-32-bits', 'x86-target-arch', 'msvc-host-i386']
+    ml_exe = "ml.exe"
 else:
     assert 0 and "Error: unsupported ASan runtime architecture."
 
@@ -457,6 +459,7 @@ testConfig.substitutions = {
                             ("%no_fuzzer_cpp_compiler ", litConfig.clang + default_flags + runtime_flags),
                             ("%no_fuzzer_c_compiler ", litConfig.clang + default_flags + runtime_flags),
                             ("%libfuzzer_src", litConfig.compiler_rt_src_root + "\\lib\\fuzzer"),
+                            ("%ml", ml_exe),
                             ("%env_asan_opts=", "env ASAN_OPTIONS=" ),
                             ("-Fe","/Fe:"),
                             ("%run"," cmd /v /c "),

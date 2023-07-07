@@ -99,12 +99,6 @@
   extern "C" ReturnType Name(__VA_ARGS__);                                     \
   extern "C" ReturnType WEAK_DEFAULT_NAME(Name)(__VA_ARGS__)
 
-// Weak exports require a small prologue to ensure there is enough space
-// for __sanitizer_register_weak_function to insert a jump in functions
-// whose default implementations are noops.
-extern "C" void __nop(); // intrinsic
-# define WIN_WEAK_EXPORT_NOOP_PROLOGUE() do { __nop(); } while (0)
-
 // Use this macro when you need to import a weak function from a library. It
 // defines a weak alias to the imported function from the dll. For example:
 //   WIN_WEAK_IMPORT_DEF(compare)

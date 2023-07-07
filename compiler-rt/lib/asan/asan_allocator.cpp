@@ -1413,13 +1413,11 @@ int __asan_update_allocation_context(void* addr) {
 // Provide default (no-op) implementation of malloc hooks.
 SANITIZER_INTERFACE_WEAK_DEF(void, __sanitizer_malloc_hook,
                              void *ptr, uptr size) {
-  SANITIZER_INTERFACE_WEAK_NOOP_PROLOGUE();
   (void)ptr;
   (void)size;
 }
 
 SANITIZER_INTERFACE_WEAK_DEF(void, __sanitizer_free_hook, void *ptr) {
-  SANITIZER_INTERFACE_WEAK_NOOP_PROLOGUE();
   (void)ptr;
 }
 #endif
