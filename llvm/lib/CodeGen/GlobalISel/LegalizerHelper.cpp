@@ -2584,6 +2584,19 @@ LegalizerHelper::widenScalar(MachineInstr &MI, unsigned TypeIdx, LLT WideTy) {
 
     return UnableToLegalize;
   }
+  case TargetOpcode::G_FFREXP: {
+    Observer.changingInstr(MI);
+
+    if (TypeIdx == 0) {
+      widenScalarSrc(MI, WideTy, 2, TargetOpcode::G_FPEXT);
+      widenScalarDst(MI, WideTy, 0, TargetOpcode::G_FPTRUNC);
+    } else {
+      widenScalarDst(MI, WideTy, 1);
+    }
+
+    Observer.changedInstr(MI);
+    return Legalized;
+  }
   case TargetOpcode::G_INTTOPTR:
     if (TypeIdx != 1)
       return UnableToLegalize;
@@ -4235,6 +4248,7 @@ LegalizerHelper::fewerElementsVector(MachineInstr &MI, unsigned TypeIdx,
   case G_STRICT_FMUL:
   case G_STRICT_FMA:
   case G_STRICT_FLDEXP:
+  case G_FFREXP:
     return fewerElementsVectorMultiEltType(GMI, NumElts);
   case G_ICMP:
   case G_FCMP:
@@ -7260,6 +7274,9 @@ LegalizerHelper::lowerISFPCLASS(MachineInstr &MI) {
     return Legalized;
   }
 
+  // TODO: Try inverting the test with getInvertedFPClassTest like the DAG
+  // version
+
   unsigned BitSize = SrcTy.getScalarSizeInBits();
   const fltSemantics &Semantics = getFltSemanticForLLT(SrcTy.getScalarType());
 
@@ -7313,6 +7330,18 @@ LegalizerHelper::lowerISFPCLASS(MachineInstr &MI) {
     auto And = MIRBuilder.buildAnd(DstTy, Cmp, Sign);
     appendToRes(And);
     Mask &= ~fcNegFinite;
+  }
+
+  if (FPClassTest PartialCheck = Mask & (fcZero | fcSubnormal)) {
+    // fcZero | fcSubnormal => test all exponent bits are 0
+    // TODO: Handle sign bit specific cases
+    // TODO: Handle inverted case
+    if (PartialCheck == (fcZero | fcSubnormal)) {
+      auto ExpBits = MIRBuilder.buildAnd(IntTy, AsInt, ExpMaskC);
+      appendToRes(MIRBuilder.buildICmp(CmpInst::Predicate::ICMP_EQ, DstTy,
+                                       ExpBits, ZeroC));
+      Mask &= ~PartialCheck;
+    }
   }
 
   // Check for individual classes.

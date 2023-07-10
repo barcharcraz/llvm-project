@@ -638,26 +638,22 @@ static void computeKnownBitsFromCmp(const Value *V, const ICmpInst *Cmp,
 
   // Note that ptrtoint may change the bitwidth.
   Value *A, *B;
-  auto m_V = m_CombineOr(m_Specific(V), m_PtrToInt(m_Specific(V)));
+  auto m_V =
+      m_CombineOr(m_Specific(V), m_PtrToIntSameSize(Q.DL, m_Specific(V)));
 
   CmpInst::Predicate Pred;
   uint64_t C;
   switch (Cmp->getPredicate()) {
-  default:
-    break;
   case ICmpInst::ICMP_EQ:
     // assume(v = a)
     if (match(Cmp, m_c_ICmp(Pred, m_V, m_Value(A)))) {
-      KnownBits RHSKnown =
-          computeKnownBits(A, Depth + 1, QueryNoAC).anyextOrTrunc(BitWidth);
+      KnownBits RHSKnown = computeKnownBits(A, Depth + 1, QueryNoAC);
       Known = Known.unionWith(RHSKnown);
       // assume(v & b = a)
     } else if (match(Cmp,
                      m_c_ICmp(Pred, m_c_And(m_V, m_Value(B)), m_Value(A)))) {
-      KnownBits RHSKnown =
-          computeKnownBits(A, Depth + 1, QueryNoAC).anyextOrTrunc(BitWidth);
-      KnownBits MaskKnown =
-          computeKnownBits(B, Depth + 1, QueryNoAC).anyextOrTrunc(BitWidth);
+      KnownBits RHSKnown = computeKnownBits(A, Depth + 1, QueryNoAC);
+      KnownBits MaskKnown = computeKnownBits(B, Depth + 1, QueryNoAC);
 
       // For those bits in the mask that are known to be one, we can propagate
       // known bits from the RHS to V.
@@ -666,10 +662,8 @@ static void computeKnownBitsFromCmp(const Value *V, const ICmpInst *Cmp,
       // assume(~(v & b) = a)
     } else if (match(Cmp, m_c_ICmp(Pred, m_Not(m_c_And(m_V, m_Value(B))),
                                    m_Value(A)))) {
-      KnownBits RHSKnown =
-          computeKnownBits(A, Depth + 1, QueryNoAC).anyextOrTrunc(BitWidth);
-      KnownBits MaskKnown =
-          computeKnownBits(B, Depth + 1, QueryNoAC).anyextOrTrunc(BitWidth);
+      KnownBits RHSKnown = computeKnownBits(A, Depth + 1, QueryNoAC);
+      KnownBits MaskKnown = computeKnownBits(B, Depth + 1, QueryNoAC);
 
       // For those bits in the mask that are known to be one, we can propagate
       // inverted known bits from the RHS to V.
@@ -678,10 +672,8 @@ static void computeKnownBitsFromCmp(const Value *V, const ICmpInst *Cmp,
       // assume(v | b = a)
     } else if (match(Cmp,
                      m_c_ICmp(Pred, m_c_Or(m_V, m_Value(B)), m_Value(A)))) {
-      KnownBits RHSKnown =
-          computeKnownBits(A, Depth + 1, QueryNoAC).anyextOrTrunc(BitWidth);
-      KnownBits BKnown =
-          computeKnownBits(B, Depth + 1, QueryNoAC).anyextOrTrunc(BitWidth);
+      KnownBits RHSKnown = computeKnownBits(A, Depth + 1, QueryNoAC);
+      KnownBits BKnown = computeKnownBits(B, Depth + 1, QueryNoAC);
 
       // For those bits in B that are known to be zero, we can propagate known
       // bits from the RHS to V.
@@ -690,10 +682,8 @@ static void computeKnownBitsFromCmp(const Value *V, const ICmpInst *Cmp,
       // assume(~(v | b) = a)
     } else if (match(Cmp, m_c_ICmp(Pred, m_Not(m_c_Or(m_V, m_Value(B))),
                                    m_Value(A)))) {
-      KnownBits RHSKnown =
-          computeKnownBits(A, Depth + 1, QueryNoAC).anyextOrTrunc(BitWidth);
-      KnownBits BKnown =
-          computeKnownBits(B, Depth + 1, QueryNoAC).anyextOrTrunc(BitWidth);
+      KnownBits RHSKnown = computeKnownBits(A, Depth + 1, QueryNoAC);
+      KnownBits BKnown = computeKnownBits(B, Depth + 1, QueryNoAC);
 
       // For those bits in B that are known to be zero, we can propagate
       // inverted known bits from the RHS to V.
@@ -702,10 +692,8 @@ static void computeKnownBitsFromCmp(const Value *V, const ICmpInst *Cmp,
       // assume(v ^ b = a)
     } else if (match(Cmp,
                      m_c_ICmp(Pred, m_c_Xor(m_V, m_Value(B)), m_Value(A)))) {
-      KnownBits RHSKnown =
-          computeKnownBits(A, Depth + 1, QueryNoAC).anyextOrTrunc(BitWidth);
-      KnownBits BKnown =
-          computeKnownBits(B, Depth + 1, QueryNoAC).anyextOrTrunc(BitWidth);
+      KnownBits RHSKnown = computeKnownBits(A, Depth + 1, QueryNoAC);
+      KnownBits BKnown = computeKnownBits(B, Depth + 1, QueryNoAC);
 
       // For those bits in B that are known to be zero, we can propagate known
       // bits from the RHS to V. For those bits in B that are known to be one,
@@ -717,10 +705,8 @@ static void computeKnownBitsFromCmp(const Value *V, const ICmpInst *Cmp,
       // assume(~(v ^ b) = a)
     } else if (match(Cmp, m_c_ICmp(Pred, m_Not(m_c_Xor(m_V, m_Value(B))),
                                    m_Value(A)))) {
-      KnownBits RHSKnown =
-          computeKnownBits(A, Depth + 1, QueryNoAC).anyextOrTrunc(BitWidth);
-      KnownBits BKnown =
-          computeKnownBits(B, Depth + 1, QueryNoAC).anyextOrTrunc(BitWidth);
+      KnownBits RHSKnown = computeKnownBits(A, Depth + 1, QueryNoAC);
+      KnownBits BKnown = computeKnownBits(B, Depth + 1, QueryNoAC);
 
       // For those bits in B that are known to be zero, we can propagate
       // inverted known bits from the RHS to V. For those bits in B that are
@@ -733,8 +719,7 @@ static void computeKnownBitsFromCmp(const Value *V, const ICmpInst *Cmp,
     } else if (match(Cmp, m_c_ICmp(Pred, m_Shl(m_V, m_ConstantInt(C)),
                                    m_Value(A))) &&
                C < BitWidth) {
-      KnownBits RHSKnown =
-          computeKnownBits(A, Depth + 1, QueryNoAC).anyextOrTrunc(BitWidth);
+      KnownBits RHSKnown = computeKnownBits(A, Depth + 1, QueryNoAC);
 
       // For those bits in RHS that are known, we can propagate them to known
       // bits in V shifted to the right by C.
@@ -745,8 +730,7 @@ static void computeKnownBitsFromCmp(const Value *V, const ICmpInst *Cmp,
     } else if (match(Cmp, m_c_ICmp(Pred, m_Not(m_Shl(m_V, m_ConstantInt(C))),
                                    m_Value(A))) &&
                C < BitWidth) {
-      KnownBits RHSKnown =
-          computeKnownBits(A, Depth + 1, QueryNoAC).anyextOrTrunc(BitWidth);
+      KnownBits RHSKnown = computeKnownBits(A, Depth + 1, QueryNoAC);
       // For those bits in RHS that are known, we can propagate them inverted
       // to known bits in V shifted to the right by C.
       RHSKnown.One.lshrInPlace(C);
@@ -757,8 +741,7 @@ static void computeKnownBitsFromCmp(const Value *V, const ICmpInst *Cmp,
     } else if (match(Cmp, m_c_ICmp(Pred, m_Shr(m_V, m_ConstantInt(C)),
                                    m_Value(A))) &&
                C < BitWidth) {
-      KnownBits RHSKnown =
-          computeKnownBits(A, Depth + 1, QueryNoAC).anyextOrTrunc(BitWidth);
+      KnownBits RHSKnown = computeKnownBits(A, Depth + 1, QueryNoAC);
       // For those bits in RHS that are known, we can propagate them to known
       // bits in V shifted to the right by C.
       Known.Zero |= RHSKnown.Zero << C;
@@ -767,101 +750,35 @@ static void computeKnownBitsFromCmp(const Value *V, const ICmpInst *Cmp,
     } else if (match(Cmp, m_c_ICmp(Pred, m_Not(m_Shr(m_V, m_ConstantInt(C))),
                                    m_Value(A))) &&
                C < BitWidth) {
-      KnownBits RHSKnown =
-          computeKnownBits(A, Depth + 1, QueryNoAC).anyextOrTrunc(BitWidth);
+      KnownBits RHSKnown = computeKnownBits(A, Depth + 1, QueryNoAC);
       // For those bits in RHS that are known, we can propagate them inverted
       // to known bits in V shifted to the right by C.
       Known.Zero |= RHSKnown.One << C;
       Known.One |= RHSKnown.Zero << C;
     }
     break;
-  case ICmpInst::ICMP_SGE:
-    // assume(v >=_s c) where c is non-negative
-    if (match(Cmp, m_ICmp(Pred, m_V, m_Value(A)))) {
-      KnownBits RHSKnown =
-          computeKnownBits(A, Depth + 1, QueryNoAC).anyextOrTrunc(BitWidth);
-
-      if (RHSKnown.isNonNegative()) {
-        // We know that the sign bit is zero.
-        Known.makeNonNegative();
-      }
-    }
-    break;
-  case ICmpInst::ICMP_SGT:
-    // assume(v >_s c) where c is at least -1.
-    if (match(Cmp, m_ICmp(Pred, m_V, m_Value(A)))) {
-      KnownBits RHSKnown =
-          computeKnownBits(A, Depth + 1, QueryNoAC).anyextOrTrunc(BitWidth);
-
-      if (RHSKnown.isAllOnes() || RHSKnown.isNonNegative()) {
-        // We know that the sign bit is zero.
-        Known.makeNonNegative();
-      }
-    }
-    break;
-  case ICmpInst::ICMP_SLE:
-    // assume(v <=_s c) where c is negative
-    if (match(Cmp, m_ICmp(Pred, m_V, m_Value(A)))) {
-      KnownBits RHSKnown =
-          computeKnownBits(A, Depth + 1, QueryNoAC).anyextOrTrunc(BitWidth);
-
-      if (RHSKnown.isNegative()) {
-        // We know that the sign bit is one.
-        Known.makeNegative();
-      }
-    }
-    break;
-  case ICmpInst::ICMP_SLT:
-    // assume(v <_s c) where c is non-positive
-    if (match(Cmp, m_ICmp(Pred, m_V, m_Value(A)))) {
-      KnownBits RHSKnown =
-          computeKnownBits(A, Depth + 1, QueryNoAC).anyextOrTrunc(BitWidth);
-
-      if (RHSKnown.isZero() || RHSKnown.isNegative()) {
-        // We know that the sign bit is one.
-        Known.makeNegative();
-      }
-    }
-    break;
-  case ICmpInst::ICMP_ULE:
-    // assume(v <=_u c)
-    if (match(Cmp, m_ICmp(Pred, m_V, m_Value(A)))) {
-      KnownBits RHSKnown =
-          computeKnownBits(A, Depth + 1, QueryNoAC).anyextOrTrunc(BitWidth);
-
-      // Whatever high bits in c are zero are known to be zero.
-      Known.Zero.setHighBits(RHSKnown.countMinLeadingZeros());
-    }
-    break;
-  case ICmpInst::ICMP_ULT:
-    // assume(v <_u c)
-    if (match(Cmp, m_ICmp(Pred, m_V, m_Value(A)))) {
-      KnownBits RHSKnown =
-          computeKnownBits(A, Depth + 1, QueryNoAC).anyextOrTrunc(BitWidth);
-
-      // If the RHS is known zero, then this assumption must be wrong (nothing
-      // is unsigned less than zero). Signal a conflict and get out of here.
-      if (RHSKnown.isZero()) {
-        Known.Zero.setAllBits();
-        Known.One.setAllBits();
-        break;
-      }
-
-      // Whatever high bits in c are zero are known to be zero (if c is a power
-      // of 2, then one more).
-      if (isKnownToBeAPowerOfTwo(A, false, Depth + 1, QueryNoAC))
-        Known.Zero.setHighBits(RHSKnown.countMinLeadingZeros() + 1);
-      else
-        Known.Zero.setHighBits(RHSKnown.countMinLeadingZeros());
-    }
-    break;
   case ICmpInst::ICMP_NE: {
     // assume (v & b != 0) where b is a power of 2
     const APInt *BPow2;
     if (match(Cmp, m_ICmp(Pred, m_c_And(m_V, m_Power2(BPow2)), m_Zero()))) {
-      Known.One |= BPow2->zextOrTrunc(BitWidth);
+      Known.One |= *BPow2;
     }
-  } break;
+    break;
+  }
+  default:
+    const APInt *Offset = nullptr;
+    if (match(Cmp, m_ICmp(Pred, m_CombineOr(m_V, m_Add(m_V, m_APInt(Offset))),
+                          m_Value(A)))) {
+      KnownBits RHSKnown = computeKnownBits(A, Depth + 1, QueryNoAC);
+      ConstantRange RHSRange =
+          ConstantRange::fromKnownBits(RHSKnown, Cmp->isSigned());
+      ConstantRange LHSRange =
+          ConstantRange::makeAllowedICmpRegion(Pred, RHSRange);
+      if (Offset)
+        LHSRange = LHSRange.sub(*Offset);
+      Known = Known.unionWith(LHSRange.toKnownBits());
+    }
+    break;
   }
 }
 
@@ -1712,6 +1629,16 @@ static void computeKnownBitsFromOperator(const Operator *I,
         computeKnownBits(I->getOperand(1), Known2, Depth + 1, Q);
         Known = KnownBits::smax(Known, Known2);
         break;
+      case Intrinsic::ptrmask: {
+        computeKnownBits(I->getOperand(0), Known, Depth + 1, Q);
+
+        const Value *Mask = I->getOperand(1);
+        Known2 = KnownBits(Mask->getType()->getScalarSizeInBits());
+        computeKnownBits(Mask, Known2, Depth + 1, Q);
+        // This is basically a pointer typed and.
+        Known &= Known2.zextOrTrunc(Known.getBitWidth());
+        break;
+      }
       case Intrinsic::x86_sse42_crc32_64_64:
         Known.Zero.setBitsFrom(32);
         break;
@@ -1994,6 +1921,10 @@ void computeKnownBits(const Value *V, const APInt &DemandedElts,
 
   if (const Operator *I = dyn_cast<Operator>(V))
     computeKnownBitsFromOperator(I, DemandedElts, Known, Depth, Q);
+  else if (const GlobalValue *GV = dyn_cast<GlobalValue>(V)) {
+    if (std::optional<ConstantRange> CR = GV->getAbsoluteSymbolRange())
+      Known = CR->toKnownBits();
+  }
 
   // Aligned pointers have trailing zeros - refine Known.Zero set
   if (isa<PointerType>(V->getType())) {
@@ -2588,7 +2519,7 @@ bool isKnownNonZero(const Value *V, const APInt &DemandedElts, unsigned Depth,
 
   if (PointerType *PtrTy = dyn_cast<PointerType>(V->getType())) {
     // Alloca never returns null, malloc might.
-    if (isa<AllocaInst>(V) && Q.DL.getAllocaAddrSpace() == 0)
+    if (isa<AllocaInst>(V) && PtrTy->getAddressSpace() == 0)
       return true;
 
     // A byval, inalloca may not be null in a non-default addres space. A
@@ -2777,7 +2708,7 @@ bool isKnownNonZero(const Value *V, const APInt &DemandedElts, unsigned Depth,
 
     // If there exists any subset of X (sX) and subset of Y (sY) s.t sX * sY is
     // non-zero, then X * Y is non-zero. We can find sX and sY by just taking
-    // the the lowest known One of X and Y. If they are non-zero, the result
+    // the lowest known One of X and Y. If they are non-zero, the result
     // must be non-zero. We can check if LSB(X) * LSB(Y) != 0 by doing
     // X.CountLeadingZeros + Y.CountLeadingZeros < BitWidth.
     return (XKnown.countMaxTrailingZeros() + YKnown.countMaxTrailingZeros()) <
@@ -4469,7 +4400,8 @@ void computeKnownFPClass(const Value *V, const APInt &DemandedElts,
         // If the input denormal mode could be PreserveSign, a negative
         // subnormal input could produce a negative zero output.
         const Function *F = II->getFunction();
-        if (F && KnownSrc.isKnownNeverLogicalNegZero(*F, II->getType())) {
+        if (Q.IIQ.hasNoSignedZeros(II) ||
+            (F && KnownSrc.isKnownNeverLogicalNegZero(*F, II->getType()))) {
           Known.knownNot(fcNegZero);
           if (KnownSrc.isKnownNeverNaN())
             Known.SignBit = false;
@@ -4740,14 +4672,30 @@ void computeKnownFPClass(const Value *V, const APInt &DemandedElts,
   case Instruction::FAdd:
   case Instruction::FSub: {
     KnownFPClass KnownLHS, KnownRHS;
-    computeKnownFPClass(Op->getOperand(1), DemandedElts, fcNan | fcInf,
+    bool WantNegative =
+        Op->getOpcode() == Instruction::FAdd &&
+        (InterestedClasses & KnownFPClass::OrderedLessThanZeroMask) != fcNone;
+    bool WantNaN = (InterestedClasses & fcNan) != fcNone;
+    bool WantNegZero = (InterestedClasses & fcNegZero) != fcNone;
+
+    if (!WantNaN && !WantNegative && !WantNegZero)
+      break;
+
+    FPClassTest InterestedSrcs = InterestedClasses;
+    if (WantNegative)
+      InterestedSrcs |= KnownFPClass::OrderedLessThanZeroMask;
+    if (InterestedClasses & fcNan)
+      InterestedSrcs |= fcInf;
+    computeKnownFPClass(Op->getOperand(1), DemandedElts, InterestedSrcs,
                         KnownRHS, Depth + 1, Q);
 
-    if (KnownRHS.isKnownNeverNaN() || KnownRHS.isKnownNeverNegZero() ||
-        (Opc == Instruction::FSub && KnownRHS.isKnownNeverPosZero())) {
+    if ((WantNaN && KnownRHS.isKnownNeverNaN()) ||
+        (WantNegative && KnownRHS.cannotBeOrderedLessThanZero()) ||
+        WantNegZero || Opc == Instruction::FSub) {
+
       // RHS is canonically cheaper to compute. Skip inspecting the LHS if
       // there's no point.
-      computeKnownFPClass(Op->getOperand(0), DemandedElts, fcNan | fcInf,
+      computeKnownFPClass(Op->getOperand(0), DemandedElts, InterestedSrcs,
                           KnownLHS, Depth + 1, Q);
       // Adding positive and negative infinity produces NaN.
       // TODO: Check sign of infinities.
@@ -4757,10 +4705,14 @@ void computeKnownFPClass(const Value *V, const APInt &DemandedElts,
 
       // FIXME: Context function should always be passed in separately
       const Function *F = cast<Instruction>(Op)->getFunction();
-      if (!F)
-        break;
 
       if (Op->getOpcode() == Instruction::FAdd) {
+        if (KnownLHS.cannotBeOrderedLessThanZero() &&
+            KnownRHS.cannotBeOrderedLessThanZero())
+          Known.knownNot(KnownFPClass::OrderedLessThanZeroMask);
+        if (!F)
+          break;
+
         // (fadd x, 0.0) is guaranteed to return +0.0, not -0.0.
         if ((KnownLHS.isKnownNeverLogicalNegZero(*F, Op->getType()) ||
              KnownRHS.isKnownNeverLogicalNegZero(*F, Op->getType())) &&
@@ -4768,6 +4720,9 @@ void computeKnownFPClass(const Value *V, const APInt &DemandedElts,
             outputDenormalIsIEEEOrPosZero(*F, Op->getType()))
           Known.knownNot(fcNegZero);
       } else {
+        if (!F)
+          break;
+
         // Only fsub -0, +0 can return -0
         if ((KnownLHS.isKnownNeverLogicalNegZero(*F, Op->getType()) ||
              KnownRHS.isKnownNeverLogicalPosZero(*F, Op->getType())) &&
@@ -6923,7 +6878,8 @@ void llvm::getGuaranteedWellDefinedOps(
         Operands.push_back(CB->getCalledOperand());
       for (unsigned i = 0; i < CB->arg_size(); ++i) {
         if (CB->paramHasAttr(i, Attribute::NoUndef) ||
-            CB->paramHasAttr(i, Attribute::Dereferenceable))
+            CB->paramHasAttr(i, Attribute::Dereferenceable) ||
+            CB->paramHasAttr(i, Attribute::DereferenceableOrNull))
           Operands.push_back(CB->getArgOperand(i));
       }
       break;

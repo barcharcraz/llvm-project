@@ -326,7 +326,6 @@ set(files
   __coroutine/coroutine_traits.h
   __coroutine/noop_coroutine_handle.h
   __coroutine/trivial_awaitables.h
-  __debug
   __debug_utils/randomize_range.h
   __debug_utils/strict_weak_ordering_check.h
   __exception/exception.h
@@ -385,6 +384,7 @@ set(files
   __format/range_formatter.h
   __format/unicode.h
   __format/width_estimation_table.h
+  __format/write_escaped.h
   __functional/binary_function.h
   __functional/binary_negate.h
   __functional/bind.h
@@ -418,6 +418,7 @@ set(files
   __fwd/hash.h
   __fwd/ios.h
   __fwd/istream.h
+  __fwd/mdspan.h
   __fwd/memory_resource.h
   __fwd/ostream.h
   __fwd/pair.h
@@ -477,6 +478,8 @@ set(files
   __locale_dir/locale_base_api/locale_guard.h
   __mbstate_t.h
   __mdspan/extents.h
+  __mdspan/layout_left.h
+  __mdspan/layout_right.h
   __memory/addressof.h
   __memory/align.h
   __memory/aligned_alloc.h
@@ -502,7 +505,6 @@ set(files
   __memory/temp_value.h
   __memory/temporary_buffer.h
   __memory/uninitialized_algorithms.h
-  __memory/uninitialized_buffer.h
   __memory/unique_ptr.h
   __memory/uses_allocator.h
   __memory/uses_allocator_construction.h
@@ -609,7 +611,6 @@ set(files
   __ranges/common_view.h
   __ranges/concepts.h
   __ranges/container_compatible_range.h
-  __ranges/copyable_box.h
   __ranges/counted.h
   __ranges/dangling.h
   __ranges/data.h
@@ -626,6 +627,7 @@ set(files
   __ranges/istream_view.h
   __ranges/join_view.h
   __ranges/lazy_split_view.h
+  __ranges/movable_box.h
   __ranges/non_propagating_cache.h
   __ranges/owning_view.h
   __ranges/range_adaptor.h
@@ -706,6 +708,7 @@ set(files
   __type_traits/conjunction.h
   __type_traits/copy_cv.h
   __type_traits/copy_cvref.h
+  __type_traits/datasizeof.h
   __type_traits/decay.h
   __type_traits/dependent_type.h
   __type_traits/disjunction.h

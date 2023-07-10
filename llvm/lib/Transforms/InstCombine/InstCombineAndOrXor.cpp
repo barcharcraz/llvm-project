@@ -1712,6 +1712,26 @@ Instruction *InstCombinerImpl::foldCastedBitwiseLogic(BinaryOperator &I) {
   assert(I.isBitwiseLogicOp() && "Unexpected opcode for bitwise logic folding");
 
   Value *Op0 = I.getOperand(0), *Op1 = I.getOperand(1);
+
+  // ( A << (X - 1) ) | ((A > 0) zext to iX)
+  // <=> A < 0 | A > 0
+  // <=> (A != 0) zext to iX
+  Value *A;
+  ICmpInst::Predicate Pred;
+
+  auto MatchOrZExtICmp = [&](Value *Op0, Value *Op1) -> bool {
+    return match(Op0, m_LShr(m_Value(A), m_SpecificInt(Op0->getType()->getScalarSizeInBits() - 1))) &&
+           match(Op1, m_ZExt(m_ICmp(Pred, m_Specific(A), m_Zero())));
+  };
+
+  if (LogicOpc == Instruction::Or &&
+      (MatchOrZExtICmp(Op0, Op1) || MatchOrZExtICmp(Op1, Op0)) &&
+      Pred == ICmpInst::ICMP_SGT) {
+      Value *Cmp =
+          Builder.CreateICmpNE(A, Constant::getNullValue(A->getType()));
+      return new ZExtInst(Cmp, A->getType());
+  }
+
   CastInst *Cast0 = dyn_cast<CastInst>(Op0);
   if (!Cast0)
     return nullptr;
@@ -2115,6 +2135,49 @@ static Instruction *canonicalizeLogicFirst(BinaryOperator &I,
   Value *NewBinOp = Builder.CreateBinOp(OpC, X, ConstantInt::get(Ty, *C));
   return BinaryOperator::CreateWithCopiedFlags(Instruction::Add, NewBinOp,
                                                ConstantInt::get(Ty, *C2), Add);
+}
+
+// binop(shift(ShiftedC1, ShAmt), shift(ShiftedC2, add(ShAmt, AddC))) ->
+// shift(binop(ShiftedC1, shift(ShiftedC2, AddC)), ShAmt)
+// where both shifts are the same and AddC is a valid shift amount.
+Instruction *InstCombinerImpl::foldBinOpOfDisplacedShifts(BinaryOperator &I) {
+  assert((I.isBitwiseLogicOp() || I.getOpcode() == Instruction::Add) &&
+         "Unexpected opcode");
+
+  Value *ShAmt;
+  Constant *ShiftedC1, *ShiftedC2, *AddC;
+  Type *Ty = I.getType();
+  unsigned BitWidth = Ty->getScalarSizeInBits();
+  if (!match(&I,
+             m_c_BinOp(m_Shift(m_ImmConstant(ShiftedC1), m_Value(ShAmt)),
+                       m_Shift(m_ImmConstant(ShiftedC2),
+                               m_Add(m_Deferred(ShAmt), m_ImmConstant(AddC))))))
+    return nullptr;
+
+  // Make sure the add constant is a valid shift amount.
+  if (!match(AddC,
+             m_SpecificInt_ICMP(ICmpInst::ICMP_ULT, APInt(BitWidth, BitWidth))))
+    return nullptr;
+
+  // Avoid constant expressions.
+  auto *Op0Inst = dyn_cast<Instruction>(I.getOperand(0));
+  auto *Op1Inst = dyn_cast<Instruction>(I.getOperand(1));
+  if (!Op0Inst || !Op1Inst)
+    return nullptr;
+
+  // Both shifts must be the same.
+  Instruction::BinaryOps ShiftOp =
+      static_cast<Instruction::BinaryOps>(Op0Inst->getOpcode());
+  if (ShiftOp != Op1Inst->getOpcode())
+    return nullptr;
+
+  // For adds, only left shifts are supported.
+  if (I.getOpcode() == Instruction::Add && ShiftOp != Instruction::Shl)
+    return nullptr;
+
+  Value *NewC = Builder.CreateBinOp(
+      I.getOpcode(), ShiftedC1, Builder.CreateBinOp(ShiftOp, ShiftedC2, AddC));
+  return BinaryOperator::Create(ShiftOp, NewC, ShAmt);
 }
 
 // FIXME: We use commutative matchers (m_c_*) for some, but not all, matches
@@ -2600,6 +2663,9 @@ Instruction *InstCombinerImpl::visitAnd(BinaryOperator &I) {
 
   if (Instruction *Folded = foldLogicOfIsFPClass(I, Op0, Op1))
     return Folded;
+
+  if (Instruction *Res = foldBinOpOfDisplacedShifts(I))
+    return Res;
 
   return nullptr;
 }
@@ -3626,6 +3692,9 @@ Instruction *InstCombinerImpl::visitOr(BinaryOperator &I) {
   if (Instruction *Folded = foldLogicOfIsFPClass(I, Op0, Op1))
     return Folded;
 
+  if (Instruction *Res = foldBinOpOfDisplacedShifts(I))
+    return Res;
+
   return nullptr;
 }
 
@@ -4542,6 +4611,9 @@ Instruction *InstCombinerImpl::visitXor(BinaryOperator &I) {
 
   if (Instruction *Folded = canonicalizeConditionalNegationViaMathToSelect(I))
     return Folded;
+
+  if (Instruction *Res = foldBinOpOfDisplacedShifts(I))
+    return Res;
 
   return nullptr;
 }

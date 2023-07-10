@@ -3430,7 +3430,7 @@ bool ProcessGDBRemote::StartAsyncThread() {
         });
     if (!async_thread) {
       LLDB_LOG_ERROR(GetLog(LLDBLog::Host), async_thread.takeError(),
-                     "failed to launch host thread: {}");
+                     "failed to launch host thread: {0}");
       return false;
     }
     m_async_thread = *async_thread;
@@ -3922,7 +3922,7 @@ StructuredData::ObjectSP ProcessGDBRemote::GetSharedCacheInfo() {
 }
 
 Status ProcessGDBRemote::ConfigureStructuredData(
-    ConstString type_name, const StructuredData::ObjectSP &config_sp) {
+    llvm::StringRef type_name, const StructuredData::ObjectSP &config_sp) {
   return m_gdb_comm.ConfigureRemoteStructuredData(type_name, config_sp);
 }
 

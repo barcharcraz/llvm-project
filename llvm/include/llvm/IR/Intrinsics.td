@@ -94,6 +94,11 @@ class Align<AttrIndex idx, int align> : IntrinsicProperty {
   int Align = align;
 }
 
+class Dereferenceable<AttrIndex idx, int bytes> : IntrinsicProperty {
+  int ArgNo = idx.Value;
+  int Bytes = bytes;
+}
+
 // Returned - The specified argument is always the return value of the
 // intrinsic.
 class Returned<AttrIndex idx> : IntrinsicProperty {
@@ -1041,6 +1046,9 @@ let IntrProperties = [IntrNoMem, IntrSpeculatable, IntrWillReturn] in {
   // TODO: int operand should be constrained to same number of elements as the result.
   def int_ldexp : DefaultAttrsIntrinsic<[llvm_anyfloat_ty], [LLVMMatchType<0>,
                                                              llvm_anyint_ty]>;
+
+  // TODO: Should constrain all element counts to match
+  def int_frexp : DefaultAttrsIntrinsic<[llvm_anyfloat_ty, llvm_anyint_ty], [LLVMMatchType<0>]>;
 }
 
 def int_minnum : DefaultAttrsIntrinsic<[llvm_anyfloat_ty],
@@ -2223,6 +2231,11 @@ def int_type_test : DefaultAttrsIntrinsic<[llvm_i1_ty], [llvm_ptr_ty, llvm_metad
 
 // Safely loads a function pointer from a virtual table pointer using type metadata.
 def int_type_checked_load : DefaultAttrsIntrinsic<[llvm_ptr_ty, llvm_i1_ty],
+                                      [llvm_ptr_ty, llvm_i32_ty, llvm_metadata_ty],
+                                      [IntrNoMem, IntrWillReturn]>;
+
+// Safely loads a relative function pointer from a virtual table pointer using type metadata.
+def int_type_checked_load_relative : DefaultAttrsIntrinsic<[llvm_ptr_ty, llvm_i1_ty],
                                       [llvm_ptr_ty, llvm_i32_ty, llvm_metadata_ty],
                                       [IntrNoMem, IntrWillReturn]>;
 

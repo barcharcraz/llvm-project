@@ -262,11 +262,9 @@ void tools::AddLinkerInputs(const ToolChain &TC, const InputInfoList &Inputs,
   Args.AddAllArgValues(CmdArgs, options::OPT_Zlinker_input);
 
   // LIBRARY_PATH are included before user inputs and only supported on native
-  // toolchains. Otherwise only add the '-L' arguments requested by the user.
+  // toolchains.
   if (!TC.isCrossCompiling())
     addDirectoryList(Args, CmdArgs, "-L", "LIBRARY_PATH");
-  else
-    Args.AddAllArgs(CmdArgs, options::OPT_L);
 
   for (const auto &II : Inputs) {
     // If the current tool chain refers to an OpenMP offloading host, we
@@ -935,12 +933,6 @@ void tools::addFortranRuntimeLibs(const ToolChain &TC,
 void tools::addFortranRuntimeLibraryPath(const ToolChain &TC,
                                          const llvm::opt::ArgList &Args,
                                          ArgStringList &CmdArgs) {
-  // NOTE: Generating executables by Flang is considered an "experimental"
-  // feature and hence this is guarded with a command line option.
-  // TODO: Make this work unconditionally once Flang is mature enough.
-  if (!Args.hasArg(options::OPT_flang_experimental_exec))
-    return;
-
   // Default to the <driver-path>/../lib directory. This works fine on the
   // platforms that we have tested so far. We will probably have to re-fine
   // this in the future. In particular, on some platforms, we may need to use
@@ -1284,7 +1276,7 @@ const char *tools::SplitDebugName(const JobAction &JA, const ArgList &Args,
   if (const Arg *A = Args.getLastArg(options::OPT_dumpdir)) {
     T = A->getValue();
   } else {
-    Arg *FinalOutput = Args.getLastArg(options::OPT_o);
+    Arg *FinalOutput = Args.getLastArg(options::OPT_o, options::OPT__SLASH_o);
     if (FinalOutput && Args.hasArg(options::OPT_c)) {
       T = FinalOutput->getValue();
       llvm::sys::path::remove_filename(T);

@@ -100,6 +100,8 @@ public:
 
   bool enableInterleavedAccessVectorization() { return true; }
 
+  bool enableMaskedInterleavedAccessVectorization() { return ST->hasSVE(); }
+
   unsigned getNumberOfRegisters(unsigned ClassID) const {
     bool Vector = (ClassID == 1);
     if (Vector) {
@@ -179,8 +181,8 @@ public:
                                      TTI::TargetCostKind CostKind,
                                      unsigned Index);
 
-  InstructionCost getMinMaxReductionCost(VectorType *Ty, VectorType *CondTy,
-                                         bool IsUnsigned, FastMathFlags FMF,
+  InstructionCost getMinMaxReductionCost(Intrinsic::ID IID, VectorType *Ty,
+                                         FastMathFlags FMF,
                                          TTI::TargetCostKind CostKind);
 
   InstructionCost getArithmeticReductionCostSVE(unsigned Opcode,

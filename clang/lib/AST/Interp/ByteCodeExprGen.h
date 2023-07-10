@@ -166,7 +166,8 @@ protected:
     if (!visitInitializer(Init))
       return false;
 
-    if (Init->getType()->isRecordType() && !this->emitCheckGlobalCtor(Init))
+    if ((Init->getType()->isArrayType() || Init->getType()->isRecordType()) &&
+        !this->emitCheckGlobalCtor(Init))
       return false;
 
     return this->emitPopPtr(Init);
@@ -244,15 +245,6 @@ private:
     if (const auto *RD = T->getPointeeCXXRecordDecl())
       return RD;
     return T->getAsCXXRecordDecl();
-  }
-
-  /// Returns whether we should create a global variable for the
-  /// given ValueDecl.
-  bool shouldBeGloballyIndexed(const ValueDecl *VD) const {
-    if (const auto *V = dyn_cast<VarDecl>(VD))
-      return V->hasGlobalStorage() || V->isConstexpr();
-
-    return false;
   }
 
   llvm::RoundingMode getRoundingMode(const Expr *E) const {

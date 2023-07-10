@@ -476,6 +476,7 @@ SITargetLowering::SITargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::FFLOOR, MVT::f64, Legal);
   setOperationAction({ISD::FLDEXP, ISD::STRICT_FLDEXP}, {MVT::f32, MVT::f64},
                      Legal);
+  setOperationAction(ISD::FFREXP, {MVT::f32, MVT::f64}, Custom);
 
   setOperationAction({ISD::FSIN, ISD::FCOS, ISD::FDIV}, MVT::f32, Custom);
   setOperationAction(ISD::FDIV, MVT::f64, Custom);
@@ -520,9 +521,9 @@ SITargetLowering::SITargetLowering(const TargetMachine &TM,
     AddPromotedToType(ISD::STORE, MVT::f16, MVT::i16);
 
     // F16 - VOP1 Actions.
-    setOperationAction(
-        {ISD::FP_ROUND, ISD::FCOS, ISD::FSIN, ISD::FROUND, ISD::FPTRUNC_ROUND},
-        MVT::f16, Custom);
+    setOperationAction({ISD::FP_ROUND, ISD::STRICT_FP_ROUND, ISD::FCOS,
+                        ISD::FSIN, ISD::FROUND, ISD::FPTRUNC_ROUND},
+                       MVT::f16, Custom);
 
     setOperationAction({ISD::SINT_TO_FP, ISD::UINT_TO_FP}, MVT::i16, Custom);
 
@@ -533,6 +534,7 @@ SITargetLowering::SITargetLowering(const TargetMachine &TM,
     // F16 - VOP2 Actions.
     setOperationAction({ISD::BR_CC, ISD::SELECT_CC}, MVT::f16, Expand);
     setOperationAction({ISD::FLDEXP, ISD::STRICT_FLDEXP}, MVT::f16, Custom);
+    setOperationAction(ISD::FFREXP, MVT::f16, Custom);
     setOperationAction(ISD::FDIV, MVT::f16, Custom);
 
     // F16 - VOP3 Actions.
@@ -1106,8 +1108,6 @@ bool SITargetLowering::getTgtMemIntrinsic(IntrinsicInfo &Info,
   }
 
   switch (IntrID) {
-  case Intrinsic::amdgcn_atomic_inc:
-  case Intrinsic::amdgcn_atomic_dec:
   case Intrinsic::amdgcn_ds_ordered_add:
   case Intrinsic::amdgcn_ds_ordered_swap:
   case Intrinsic::amdgcn_ds_fadd:
@@ -1258,8 +1258,6 @@ bool SITargetLowering::getAddrModeArguments(IntrinsicInst *II,
                                             SmallVectorImpl<Value*> &Ops,
                                             Type *&AccessTy) const {
   switch (II->getIntrinsicID()) {
-  case Intrinsic::amdgcn_atomic_inc:
-  case Intrinsic::amdgcn_atomic_dec:
   case Intrinsic::amdgcn_ds_ordered_add:
   case Intrinsic::amdgcn_ds_ordered_swap:
   case Intrinsic::amdgcn_ds_append:
@@ -3202,21 +3200,6 @@ SDValue SITargetLowering::LowerCall(CallLoweringInfo &CLI,
                               "unsupported required tail call to function ");
   }
 
-  if (AMDGPU::isShader(CallConv)) {
-    // Note the issue is with the CC of the called function, not of the call
-    // itself.
-    return lowerUnhandledCall(CLI, InVals,
-                              "unsupported call to a shader function ");
-  }
-
-  if (AMDGPU::isShader(MF.getFunction().getCallingConv()) &&
-      CallConv != CallingConv::AMDGPU_Gfx) {
-    // Only allow calls with specific calling conventions.
-    return lowerUnhandledCall(CLI, InVals,
-                              "unsupported calling convention for call from "
-                              "graphics shader of function ");
-  }
-
   if (IsTailCall) {
     IsTailCall = isEligibleForTailCallOptimization(
       Callee, CallConv, IsVarArg, Outs, OutVals, Ins, DAG);
@@ -4826,6 +4809,7 @@ SDValue SITargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
     return LowerTrig(Op, DAG);
   case ISD::SELECT: return LowerSELECT(Op, DAG);
   case ISD::FDIV: return LowerFDIV(Op, DAG);
+  case ISD::FFREXP: return LowerFFREXP(Op, DAG);
   case ISD::ATOMIC_CMP_SWAP: return LowerATOMIC_CMP_SWAP(Op, DAG);
   case ISD::STORE: return LowerSTORE(Op, DAG);
   case ISD::GlobalAddress: {
@@ -4850,6 +4834,7 @@ SDValue SITargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
   case ISD::BUILD_VECTOR:
     return lowerBUILD_VECTOR(Op, DAG);
   case ISD::FP_ROUND:
+  case ISD::STRICT_FP_ROUND:
     return lowerFP_ROUND(Op, DAG);
   case ISD::FPTRUNC_ROUND: {
     unsigned Opc;
@@ -5272,6 +5257,7 @@ void SITargetLowering::ReplaceNodeResults(SDNode *N,
     return;
   }
   default:
+    AMDGPUTargetLowering::ReplaceNodeResults(N, Results, DAG);
     break;
   }
 }
@@ -5477,6 +5463,10 @@ SDValue SITargetLowering::lowerFP_ROUND(SDValue Op, SelectionDAG &DAG) const {
   SDValue Src = Op.getOperand(0);
   EVT SrcVT = Src.getValueType();
   if (SrcVT != MVT::f64)
+    return Op;
+
+  // TODO: Handle strictfp
+  if (Op.getOpcode() != ISD::FP_ROUND)
     return Op;
 
   SDLoc DL(Op);
@@ -7494,20 +7484,12 @@ SDValue SITargetLowering::LowerINTRINSIC_W_CHAIN(SDValue Op,
                                    M->getVTList(), Ops, M->getMemoryVT(),
                                    M->getMemOperand());
   }
-  case Intrinsic::amdgcn_atomic_inc:
-  case Intrinsic::amdgcn_atomic_dec:
   case Intrinsic::amdgcn_ds_fadd: {
     MemSDNode *M = cast<MemSDNode>(Op);
     unsigned Opc;
     switch (IntrID) {
     case Intrinsic::amdgcn_ds_fadd:
       Opc = ISD::ATOMIC_LOAD_FADD;
-      break;
-    case Intrinsic::amdgcn_atomic_inc:
-      Opc = ISD::ATOMIC_LOAD_UINC_WRAP;
-      break;
-    case Intrinsic::amdgcn_atomic_dec:
-      Opc = ISD::ATOMIC_LOAD_UDEC_WRAP;
       break;
     }
 
@@ -7520,12 +7502,6 @@ SDValue SITargetLowering::LowerINTRINSIC_W_CHAIN(SDValue Op,
     MemSDNode *M = cast<MemSDNode>(Op);
     unsigned Opc;
     switch (IntrID) {
-    case Intrinsic::amdgcn_atomic_inc:
-      Opc = ISD::ATOMIC_LOAD_UINC_WRAP;
-      break;
-    case Intrinsic::amdgcn_atomic_dec:
-      Opc = ISD::ATOMIC_LOAD_UDEC_WRAP;
-      break;
     case Intrinsic::amdgcn_ds_fmin:
       Opc = AMDGPUISD::ATOMIC_LOAD_FMIN;
       break;
@@ -9154,26 +9130,30 @@ SDValue SITargetLowering::lowerFastUnsafeFDIV(SDValue Op,
   EVT VT = Op.getValueType();
   const SDNodeFlags Flags = Op->getFlags();
 
-  bool AllowInaccurateRcp = Flags.hasApproximateFuncs();
-
-  // Without !fpmath accuracy information, we can't do more because we don't
-  // know exactly whether rcp is accurate enough to meet !fpmath requirement.
-  if (!AllowInaccurateRcp)
-    return SDValue();
+  bool AllowInaccurateRcp = Flags.hasApproximateFuncs() ||
+                            DAG.getTarget().Options.UnsafeFPMath;
 
   if (const ConstantFPSDNode *CLHS = dyn_cast<ConstantFPSDNode>(LHS)) {
+    // Without !fpmath accuracy information, we can't do more because we don't
+    // know exactly whether rcp is accurate enough to meet !fpmath requirement.
+    // f16 is always accurate enough
+    if (!AllowInaccurateRcp && VT != MVT::f16)
+      return SDValue();
+
     if (CLHS->isExactlyValue(1.0)) {
       // v_rcp_f32 and v_rsq_f32 do not support denormals, and according to
       // the CI documentation has a worst case error of 1 ulp.
       // OpenCL requires <= 2.5 ulp for 1.0 / x, so it should always be OK to
       // use it as long as we aren't trying to use denormals.
       //
-      // v_rcp_f16 and v_rsq_f16 DO support denormals.
+      // v_rcp_f16 and v_rsq_f16 DO support denormals and 0.51ulp.
 
       // 1.0 / sqrt(x) -> rsq(x)
 
       // XXX - Is UnsafeFPMath sufficient to do this for f64? The maximum ULP
       // error seems really high at 2^29 ULP.
+
+      // XXX - do we need afn for this or is arcp sufficent?
       if (RHS.getOpcode() == ISD::FSQRT)
         return DAG.getNode(AMDGPUISD::RSQ, SL, VT, RHS.getOperand(0));
 
@@ -9188,6 +9168,11 @@ SDValue SITargetLowering::lowerFastUnsafeFDIV(SDValue Op,
       return DAG.getNode(AMDGPUISD::RCP, SL, VT, FNegRHS);
     }
   }
+
+  // For f16 require arcp only.
+  // For f32 require afn+arcp.
+  if (!AllowInaccurateRcp && (VT != MVT::f16 || !Flags.hasAllowReciprocal()))
+    return SDValue();
 
   // Turn into multiply by the reciprocal.
   // x / y -> x * (1.0 / y)
@@ -9529,6 +9514,38 @@ SDValue SITargetLowering::LowerFDIV(SDValue Op, SelectionDAG &DAG) const {
     return LowerFDIV16(Op, DAG);
 
   llvm_unreachable("Unexpected type for fdiv");
+}
+
+SDValue SITargetLowering::LowerFFREXP(SDValue Op, SelectionDAG &DAG) const {
+  SDLoc dl(Op);
+  SDValue Val = Op.getOperand(0);
+  EVT VT = Val.getValueType();
+  EVT ResultExpVT = Op->getValueType(1);
+  EVT InstrExpVT = VT == MVT::f16 ? MVT::i16 : MVT::i32;
+
+  SDValue Mant = DAG.getNode(
+      ISD::INTRINSIC_WO_CHAIN, dl, VT,
+      DAG.getTargetConstant(Intrinsic::amdgcn_frexp_mant, dl, MVT::i32), Val);
+
+  SDValue Exp = DAG.getNode(
+      ISD::INTRINSIC_WO_CHAIN, dl, InstrExpVT,
+      DAG.getTargetConstant(Intrinsic::amdgcn_frexp_exp, dl, MVT::i32), Val);
+
+  const GCNSubtarget &ST =
+      DAG.getMachineFunction().getSubtarget<GCNSubtarget>();
+  if (ST.hasFractBug()) {
+    SDValue Fabs = DAG.getNode(ISD::FABS, dl, VT, Val);
+    SDValue Inf = DAG.getConstantFP(
+        APFloat::getInf(SelectionDAG::EVTToAPFloatSemantics(VT)), dl, VT);
+
+    SDValue IsFinite = DAG.getSetCC(dl, MVT::i1, Fabs, Inf, ISD::SETOLT);
+    SDValue Zero = DAG.getConstant(0, dl, InstrExpVT);
+    Exp = DAG.getNode(ISD::SELECT, dl, InstrExpVT, IsFinite, Exp, Zero);
+    Mant = DAG.getNode(ISD::SELECT, dl, VT, IsFinite, Mant, Val);
+  }
+
+  SDValue CastExp = DAG.getSExtOrTrunc(Exp, dl, ResultExpVT);
+  return DAG.getMergeValues({Mant, CastExp}, dl);
 }
 
 SDValue SITargetLowering::LowerSTORE(SDValue Op, SelectionDAG &DAG) const {
@@ -13378,6 +13395,15 @@ void SITargetLowering::finalizeLowering(MachineFunction &MF) const {
     reservePrivateMemoryRegs(getTargetMachine(), MF, *TRI, *Info);
   }
 
+  // TODO: Move this logic to getReservedRegs()
+  // Reserve the SGPR(s) to save/restore EXEC for WWM spill/copy handling.
+  unsigned MaxNumSGPRs = ST.getMaxNumSGPRs(MF);
+  Register SReg = ST.isWave32()
+                      ? AMDGPU::SGPR_32RegClass.getRegister(MaxNumSGPRs - 1)
+                      : TRI->getAlignedHighSGPRForRC(MF, /*Align=*/2,
+                                                     &AMDGPU::SGPR_64RegClass);
+  Info->setSGPRForEXECCopy(SReg);
+
   assert(!TRI->isSubRegister(Info->getScratchRSrcReg(),
                              Info->getStackPtrOffsetReg()));
   if (Info->getStackPtrOffsetReg() != AMDGPU::SP_REG)
@@ -14047,7 +14073,7 @@ bool SITargetLowering::isReassocProfitable(SelectionDAG &DAG, SDValue N0,
 
 bool SITargetLowering::isReassocProfitable(MachineRegisterInfo &MRI,
                                            Register N0, Register N1) const {
-  return true; // FIXME: handle regbanks
+  return MRI.hasOneNonDBGUse(N0); // FIXME: handle regbanks
 }
 
 MachineMemOperand::Flags

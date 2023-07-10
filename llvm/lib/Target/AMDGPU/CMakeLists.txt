@@ -107,6 +107,7 @@ add_llvm_target(AMDGPUCodeGen
   GCNMinRegStrategy.cpp
   GCNNSAReassign.cpp
   GCNPreRAOptimizations.cpp
+  GCNPreRALongBranchReg.cpp
   GCNRegPressure.cpp
   GCNRewritePartialRegUses.cpp
   GCNSchedStrategy.cpp
@@ -144,6 +145,7 @@ add_llvm_target(AMDGPUCodeGen
   SILoadStoreOptimizer.cpp
   SILowerControlFlow.cpp
   SILowerI1Copies.cpp
+  SILowerWWMCopies.cpp
   SILowerSGPRSpills.cpp
   SIMachineFunctionInfo.cpp
   SIMachineScheduler.cpp

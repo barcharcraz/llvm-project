@@ -1210,16 +1210,15 @@ instCombineSVELD1(InstCombiner &IC, IntrinsicInst &II, const DataLayout &DL) {
   Value *Pred = II.getOperand(0);
   Value *PtrOp = II.getOperand(1);
   Type *VecTy = II.getType();
-  Value *VecPtr = IC.Builder.CreateBitCast(PtrOp, VecTy->getPointerTo());
 
   if (isAllActivePredicate(Pred)) {
-    LoadInst *Load = IC.Builder.CreateLoad(VecTy, VecPtr);
+    LoadInst *Load = IC.Builder.CreateLoad(VecTy, PtrOp);
     Load->copyMetadata(II);
     return IC.replaceInstUsesWith(II, Load);
   }
 
   CallInst *MaskedLoad =
-      IC.Builder.CreateMaskedLoad(VecTy, VecPtr, PtrOp->getPointerAlignment(DL),
+      IC.Builder.CreateMaskedLoad(VecTy, PtrOp, PtrOp->getPointerAlignment(DL),
                                   Pred, ConstantAggregateZero::get(VecTy));
   MaskedLoad->copyMetadata(II);
   return IC.replaceInstUsesWith(II, MaskedLoad);
@@ -1230,30 +1229,25 @@ instCombineSVEST1(InstCombiner &IC, IntrinsicInst &II, const DataLayout &DL) {
   Value *VecOp = II.getOperand(0);
   Value *Pred = II.getOperand(1);
   Value *PtrOp = II.getOperand(2);
-  Value *VecPtr =
-      IC.Builder.CreateBitCast(PtrOp, VecOp->getType()->getPointerTo());
 
   if (isAllActivePredicate(Pred)) {
-    StoreInst *Store = IC.Builder.CreateStore(VecOp, VecPtr);
+    StoreInst *Store = IC.Builder.CreateStore(VecOp, PtrOp);
     Store->copyMetadata(II);
     return IC.eraseInstFromFunction(II);
   }
 
   CallInst *MaskedStore = IC.Builder.CreateMaskedStore(
-      VecOp, VecPtr, PtrOp->getPointerAlignment(DL), Pred);
+      VecOp, PtrOp, PtrOp->getPointerAlignment(DL), Pred);
   MaskedStore->copyMetadata(II);
   return IC.eraseInstFromFunction(II);
 }
 
 static Instruction::BinaryOps intrinsicIDToBinOpCode(unsigned Intrinsic) {
   switch (Intrinsic) {
-  case Intrinsic::aarch64_sve_fmul:
   case Intrinsic::aarch64_sve_fmul_u:
     return Instruction::BinaryOps::FMul;
-  case Intrinsic::aarch64_sve_fadd:
   case Intrinsic::aarch64_sve_fadd_u:
     return Instruction::BinaryOps::FAdd;
-  case Intrinsic::aarch64_sve_fsub:
   case Intrinsic::aarch64_sve_fsub_u:
     return Instruction::BinaryOps::FSub;
   default:
@@ -1280,8 +1274,26 @@ instCombineSVEVectorBinOp(InstCombiner &IC, IntrinsicInst &II) {
   return IC.replaceInstUsesWith(II, BinOp);
 }
 
+// Canonicalise operations that take an all active predicate (e.g. sve.add ->
+// sve.add_u).
+static std::optional<Instruction *> instCombineSVEAllActive(IntrinsicInst &II,
+                                                            Intrinsic::ID IID) {
+  auto *OpPredicate = II.getOperand(0);
+  if (!match(OpPredicate, m_Intrinsic<Intrinsic::aarch64_sve_ptrue>(
+                              m_ConstantInt<AArch64SVEPredPattern::all>())))
+    return std::nullopt;
+
+  auto *Mod = II.getModule();
+  auto *NewDecl = Intrinsic::getDeclaration(Mod, IID, {II.getType()});
+  II.setCalledFunction(NewDecl);
+
+  return &II;
+}
+
 static std::optional<Instruction *> instCombineSVEVectorAdd(InstCombiner &IC,
                                                             IntrinsicInst &II) {
+  if (auto II_U = instCombineSVEAllActive(II, Intrinsic::aarch64_sve_add_u))
+    return II_U;
   if (auto MLA = instCombineSVEVectorFuseMulAddSub<Intrinsic::aarch64_sve_mul,
                                                    Intrinsic::aarch64_sve_mla>(
           IC, II, true))
@@ -1295,6 +1307,8 @@ static std::optional<Instruction *> instCombineSVEVectorAdd(InstCombiner &IC,
 
 static std::optional<Instruction *>
 instCombineSVEVectorFAdd(InstCombiner &IC, IntrinsicInst &II) {
+  if (auto II_U = instCombineSVEAllActive(II, Intrinsic::aarch64_sve_fadd_u))
+    return II_U;
   if (auto FMLA =
           instCombineSVEVectorFuseMulAddSub<Intrinsic::aarch64_sve_fmul,
                                             Intrinsic::aarch64_sve_fmla>(IC, II,
@@ -1310,7 +1324,7 @@ instCombineSVEVectorFAdd(InstCombiner &IC, IntrinsicInst &II) {
                                             Intrinsic::aarch64_sve_fmla>(IC, II,
                                                                          true))
     return FMLA;
-  return instCombineSVEVectorBinOp(IC, II);
+  return std::nullopt;
 }
 
 static std::optional<Instruction *>
@@ -1335,6 +1349,8 @@ instCombineSVEVectorFAddU(InstCombiner &IC, IntrinsicInst &II) {
 
 static std::optional<Instruction *>
 instCombineSVEVectorFSub(InstCombiner &IC, IntrinsicInst &II) {
+  if (auto II_U = instCombineSVEAllActive(II, Intrinsic::aarch64_sve_fsub_u))
+    return II_U;
   if (auto FMLS =
           instCombineSVEVectorFuseMulAddSub<Intrinsic::aarch64_sve_fmul,
                                             Intrinsic::aarch64_sve_fmls>(IC, II,
@@ -1350,7 +1366,7 @@ instCombineSVEVectorFSub(InstCombiner &IC, IntrinsicInst &II) {
                                             Intrinsic::aarch64_sve_fmls>(IC, II,
                                                                          true))
     return FMLS;
-  return instCombineSVEVectorBinOp(IC, II);
+  return std::nullopt;
 }
 
 static std::optional<Instruction *>
@@ -1375,6 +1391,8 @@ instCombineSVEVectorFSubU(InstCombiner &IC, IntrinsicInst &II) {
 
 static std::optional<Instruction *> instCombineSVEVectorSub(InstCombiner &IC,
                                                             IntrinsicInst &II) {
+  if (auto II_U = instCombineSVEAllActive(II, Intrinsic::aarch64_sve_sub_u))
+    return II_U;
   if (auto MLS = instCombineSVEVectorFuseMulAddSub<Intrinsic::aarch64_sve_mul,
                                                    Intrinsic::aarch64_sve_mls>(
           IC, II, true))
@@ -1383,10 +1401,16 @@ static std::optional<Instruction *> instCombineSVEVectorSub(InstCombiner &IC,
 }
 
 static std::optional<Instruction *> instCombineSVEVectorMul(InstCombiner &IC,
-                                                            IntrinsicInst &II) {
+                                                            IntrinsicInst &II,
+                                                            Intrinsic::ID IID) {
   auto *OpPredicate = II.getOperand(0);
   auto *OpMultiplicand = II.getOperand(1);
   auto *OpMultiplier = II.getOperand(2);
+
+  // Canonicalise a non _u intrinsic only.
+  if (II.getIntrinsicID() != IID)
+    if (auto II_U = instCombineSVEAllActive(II, IID))
+      return II_U;
 
   // Return true if a given instruction is a unit splat value, false otherwise.
   auto IsUnitSplat = [](auto *I) {
@@ -1750,31 +1774,92 @@ AArch64TTIImpl::instCombineIntrinsic(InstCombiner &IC,
   case Intrinsic::aarch64_sve_ptest_first:
   case Intrinsic::aarch64_sve_ptest_last:
     return instCombineSVEPTest(IC, II);
-  case Intrinsic::aarch64_sve_mul:
-  case Intrinsic::aarch64_sve_mul_u:
-  case Intrinsic::aarch64_sve_fmul:
-  case Intrinsic::aarch64_sve_fmul_u:
-    return instCombineSVEVectorMul(IC, II);
+  case Intrinsic::aarch64_sve_fabd:
+    return instCombineSVEAllActive(II, Intrinsic::aarch64_sve_fabd_u);
   case Intrinsic::aarch64_sve_fadd:
     return instCombineSVEVectorFAdd(IC, II);
   case Intrinsic::aarch64_sve_fadd_u:
     return instCombineSVEVectorFAddU(IC, II);
+  case Intrinsic::aarch64_sve_fdiv:
+    return instCombineSVEAllActive(II, Intrinsic::aarch64_sve_fdiv_u);
+  case Intrinsic::aarch64_sve_fmax:
+    return instCombineSVEAllActive(II, Intrinsic::aarch64_sve_fmax_u);
+  case Intrinsic::aarch64_sve_fmaxnm:
+    return instCombineSVEAllActive(II, Intrinsic::aarch64_sve_fmaxnm_u);
+  case Intrinsic::aarch64_sve_fmin:
+    return instCombineSVEAllActive(II, Intrinsic::aarch64_sve_fmin_u);
+  case Intrinsic::aarch64_sve_fminnm:
+    return instCombineSVEAllActive(II, Intrinsic::aarch64_sve_fminnm_u);
+  case Intrinsic::aarch64_sve_fmla:
+    return instCombineSVEAllActive(II, Intrinsic::aarch64_sve_fmla_u);
+  case Intrinsic::aarch64_sve_fmls:
+    return instCombineSVEAllActive(II, Intrinsic::aarch64_sve_fmls_u);
+  case Intrinsic::aarch64_sve_fmul:
+  case Intrinsic::aarch64_sve_fmul_u:
+    return instCombineSVEVectorMul(IC, II, Intrinsic::aarch64_sve_fmul_u);
+  case Intrinsic::aarch64_sve_fmulx:
+    return instCombineSVEAllActive(II, Intrinsic::aarch64_sve_fmulx_u);
+  case Intrinsic::aarch64_sve_fnmla:
+    return instCombineSVEAllActive(II, Intrinsic::aarch64_sve_fnmla_u);
+  case Intrinsic::aarch64_sve_fnmls:
+    return instCombineSVEAllActive(II, Intrinsic::aarch64_sve_fnmls_u);
+  case Intrinsic::aarch64_sve_fsub:
+    return instCombineSVEVectorFSub(IC, II);
+  case Intrinsic::aarch64_sve_fsub_u:
+    return instCombineSVEVectorFSubU(IC, II);
   case Intrinsic::aarch64_sve_add:
     return instCombineSVEVectorAdd(IC, II);
   case Intrinsic::aarch64_sve_add_u:
     return instCombineSVEVectorFuseMulAddSub<Intrinsic::aarch64_sve_mul_u,
                                              Intrinsic::aarch64_sve_mla_u>(
         IC, II, true);
-  case Intrinsic::aarch64_sve_fsub:
-    return instCombineSVEVectorFSub(IC, II);
-  case Intrinsic::aarch64_sve_fsub_u:
-    return instCombineSVEVectorFSubU(IC, II);
+  case Intrinsic::aarch64_sve_mla:
+    return instCombineSVEAllActive(II, Intrinsic::aarch64_sve_mla_u);
+  case Intrinsic::aarch64_sve_mls:
+    return instCombineSVEAllActive(II, Intrinsic::aarch64_sve_mls_u);
+  case Intrinsic::aarch64_sve_mul:
+  case Intrinsic::aarch64_sve_mul_u:
+    return instCombineSVEVectorMul(IC, II, Intrinsic::aarch64_sve_mul_u);
+  case Intrinsic::aarch64_sve_sabd:
+    return instCombineSVEAllActive(II, Intrinsic::aarch64_sve_sabd_u);
+  case Intrinsic::aarch64_sve_smax:
+    return instCombineSVEAllActive(II, Intrinsic::aarch64_sve_smax_u);
+  case Intrinsic::aarch64_sve_smin:
+    return instCombineSVEAllActive(II, Intrinsic::aarch64_sve_smin_u);
+  case Intrinsic::aarch64_sve_smulh:
+    return instCombineSVEAllActive(II, Intrinsic::aarch64_sve_smulh_u);
   case Intrinsic::aarch64_sve_sub:
     return instCombineSVEVectorSub(IC, II);
   case Intrinsic::aarch64_sve_sub_u:
     return instCombineSVEVectorFuseMulAddSub<Intrinsic::aarch64_sve_mul_u,
                                              Intrinsic::aarch64_sve_mls_u>(
         IC, II, true);
+  case Intrinsic::aarch64_sve_uabd:
+    return instCombineSVEAllActive(II, Intrinsic::aarch64_sve_uabd_u);
+  case Intrinsic::aarch64_sve_umax:
+    return instCombineSVEAllActive(II, Intrinsic::aarch64_sve_umax_u);
+  case Intrinsic::aarch64_sve_umin:
+    return instCombineSVEAllActive(II, Intrinsic::aarch64_sve_umin_u);
+  case Intrinsic::aarch64_sve_umulh:
+    return instCombineSVEAllActive(II, Intrinsic::aarch64_sve_umulh_u);
+  case Intrinsic::aarch64_sve_asr:
+    return instCombineSVEAllActive(II, Intrinsic::aarch64_sve_asr_u);
+  case Intrinsic::aarch64_sve_lsl:
+    return instCombineSVEAllActive(II, Intrinsic::aarch64_sve_lsl_u);
+  case Intrinsic::aarch64_sve_lsr:
+    return instCombineSVEAllActive(II, Intrinsic::aarch64_sve_lsr_u);
+  case Intrinsic::aarch64_sve_and:
+    return instCombineSVEAllActive(II, Intrinsic::aarch64_sve_and_u);
+  case Intrinsic::aarch64_sve_bic:
+    return instCombineSVEAllActive(II, Intrinsic::aarch64_sve_bic_u);
+  case Intrinsic::aarch64_sve_eor:
+    return instCombineSVEAllActive(II, Intrinsic::aarch64_sve_eor_u);
+  case Intrinsic::aarch64_sve_orr:
+    return instCombineSVEAllActive(II, Intrinsic::aarch64_sve_orr_u);
+  case Intrinsic::aarch64_sve_sqsub:
+    return instCombineSVEAllActive(II, Intrinsic::aarch64_sve_sqsub_u);
+  case Intrinsic::aarch64_sve_uqsub:
+    return instCombineSVEAllActive(II, Intrinsic::aarch64_sve_uqsub_u);
   case Intrinsic::aarch64_sve_tbl:
     return instCombineSVETBL(IC, II);
   case Intrinsic::aarch64_sve_uunpkhi:
@@ -2724,6 +2809,16 @@ InstructionCost AArch64TTIImpl::getCmpSelInstrCost(unsigned Opcode, Type *ValTy,
       return LT.first * 4; // fcvtl + fcvtl + fcmp + xtn
   }
 
+  // Treat the icmp in icmp(and, 0) as free, as we can make use of ands.
+  // FIXME: This can apply to more conditions and add/sub if it can be shown to
+  // be profitable.
+  if (ValTy->isIntegerTy() && ISD == ISD::SETCC && I &&
+      ICmpInst::isEquality(VecPred) &&
+      TLI->isTypeLegal(TLI->getValueType(DL, ValTy)) &&
+      match(I->getOperand(1), m_Zero()) &&
+      match(I->getOperand(0), m_And(m_Value(), m_Value())))
+    return 0;
+
   // The base case handles scalable vectors fine for now, since it treats the
   // cost as 1 * legalization cost.
   return BaseT::getCmpSelInstrCost(Opcode, ValTy, CondTy, VecPred, CostKind, I);
@@ -2880,8 +2975,12 @@ InstructionCost AArch64TTIImpl::getInterleavedMemoryOpCost(
   if (VecTy->isScalableTy() && (!ST->hasSVE() || Factor != 2))
     return InstructionCost::getInvalid();
 
-  if (!UseMaskForCond && !UseMaskForGaps &&
-      Factor <= TLI->getMaxSupportedInterleaveFactor()) {
+  // Vectorization for masked interleaved accesses is only enabled for scalable
+  // VF.
+  if (!VecTy->isScalableTy() && (UseMaskForCond || UseMaskForGaps))
+    return InstructionCost::getInvalid();
+
+  if (!UseMaskForGaps && Factor <= TLI->getMaxSupportedInterleaveFactor()) {
     unsigned MinElts = VecVTy->getElementCount().getKnownMinValue();
     auto *SubVecTy =
         VectorType::get(VecVTy->getElementType(),
@@ -3172,26 +3271,18 @@ bool AArch64TTIImpl::isLegalToVectorizeReduction(
 }
 
 InstructionCost
-AArch64TTIImpl::getMinMaxReductionCost(VectorType *Ty, VectorType *CondTy,
-                                       bool IsUnsigned, FastMathFlags FMF,
+AArch64TTIImpl::getMinMaxReductionCost(Intrinsic::ID IID, VectorType *Ty,
+                                       FastMathFlags FMF,
                                        TTI::TargetCostKind CostKind) {
   std::pair<InstructionCost, MVT> LT = getTypeLegalizationCost(Ty);
 
   if (LT.second.getScalarType() == MVT::f16 && !ST->hasFullFP16())
-    return BaseT::getMinMaxReductionCost(Ty, CondTy, IsUnsigned, FMF, CostKind);
-
-  assert((isa<ScalableVectorType>(Ty) == isa<ScalableVectorType>(CondTy)) &&
-         "Both vector needs to be equally scalable");
+    return BaseT::getMinMaxReductionCost(IID, Ty, FMF, CostKind);
 
   InstructionCost LegalizationCost = 0;
   if (LT.first > 1) {
     Type *LegalVTy = EVT(LT.second).getTypeForEVT(Ty->getContext());
-    Intrinsic::ID MinMaxOpcode =
-        Ty->isFPOrFPVectorTy()
-            ? Intrinsic::maxnum
-            : (IsUnsigned ? Intrinsic::umin : Intrinsic::smin);
-    IntrinsicCostAttributes Attrs(MinMaxOpcode, LegalVTy, {LegalVTy, LegalVTy},
-                                  FMF);
+    IntrinsicCostAttributes Attrs(IID, LegalVTy, {LegalVTy, LegalVTy}, FMF);
     LegalizationCost = getIntrinsicInstrCost(Attrs, CostKind) * (LT.first - 1);
   }
 
