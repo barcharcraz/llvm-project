@@ -469,6 +469,16 @@ static void AsanInitInternal() {
 #if SANITIZER_WINDOWS
   // Keep track of allocations that happened prior to asan init only on windows
   CaptureSystemHeapAllocations();
+
+  // ntdll, a Windows-specific library that contains some memory intrinsics as
+  // well as Windows-specific exception handling mechanisms, can end up calling
+  // back into ASAN for a poisoning check, causing a stack overflow. See
+  // asan_interceptors_memintrinsics.h for a detailed explanation. The necessary
+  // information to check against is initialized here.
+#if SANITIZER_WINDOWS64
+  __sanitizer::InitializeNtdllInfo();
+#endif
+
 #endif
 
   // On Linux AsanThread::ThreadStart() calls malloc() that's why asan_inited

@@ -18,10 +18,32 @@
 #include "asan_mapping.h"
 #include "interception/interception.h"
 
+#if SANITIZER_WINDOWS64
+#include "sanitizer_common/sanitizer_win.h"
+#endif
+
 DECLARE_REAL(void *, memcpy, void *to, const void *from, uptr size)
 DECLARE_REAL(void *, memset, void *block, int c, uptr size)
 
 namespace __asan {
+
+// On x64, the ShadowExceptionHandler is expected to handle all AVs that happen
+// as a result of uncommitted shadow memory pages. However, in programs that use
+// ntdll (a Windows-specific library that contains some memory intrinsics as
+// well as Windows-specific exception handling mechanisms) as their C Runtime,
+// or in cases where ntdll uses mem* functions inside
+// its exception handling infrastructure, ASAN can end up rethrowing a shadow
+// memory AV until a stack overflow occurs. In other words, ntdll can call back
+// into ASAN for a poisoning check, which creates infinite recursion. To remedy
+// this, we precommit the shadow memory of the address being accessed on x64 for
+// ntdll callees.
+bool ShouldReplaceIntrinsic(bool, void *, uptr, const void * = nullptr);
+
+#if SANITIZER_WINDOWS64
+#define IS_NTDLL_CALLEE __sanitizer::IsNtdllCallee(_ReturnAddress())
+#else
+#define IS_NTDLL_CALLEE false
+#endif
 
 // Return true if we can quickly decide that the region is unpoisoned.
 // We assume that a redzone is at least 16 bytes.

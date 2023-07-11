@@ -69,7 +69,7 @@ char *internal_strstr(const char *haystack, const char *needle);
 s64 internal_simple_strtoll(const char *nptr, const char **endptr, int base);
 int internal_snprintf(char *buffer, uptr length, const char *format, ...)
     FORMAT(3, 4);
-#ifdef SANITIZER_WINDOWS
+#if SANITIZER_WINDOWS
 int internal_wcscmp(const wchar_t *s1, const wchar_t *s2);
 uptr internal_wcslen(const wchar_t *s);
 #endif

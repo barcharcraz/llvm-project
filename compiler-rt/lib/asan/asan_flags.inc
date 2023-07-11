@@ -147,7 +147,7 @@ ASAN_FLAG(bool, detect_container_overflow, true,
           "If true, honor the container overflow annotations. See "
           "https://github.com/google/sanitizers/wiki/"
           "AddressSanitizerContainerOverflow")
-#ifdef SANITIZER_WINDOWS
+#if SANITIZER_WINDOWS
 #define ODR_DETECTION 0 // TODO: BUG #1643067 for implementing better ODR violation handling
 #else
 #define ODR_DETECTION 2

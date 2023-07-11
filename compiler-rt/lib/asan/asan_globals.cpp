@@ -164,7 +164,7 @@ static bool IsOdrViolation(const Global *globalToRegister,
          (flags()->detect_odr_violation >= 2 ||
           globalToRegister->size != globalAlreadyRegistered->size) &&
          !IsODRViolationSuppressed(globalToRegister->name)
-#ifdef SANITIZER_WINDOWS
+#if SANITIZER_WINDOWS
          // TODO: BUG #1643067 for implementing better ODR violation handling
          // In certain cases, the address of globals are not being recorded
          // properly. In that scenario, checking if the two globals differ by

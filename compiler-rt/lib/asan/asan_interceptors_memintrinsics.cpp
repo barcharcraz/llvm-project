@@ -16,6 +16,7 @@
 #include "asan_interceptors_memintrinsics.h"
 
 #include "asan_interceptors.h"
+#include "asan_poisoning.h"
 #include "asan_report.h"
 #include "asan_stack.h"
 #include "asan_suppressions.h"
@@ -27,7 +28,7 @@ using namespace __asan;
 // See http://llvm.org/bugs/show_bug.cgi?id=11763.
 #define ASAN_MEMCPY_IMPL(ctx, to, from, size)                 \
   do {                                                        \
-    if (LIKELY(replace_intrin_cached)) {                      \
+    if (LIKELY(ShouldReplaceIntrinsic(IS_NTDLL_CALLEE, to, size, from))) {                      \
       if (LIKELY(to != from)) {                               \
         CHECK_RANGES_OVERLAP("memcpy", to, size, from, size); \
       }                                                       \
@@ -42,7 +43,7 @@ using namespace __asan;
 // memset is called inside Printf.
 #define ASAN_MEMSET_IMPL(ctx, block, c, size) \
   do {                                        \
-    if (LIKELY(replace_intrin_cached)) {      \
+    if (LIKELY(ShouldReplaceIntrinsic(IS_NTDLL_CALLEE, block, size))) {      \
       ASAN_WRITE_RANGE(ctx, block, size);     \
     } else if (UNLIKELY(!asan_inited)) {      \
       return internal_memset(block, c, size); \
@@ -52,7 +53,7 @@ using namespace __asan;
 
 #define ASAN_MEMMOVE_IMPL(ctx, to, from, size) \
   do {                                         \
-    if (LIKELY(replace_intrin_cached)) {       \
+    if (LIKELY(ShouldReplaceIntrinsic(IS_NTDLL_CALLEE, to, size, from))) {       \
       ASAN_READ_RANGE(ctx, from, size);        \
       ASAN_WRITE_RANGE(ctx, to, size);         \
     }                                          \
@@ -70,6 +71,23 @@ void *__asan_memset(void *block, int c, uptr size) {
 void *__asan_memmove(void *to, const void *from, uptr size) {
   ASAN_MEMMOVE_IMPL(nullptr, to, from, size);
 }
+
+namespace __asan {
+
+bool ShouldReplaceIntrinsic(bool isNtdllCallee, void *addr, uptr size, const void* from) {
+#if SANITIZER_WINDOWS64
+  if (isNtdllCallee) {
+    CommitShadowMemory(reinterpret_cast<uptr>(addr), size);
+    if(from)
+    {
+      CommitShadowMemory(reinterpret_cast<uptr>(from), size);
+    }
+  }
+#endif
+  return replace_intrin_cached;
+}
+
+}  // namespace __asan
 
 #if SANITIZER_FUCHSIA
 

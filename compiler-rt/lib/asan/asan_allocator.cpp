@@ -921,7 +921,7 @@ struct Allocator {
     }
 
     AsanChunkCOE_Quarantine(smd, stack);
-    
+
     AsanStats &thread_stats = GetCurrentThreadStats();
     thread_stats.frees++;
     thread_stats.freed += m->UsedSize();

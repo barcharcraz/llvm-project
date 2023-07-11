@@ -95,7 +95,7 @@ extern "C" __declspec(dllexport) bool __cdecl __sanitizer_override_function(
       user_function, sanitizer_function, old_user_function);
   if (!function_overridden) {
     Report(
-        "ERROR: Failed to override local function at '0x%p' with sanitizer "
+        "ERROR: Failed to override local function at '%p' with sanitizer "
         "function '%s'\n",
         user_function, export_name);
     CHECK("Failed to replace local function with sanitizer version." && 0);
@@ -114,8 +114,8 @@ extern "C" __declspec(dllexport) bool __cdecl __sanitizer_override_function_by_a
       target_function, source_function, old_target_function);
   if (!function_overridden) {
     Report(
-        "ERROR: Failed to override function at '0x%p' with function at "
-        "'0x%p'\n",
+        "ERROR: Failed to override function at '%p' with function at "
+        "'%p'\n",
         target_function, source_function);
     CHECK("Failed to apply function override." && 0);
   }
@@ -135,7 +135,7 @@ extern "C" __declspec(dllexport) bool __cdecl __sanitizer_register_weak_function
       sanitizer_function, user_function, old_user_function);
   if (!function_overridden) {
     Report(
-        "ERROR: Failed to register local function at '0x%p' to be used in "
+        "ERROR: Failed to register local function at '%p' to be used in "
         "place of sanitizer function '%s'\n.",
         user_function, export_name);
     CHECK("Failed to register weak function." && 0);

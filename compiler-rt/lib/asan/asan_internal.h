@@ -67,7 +67,7 @@ void InitializePlatformExceptionHandlers();
 // 'addr' must point to the beginning of the block.
 bool IsSystemHeapAddress(uptr addr, void *heap = nullptr);
 
-#ifdef SANITIZER_WINDOWS
+#if SANITIZER_WINDOWS
   // Returns whether an address was allocated prior to ASAN initialization.
   // Used on Windows to determine if the CRT allocated memory in order to not
   // report false negatives with reallocs or frees.

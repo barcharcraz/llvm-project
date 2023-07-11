@@ -16,7 +16,7 @@
 #include "sanitizer_common/sanitizer_common.h"
 #include "sanitizer_common/sanitizer_internal_defs.h"
 
-#ifdef SANITIZER_WINDOWS
+#if SANITIZER_WINDOWS
 
 #if ASAN_DYNAMIC
 #define ALLOCATION_FUNCTION_ATTRIBUTE

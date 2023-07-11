@@ -51,12 +51,10 @@
 #include "sanitizer_win_defs.h"
 # define SANITIZER_INTERFACE_WEAK_DEF(ReturnType, Name, ...)                   \
   WIN_WEAK_EXPORT_DEF(ReturnType, Name, __VA_ARGS__)
-#define SANITIZER_INTERFACE_WEAK_NOOP_PROLOGUE() WIN_WEAK_EXPORT_NOOP_PROLOGUE()
 #else
 # define SANITIZER_INTERFACE_WEAK_DEF(ReturnType, Name, ...)                   \
   extern "C" SANITIZER_INTERFACE_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE            \
   ReturnType Name(__VA_ARGS__)
-#define SANITIZER_INTERFACE_WEAK_NOOP_PROLOGUE()
 #endif
 
 // SANITIZER_SUPPORTS_WEAK_HOOKS means that we support real weak functions that

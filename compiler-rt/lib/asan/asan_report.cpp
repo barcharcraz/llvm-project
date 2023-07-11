@@ -610,4 +610,4 @@ void __sanitizer_ptr_cmp(void *a, void *b) {
 
 // Provide default implementation of __asan_on_error that does nothing
 // and may be overriden by user.
-SANITIZER_INTERFACE_WEAK_DEF(void, __asan_on_error, void) { SANITIZER_INTERFACE_WEAK_NOOP_PROLOGUE(); }
+SANITIZER_INTERFACE_WEAK_DEF(void, __asan_on_error, void) { }

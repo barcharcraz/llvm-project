@@ -235,7 +235,6 @@ void SetPrintfAndReportCallback(void (*callback)(const char *)) {
 extern "C" void __sanitizer_on_print(const char *str);
 #else
 SANITIZER_INTERFACE_WEAK_DEF(void, __sanitizer_on_print, const char *str) {
-  SANITIZER_INTERFACE_WEAK_NOOP_PROLOGUE();
   (void)str;
 }
 #endif
