@@ -3,6 +3,6 @@
 __author__ = 'Daniel Dunbar'
 __email__ = 'daniel@minormatter.com'
 __versioninfo__ = (14, 0, 4)
-__version__ = '.'.join(str(v) for v in __versioninfo__) + 'dev'
+__version__ = '.'.join(str(v) for v in __versioninfo__) + '.dev0'
 
 __all__ = []
