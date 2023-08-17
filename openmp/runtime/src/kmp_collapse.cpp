@@ -37,7 +37,7 @@ kmp_uint32 abs(const kmp_uint32 _X) {
 
 kmp_uint64 abs(const kmp_uint64 _X) { return _X; }
 
-  // OMPTODO: different style of comments (see kmp_sched)
+// OMPTODO: different style of comments (see kmp_sched)
 // OMPTODO: OMPT/OMPD
 
 //----------------------------------------------------------------------------
@@ -45,6 +45,31 @@ kmp_uint64 abs(const kmp_uint64 _X) { return _X; }
 //----------------------------------------------------------------------------
 
 template <typename T> int sign(T val) { return (T(0) < val) - (val < T(0)); }
+
+template <typename T> class CollapseAllocator {
+  typedef T *pT;
+
+private:
+  static const size_t allocaSize = 32; // size limit for stack allocations
+                                       // (8 bytes x 4 nested loops)
+  char stackAlloc[allocaSize];
+  static constexpr size_t maxElemCount = allocaSize / sizeof(T);
+  pT pTAlloc;
+
+public:
+  CollapseAllocator(size_t n) : pTAlloc(reinterpret_cast<pT>(stackAlloc)) {
+    if (n > maxElemCount) {
+      pTAlloc = reinterpret_cast<pT>(__kmp_allocate(n * sizeof(T)));
+    }
+  }
+  ~CollapseAllocator() {
+    if (pTAlloc != reinterpret_cast<pT>(stackAlloc)) {
+      __kmp_free(pTAlloc);
+    }
+  }
+  T &operator[](int index) { return pTAlloc[index]; }
+  operator const pT() { return pTAlloc; }
+};
 
 //----------Loop canonicalization---------------------------------------------
 
@@ -55,7 +80,7 @@ template <typename T> int sign(T val) { return (T(0) < val) - (val < T(0)); }
 // All other internal functions will work only with canonicalized loops.
 template <typename T>
 void kmp_canonicalize_one_loop_XX(ident_t *loc,
-                              /*in/out*/ bounds_infoXX_template<T> *bounds) {
+    /*in/out*/ bounds_infoXX_template<T> *bounds) {
 
   if (__kmp_env_consistency_check) {
     if (bounds->step == 0) {
@@ -87,8 +112,8 @@ void kmp_canonicalize_one_loop_XX(ident_t *loc,
 
 // Canonicalize loop nest. original_bounds_nest is an array of length n.
 void kmp_canonicalize_loop_nest(ident_t *loc,
-                            /*in/out*/ bounds_info_t *original_bounds_nest,
-                            kmp_index_t n) {
+                                /*in/out*/ bounds_info_t *original_bounds_nest,
+                                kmp_index_t n) {
 
   for (kmp_index_t ind = 0; ind < n; ++ind) {
     auto bounds = &(original_bounds_nest[ind]);
@@ -474,8 +499,7 @@ __kmpc_calc_original_ivs_rectang(ident_t *loc, kmp_loop_nest_iv_t new_iv,
                                  /*out*/ kmp_uint64 *original_ivs,
                                  kmp_index_t n) {
 
-  kmp_iterations_t iterations =
-      (kmp_iterations_t)__kmp_allocate(sizeof(kmp_loop_nest_iv_t) * n);
+  CollapseAllocator<kmp_loop_nest_iv_t> iterations(n);
 
   // First, calc corresponding iteration in every original loop:
   for (kmp_index_t ind = n; ind > 0;) {
@@ -496,7 +520,6 @@ __kmpc_calc_original_ivs_rectang(ident_t *loc, kmp_loop_nest_iv_t new_iv,
 
     kmp_calc_one_iv_rectang(bounds, /*in/out*/ original_ivs, iterations, ind);
   }
-  __kmp_free(iterations);
 }
 
 //----------------------------------------------------------------------------
@@ -835,8 +858,8 @@ kmp_calc_number_of_iterations_XX(const bounds_infoXX_template<T> *bounds,
 // original_ivs[ind] (only on this level, non-negative)
 kmp_loop_nest_iv_t
 kmp_calc_number_of_iterations(const bounds_info_t *bounds,
-                              const kmp_point_t original_ivs,
-                              kmp_index_t ind) {
+                                                 const kmp_point_t original_ivs,
+                                                 kmp_index_t ind) {
 
   switch (bounds->loop_type) {
   case loop_type_t::loop_type_int32:
@@ -934,9 +957,7 @@ bool kmp_calc_original_ivs_for_start(const bounds_info_t *original_bounds_nest,
                                      /*out*/ kmp_point_t original_ivs) {
 
   // Iterations in the original space, multiplied by step:
-  kmp_iterations_t iterations =
-      (kmp_iterations_t)__kmp_allocate(sizeof(kmp_loop_nest_iv_t) * n);
-
+  CollapseAllocator<kmp_loop_nest_iv_t> iterations(n);
   for (kmp_index_t ind = n; ind > 0;) {
     --ind;
     iterations[ind] = 0;
@@ -944,9 +965,8 @@ bool kmp_calc_original_ivs_for_start(const bounds_info_t *original_bounds_nest,
 
   // Now calculate the point:
   bool b =  kmp_calc_original_ivs_from_iterations(original_bounds_nest, n,
-                                               /*in/out*/ original_ivs,
-                                               /*in/out*/ iterations, 0);
-  __kmp_free(iterations);
+                                                 /*in/out*/ original_ivs,
+                                                 /*in/out*/ iterations, 0);
   return b;
 }
 
@@ -958,9 +978,7 @@ bool kmp_calc_next_original_ivs(const bounds_info_t *original_bounds_nest,
                                 kmp_index_t n, const kmp_point_t original_ivs,
                                 /*out*/ kmp_point_t next_original_ivs) {
   // Iterations in the original space, multiplied by step (so can be negative):
-  kmp_iterations_t iterations =
-      (kmp_iterations_t)__kmp_allocate(sizeof(kmp_loop_nest_iv_t) * n);
-
+  CollapseAllocator<kmp_loop_nest_iv_t> iterations(n);
   // First, calc corresponding iteration in every original loop:
   for (kmp_index_t ind = 0; ind < n; ++ind) {
     auto bounds = &(original_bounds_nest[ind]);
@@ -979,7 +997,6 @@ bool kmp_calc_next_original_ivs(const bounds_info_t *original_bounds_nest,
   bool b = kmp_calc_original_ivs_from_iterations(
       original_bounds_nest, n, /*in/out*/ next_original_ivs, iterations, ind);
 
-  __kmp_free(iterations);
   return b;
 }
 
@@ -1143,13 +1160,7 @@ bool kmp_calc_original_ivs_for_chunk_end(
     /*out*/ kmp_point_t original_ivs) {
 
   // Iterations in the expanded space:
-  kmp_iterations_t iterations =
-      (kmp_iterations_t)__kmp_allocate(sizeof(kmp_loop_nest_iv_t) * n);
-
-#if defined(KMP_DEBUG)
-  auto new_iv_saved = new_iv;
-#endif
-
+  CollapseAllocator<kmp_loop_nest_iv_t> iterations(n);
   // First, calc corresponding iteration in every modified loop:
   for (kmp_index_t ind = n; ind > 0;) {
     --ind;
@@ -1181,7 +1192,6 @@ bool kmp_calc_original_ivs_for_chunk_end(
       // Too big (or too small for >=).
       if (ind == 0) {
         // Need to reduce to the end.
-        __kmp_free(iterations);
         return false;
       } else {
         // Go to next iteration on outer loop:
@@ -1212,7 +1222,6 @@ bool kmp_calc_original_ivs_for_chunk_end(
     ++ind;
   }
 
-  __kmp_free(iterations);
   return true;
 }
 
@@ -1307,8 +1316,7 @@ __kmpc_for_collapsed_init(ident_t *loc, kmp_int32 gtid,
 
   kmp_canonicalize_loop_nest(loc, /*in/out*/ original_bounds_nest, n);
 
-  bounds_info_internal_t* updated_bounds_nest =
-      (bounds_info_internal_t*)__kmp_allocate(sizeof(bounds_info_internal_t) * n);
+  CollapseAllocator<bounds_info_internal_t> updated_bounds_nest(n);
 
   for (kmp_index_t i = 0; i < n; ++i) {
     updated_bounds_nest[i].b = original_bounds_nest[i];
@@ -1323,7 +1331,6 @@ __kmpc_for_collapsed_init(ident_t *loc, kmp_int32 gtid,
 
   if (total == 0) {
     // Loop won't execute:
-    __kmp_free(updated_bounds_nest);
     return FALSE;
   }
 
@@ -1337,18 +1344,11 @@ __kmpc_for_collapsed_init(ident_t *loc, kmp_int32 gtid,
 
   KMP_DEBUG_ASSERT(tid < nth);
 
-  kmp_point_t original_ivs_start = (kmp_point_t)__kmp_allocate(sizeof(kmp_uint64) * n);
-  kmp_point_t original_ivs_end = (kmp_point_t)__kmp_allocate(sizeof(kmp_uint64) * n);
-  kmp_point_t original_ivs_next_start =
-      (kmp_point_t)__kmp_allocate(sizeof(kmp_uint64) * n);
+  CollapseAllocator<kmp_uint64> original_ivs_start(n);
 
   if (!kmp_calc_original_ivs_for_start(original_bounds_nest, n,
                                        /*out*/ original_ivs_start)) {
     // Loop won't execute:
-    __kmp_free(updated_bounds_nest);
-    __kmp_free(original_ivs_start);
-    __kmp_free(original_ivs_end);
-    __kmp_free(original_ivs_next_start);
     return FALSE;
   }
 
@@ -1367,10 +1367,6 @@ __kmpc_for_collapsed_init(ident_t *loc, kmp_int32 gtid,
   //  if (plastiter != NULL) {
   //    *plastiter = TRUE;
   //  }
-  //  __kmp_free(updated_bounds_nest);
-  //  __kmp_free(original_ivs_start);
-  //  __kmp_free(original_ivs_end);
-  //  __kmp_free(original_ivs_next_start);
   //  return TRUE;
   //}
 
@@ -1404,6 +1400,7 @@ __kmpc_for_collapsed_init(ident_t *loc, kmp_int32 gtid,
       new_iv += curr_chunk_size - 1;
     }
 
+    CollapseAllocator<kmp_uint64> original_ivs_end(n);
     if ((nth == 1) || (new_iv >= total - 1)) {
       // Do this one till the end - just in case we miscalculated
       // and either too much is left to process or new_iv is a bit too big:
@@ -1434,10 +1431,6 @@ __kmpc_for_collapsed_init(ident_t *loc, kmp_int32 gtid,
     if (last_iter && (tid != 0)) {
       // We are done, this was last chunk, but no chunk for current thread was
       // found:
-      __kmp_free(updated_bounds_nest);
-      __kmp_free(original_ivs_start);
-      __kmp_free(original_ivs_end);
-      __kmp_free(original_ivs_next_start);
       return FALSE;
     }
 
@@ -1445,6 +1438,7 @@ __kmpc_for_collapsed_init(ident_t *loc, kmp_int32 gtid,
       // We found the chunk for this thread, now we need to check if it's the
       // last chunk or not:
 
+      CollapseAllocator<kmp_uint64> original_ivs_next_start(n);
       if (last_iter ||
           !kmp_calc_next_original_ivs(original_bounds_nest, n, original_ivs_end,
                                       /*out*/ original_ivs_next_start)) {
@@ -1466,10 +1460,6 @@ __kmpc_for_collapsed_init(ident_t *loc, kmp_int32 gtid,
         chunk_bounds_nest[i].ub1_u64 = 0;
       }
 
-      __kmp_free(updated_bounds_nest);
-      __kmp_free(original_ivs_start);
-      __kmp_free(original_ivs_end);
-      __kmp_free(original_ivs_next_start);
       return TRUE;
     }
 
@@ -1491,9 +1481,5 @@ __kmpc_for_collapsed_init(ident_t *loc, kmp_int32 gtid,
                                                original_ivs_start, n);
   }
 
-  __kmp_free(updated_bounds_nest);
-  __kmp_free(original_ivs_start);
-  __kmp_free(original_ivs_end);
-  __kmp_free(original_ivs_next_start);
   return FALSE;
 }
