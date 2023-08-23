@@ -222,10 +222,10 @@ def which(command, paths=None):
 
     # Get suffixes to search.
     # On Cygwin, 'PATHEXT' may exist but it should not be used.
-    if os.pathsep == ';':
-        pathext = os.environ.get('PATHEXT', '').split(';')
-    else:
+    if os.path.splitext(command)[-1] != '' or os.pathsep != ';':
         pathext = ['']
+    else:
+        pathext = os.environ.get('PATHEXT', '').split(';')
 
     # Search the paths...
     for path in paths.split(os.pathsep):

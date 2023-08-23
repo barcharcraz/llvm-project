@@ -118,7 +118,7 @@ void RecordStackTrace(EXCEPTION_POINTERS *ep) {
   while (StackWalk64(imgType, process, hThread, &frame, context, NULL, SymFunctionTableAccess64, SymGetModuleBase64, NULL) && frameNumber++ < maxFrames) {
     if (frame.AddrPC.Offset != 0) {
       std::string fnName = GetSymbol(process, frame.AddrPC.Offset);
-      if (fnName.find("Rtl") == std::string::npos) // don't record rtl functions to make test easier
+      if (fnName.find("Rtl") != 0 && fnName.find("Ldr") != 0) // don't record win32 functions to make test easier
       {
         recordedStackTrace.push_back({fnName, frameNumber});
       }
