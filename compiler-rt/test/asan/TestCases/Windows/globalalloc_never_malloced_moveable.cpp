@@ -27,7 +27,7 @@
 #include <windows.h>
 
 int main() {
-  void *unallocated_handle = reinterpret_cast<void *>(reinterpret_cast<uintptr_t>(ALLOC(0, 32)) + 1);
+  void *unallocated_handle = reinterpret_cast<void *>(reinterpret_cast<uintptr_t>(ALLOC(MOVEABLE, 32)) + 1);
   print_addr("handle", unallocated_handle);
   // CHECK: handle: [[HANDLE:0x[0-9a-f]+]]
 

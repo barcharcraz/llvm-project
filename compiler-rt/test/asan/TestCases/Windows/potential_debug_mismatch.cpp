@@ -10,7 +10,7 @@
 #include <stdio.h>
 #include <vector>
 
-typedef void(freeMemoryFn)(int *);
+typedef void(freeMemoryFn)(void *);
 
 struct AllocationDebugHeader {
   void *next, *prev;
@@ -53,11 +53,11 @@ int main(int argc, char **argv) {
   if (!getProc) {
     throw std::exception("Unable to load dll");
   }
-  auto fn = (freeMemoryFn *)GetProcAddress(getProc, "FreeMemory");
+  auto fn = (freeMemoryFn *)GetProcAddress(getProc, "FreeMemoryThunk");
   if (fn) {
-    (*fn)((int *)mems[counter - 1]);
-    (*fn)((int *)mems[counter - 2]);
-    (*fn)((int *)mems[counter - 3]);
+    (*fn)(mems[counter - 1]);
+    (*fn)(mems[counter - 2]);
+    (*fn)(mems[counter - 3]);
   } else {
     throw std::exception("No function found");
   }

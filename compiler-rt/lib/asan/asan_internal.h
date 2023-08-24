@@ -64,10 +64,14 @@ void AsanInitFromRtl();
 // asan_win.cpp
 void InitializePlatformExceptionHandlers();
 // Returns whether an address is a valid allocated system heap block.
-// 'addr' must point to the beginning of the block.
-bool IsSystemHeapAddress(uptr addr, void *heap = nullptr);
+// 'addr' must point to the beginning of the block. If heap is nullptr,
+// this will check all available process heaps for the 'addr'
+bool IsSystemHeapAddress(uptr addr, void *heap);
+constexpr auto CHECK_ALL_PROCESS_HEAPS = nullptr;
 
 #if SANITIZER_WINDOWS
+  bool IsSystemHeapHandle(uptr addr, void *heap);
+  
   // Returns whether an address was allocated prior to ASAN initialization.
   // Used on Windows to determine if the CRT allocated memory in order to not
   // report false negatives with reallocs or frees.

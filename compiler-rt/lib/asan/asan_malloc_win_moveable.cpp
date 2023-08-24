@@ -8,7 +8,7 @@
 //
 // This file is a part of AddressSanitizer, an address sanity checker.
 //
-// Movable heap allocation manager for Global/Local Alloc interception.
+// Moveable heap allocation manager for Global/Local Alloc interception.
 //===----------------------------------------------------------------------===//
 
 #include "sanitizer_common/sanitizer_platform.h"
@@ -228,7 +228,7 @@ public:
         // This being thread-safe depends on the fact that the index that refers to a MoveableAllocation
         // is stable. This means that, while we must lock while allocating (the structure itself is not thread-safe),
         // afterwards we can release the lock and assume the MoveableAllocation pointer will remain valid and accurate.
-        // This is nice for our special-case fixed->movable reallocation because then we can complete all the may-fail
+        // This is nice for our special-case fixed->moveable reallocation because then we can complete all the may-fail
         // operations prior to committing without incurring possible deadlocks or races.
 
         explicit HandleReservation(MoveableMemoryMap &map) : _map(map), _reserved_entry(nullptr) {
@@ -721,19 +721,9 @@ static void *IncrementLockCountImpl(MemoryMap &memory_map, GlobalLocalLock func,
     auto [result, error_code] = memory_map.IncrementLockCount(item);
 
     if (error_code == Error::InvalidHandle || error_code == Error::InactiveHandle) {
-         // As a last resort, try to use real functions to determine if this was allocated prior
-         // to ASAN initialization
-         // If the function fails it returns nullptr and report invalid handle.
-         // If the function succeeds but returns the same address, report invalid handle
-        void* tempResult = func(item);
-        if(tempResult == nullptr || tempResult == item)
-        {
-            SetLastError(ERROR_INVALID_HANDLE);
-            ReportInvalidHandle(result, stack);
-            return nullptr;
-        }
-        result = tempResult;
-        error_code = Error::None;
+        SetLastError(ERROR_INVALID_HANDLE);
+        ReportInvalidHandle(result, stack);
+        return nullptr;
     }
 
     CHECK(error_code == Error::None);
@@ -758,19 +748,9 @@ static bool DecrementLockCountImpl(MemoryMap &memory_map, GlobalLocalUnlock func
         case Error::InvalidHandle:
         case Error::InactiveHandle:
         {
-             // As a last resort, try to use real functions to determine if this was allocated prior
-             // to ASAN initialization. If the memory object is still locked after decrementing the lock count,
-             // the return value is a nonzero value. If the memory object is unlocked after decrementing the lock count,
-             // the function returns zero and GetLastError returns NO_ERROR. If the function fails, the return value is
-             // zero and GetLastError returns a value other than NO_ERROR
-            bool tempResult = func(item);
-            if(tempResult == false && GetLastError() != NO_ERROR)
-            {
-                SetLastError(ERROR_INVALID_HANDLE);
-                ReportInvalidHandle(result, stack);
-                return false;
-            }
-            return tempResult;
+            SetLastError(ERROR_INVALID_HANDLE);
+            ReportInvalidHandle(result, stack);
+            return false;
         }
         case Error::NotLocked:
             SetLastError(ERROR_NOT_LOCKED);
