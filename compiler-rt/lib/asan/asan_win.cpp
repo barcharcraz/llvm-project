@@ -649,7 +649,7 @@ static AllocationDebugHeader *const GetAllocationDebugHeader(void *addr) {
 
 bool AllocatedPriorToAsanInit(void *addr) {
   auto found = false;
-  if (!addr) {
+  if (!addr || !system_allocations) {
     return found;
   }
 
@@ -673,7 +673,7 @@ bool AllocatedPriorToAsanInit(void *addr) {
 
 bool AlignedAllocatedPriorToAsanInit(void *addr) {
   auto found = false;
-  if (!addr) {
+  if (!addr || !system_allocations) {
     return found;
   }
 
@@ -825,8 +825,54 @@ bool DbgAlignedAllocatedPriorToAsanInit(void *addr) {
   return found;
 }
 
+bool IsSystemHeapHandle(uptr addr, void *heap) {
+  if (!addr) {
+    return false;
+  }
+  HANDLE heaps[128];
+  PROCESS_HEAP_ENTRY lpEntry;
+
+  void **curr, **end;
+  if (heap == nullptr) {
+    curr = heaps;
+    DWORD num_heaps = ::GetProcessHeaps(sizeof(heaps) / sizeof(HANDLE), heaps);
+    CHECK(num_heaps <= sizeof(heaps) / sizeof(HANDLE) &&
+          "You have exceeded the maximum number of supported heaps.");
+    end = curr + num_heaps;
+  } else {
+    curr = &heap;
+    end = curr + 1;
+  }
+
+  while (curr != end) {
+    ::HeapLock(*curr);
+    lpEntry.lpData = NULL;
+
+    while (::HeapWalk(*curr, &lpEntry)) {
+      if (lpEntry.wFlags & PROCESS_HEAP_ENTRY_BUSY) {
+        // In the event of moveable memory, we need to check if the block
+        // contains the address in question rather than lpData
+        if (lpEntry.wFlags & PROCESS_HEAP_ENTRY_MOVEABLE) {
+          if (reinterpret_cast<uptr>(lpEntry.Block.hMem) == addr) {
+            ::HeapUnlock(*curr);
+            return true;
+          }
+        }
+      }
+    }
+
+    ::HeapUnlock(*curr);
+    ++curr;
+  }
+
+  return false;
+}
+
 // We need to check if this address belongs to any of the heaps in the process.
 bool IsSystemHeapAddress(uptr addr, void *heap) {
+  if (!addr) {
+    return false;
+  }
   HANDLE heaps[128];
   PROCESS_HEAP_ENTRY lpEntry;
 
@@ -851,6 +897,15 @@ bool IsSystemHeapAddress(uptr addr, void *heap) {
         if (reinterpret_cast<uptr>(lpEntry.lpData) == addr) {
           ::HeapUnlock(*curr);
           return true;
+        }
+
+        // In the event of moveable memory, we need to check if the block
+        // contains the address in question rather than lpData
+        if (lpEntry.wFlags & PROCESS_HEAP_ENTRY_MOVEABLE) {
+          if (reinterpret_cast<uptr>(lpEntry.Block.hMem) == addr) {
+            ::HeapUnlock(*curr);
+            return true;
+          }
         }
 
         // The CRT adds extra space in front of an allocation in debug mode so

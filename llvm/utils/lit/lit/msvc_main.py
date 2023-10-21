@@ -1,15 +1,18 @@
 #!/usr/bin/env python
 
+import argparse
+import copy
+import itertools
 import os
+import pathlib
 import platform
 import random
 import re
-import sys
-import time
-import argparse
-import tempfile
 import shutil
-import copy
+import sys
+import tempfile
+import threading
+import time
 from xml.sax.saxutils import quoteattr
 
 import lit.ProgressBar
@@ -20,7 +23,6 @@ import lit.run
 import lit.util
 import lit.discovery
 import lit.TestRunner
-import threading
 
 class TestingProgressDisplay(object):
     def __init__(self, opts, numTests, progressBar=None):
@@ -96,7 +98,7 @@ class TestingProgressDisplay(object):
 def slashsan(stri):
     return stri.replace("\\","\\\\")
 
-print("""
+print(f"""
     Run LLVM/Clang/ASAN unit tests on MSVC/ASAN
     usage:
     a) run vcvarsall or setenv from the compiler path you want to use to add include libs etc.
@@ -106,16 +108,16 @@ print("""
     e) set ASAN_RT_SRC_ROOT=e:\\path\\to\\compiler\\rt\\src
     f) set ASAN_RT_BIN_DIR=e:\\path\\to\\x86-or-x64\\build\\bin
     g) set UNIX_BIN_DIR=[some path to a /bin dir with sed,awk,and grep]
-    h) python msvc.py <path_to_tests> <target_arch>
+    h) python {sys.argv[0] or 'msvc_main.py'} <path_to_tests> <target_arch>
 
-        where path to tests is something like:
+        where path_to_tests is something like:
             llvm\\projects\\compiler-rt\\test\\asan\\TestCases\\Windows
 
-        where arch is either x86 || x86_64
+        where target_arch is either x86 || x86_64
 
 
     optionally:
-    add  ` --run_test testfile.cpp  `
+    add  ` --run-test testfile.cpp  `
     to run a specific test rather than the whole suite
 """)
 parser = argparse.ArgumentParser()
@@ -220,10 +222,12 @@ selection_group.add_argument("-i", "--incremental",
                     "mtimes)",
                     action="store_true", default=False)
 selection_group.add_argument("--filter", metavar="REGEX",
-                    help=("Only run tests with paths matching the given "
-                        "regular expression"),
+                    help="Only run tests with paths matching the given regular expression",
                     action="store",
-                    default=os.environ.get("LIT_FILTER"))
+                    default=os.environ.get("LIT_FILTER", ".*"))
+selection_group.add_argument("--filter-out", metavar="REGEX",
+                    help="Filter out tests with paths matching the given regular expression",
+                    default=os.environ.get("LIT_FILTER_OUT", "^$"))
 selection_group.add_argument("--num-shards", dest="numShards", metavar="M",
                     help="Split testsuite into M pieces and only run one",
                     action="store", type=int,
@@ -420,18 +424,18 @@ out_to_obj_tuple = ("(-|/)c -o %t( |)", lit.TestingConfig.SubstituteCaptures("/c
 
 #set of optimization substitutions
 optimization_subs = {
-       ("-O0", "/Od"),
-        ("/O0", "/Od"),
-        ("-O1","/O1i-"),
-        ("-O2","/O2i-"),
-        ("-O3", "/O2i-"),
-          ("-Od", "/Od"),
-          (" -O ", " /O2 "),
+    ("-O0", "/Od"),
+    ("/O0", "/Od"),
+    ("-O1","/O1i-"),
+    ("-O2","/O2i-"),
+    ("-O3", "/O2i-"),
+    ("-Od", "/Od"),
+    (" -O ", " /O2 "),
 }
 if opts.disable_opt:
     optimization_subs = {
-         ("-O0", "/Od"),
-         ("/O0", "/Od"),
+        ("-O0", "/Od"),
+        ("/O0", "/Od"),
         ("-O1","/Od"),
         ("-O2","/Od"),
         ("-O3", "/Od"),
@@ -538,8 +542,9 @@ for cc_file in cc_files:
 
     # start with a default test object, this may be re-created later.
     #test = lit.Test.Test(suite,[ cc_file],__litConfig)
-
-    if opts.runTest == "" or opts.runTest in cc_file:
+    if opts.runTest in cc_file \
+            and re.match(opts.filter, cc_file, re.IGNORECASE) \
+            and not re.match(opts.filter_out, cc_file, re.IGNORECASE):
         if ".c" not in cc_file[-2:]:
             __testConfig.substitutions.add((" /EHs ", " "))
         #all
@@ -590,23 +595,11 @@ for cc_file in cc_files:
         __test = lit.Test.Test(__suite,[ cc_file],__testConfig)
         print("found test %s"%(cc_file))
         tests_to_run.append( (cc_file, __test, __litConfig) )
-        #print test.suite.getSourcePath(test.path_in_suite)
         if opts.print_env:
             for item in sorted(__testConfig.environment.keys()):
                 print(str(item) + "=" + __testConfig.environment[item])
             for item in sorted(__testConfig.substitutions):
                 print(item)
-        """
-        #print result.output
-        results[cc_file] = result
-
-
-
-        litConfig.environment["_CL_"] = saved_cl
-        litConfig.environment["_LINK_"] = saved_link
-        litConfig.environment["ASAN_OPTIONS"] = " "
-
-        """
 
     else:
         continue
@@ -618,19 +611,37 @@ run_single_tests = []
 def RunTest(tester,testObj):
     _name, _test, _config = testObj
     #print _config.environment['PATH']
+
     result = tester.executeShTest(_test,_config,True)
     _test.setResult(result)
     results[_name] = result
 
+# copied from run.py, since msvc_main.py doesn't use it
+# ====== BEGIN run.py ======
+def outputPath(path):
+    # this handles both the unit test C:\...\TestCases\Windows\foo.cpp,
+    # and also the regular test C:\...\X86_64WindowsDynamicConfig\Asan-x86_64-inline-Dynamic-Test.exe\16\18
+    path = pathlib.Path(path)
+    parent = path.parent
+    while path.suffix == '':
+        path, parent = parent, parent.parent
+        assert(path != path.parent)
+    return parent / 'Output'
+
+outputDirectories = {outputPath(test.getExecPath()) for _, test, _ in tests_to_run}
+toolsetDirectory = pathlib.Path(lit.util.which("cl.exe")).parent
+for outputDirectory in outputDirectories:
+    lit.util.mkdir_p(outputDirectory)
+    for dllToCopy in itertools.chain(\
+            toolsetDirectory.glob('msvcp*.dll'),\
+            toolsetDirectory.glob('vcruntime*.dll'),\
+            toolsetDirectory.glob('ucrtbase*.dll')):
+        shutil.copyfile(dllToCopy, outputDirectory / dllToCopy.name)
+# ====== END run.py ======
+
 for testObj in tests_to_run:
     t = threading.Thread(target=RunTest, args=(lit.TestRunner, testObj,))
     t.name = testObj[0]
-    """
-    if "dll" in testObj[0]:
-        run_single_tests.append((testObj[0],t))
-
-    else:
-    """
     threads.append(t)
 started = []
 

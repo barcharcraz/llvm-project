@@ -8,7 +8,7 @@
 //
 // This file is a part of AddressSanitizer, an address sanity checker.
 //
-// Movable heap allocation manager for Global/Local Alloc interception.
+// Moveable heap allocation manager for Global/Local Alloc interception.
 //===----------------------------------------------------------------------===//
 #pragma once
 

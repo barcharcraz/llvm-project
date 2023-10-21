@@ -891,7 +891,7 @@ struct Allocator {
     // malloc. Don't report an invalid free in this case.
     if (SANITIZER_WINDOWS &&
         !get_allocator().PointerIsMine(ptr)) {
-      if (!IsSystemHeapAddress(p))
+      if (!IsSystemHeapAddress(p, CHECK_ALL_PROCESS_HEAPS))
         ReportFreeNotMalloced(p, stack);
       return;
     }

@@ -85,7 +85,7 @@ BOOL WINAPI HeapUnlock(HANDLE);
 // regarding the mismatch.
 _declspec(dllimport) HGLOBAL WINAPI GlobalAlloc(UINT uFlags, SIZE_T dwBytes);
 _declspec(dllimport) HGLOBAL WINAPI GlobalFree(HGLOBAL hMem);
-_declspec(dllimport) HGLOBAL WINAPI GlobalSize(HGLOBAL hMem);
+_declspec(dllimport) SIZE_T WINAPI GlobalSize(HGLOBAL hMem);
 _declspec(dllimport) HGLOBAL WINAPI
     GlobalReAlloc(HGLOBAL hMem, SIZE_T dwBytes, UINT uFlags);
 _declspec(dllimport) HGLOBAL WINAPI GlobalLock(HGLOBAL hMem);
@@ -94,7 +94,7 @@ _declspec(dllimport) HGLOBAL WINAPI GlobalHandle(HGLOBAL hMem);
 _declspec(dllimport) UINT WINAPI GlobalFlags(HGLOBAL hMem);
 _declspec(dllimport) HLOCAL WINAPI LocalAlloc(UINT uFlags, SIZE_T dwBytes);
 _declspec(dllimport) HLOCAL WINAPI LocalFree(HLOCAL hMem);
-_declspec(dllimport) HLOCAL WINAPI LocalSize(HLOCAL hMem);
+_declspec(dllimport) SIZE_T WINAPI LocalSize(HLOCAL hMem);
 _declspec(dllimport) HLOCAL WINAPI
     LocalReAlloc(HLOCAL hMem, size_t dwBytes, UINT uFlags);
 _declspec(dllimport) HLOCAL WINAPI LocalLock(HLOCAL hMem);
@@ -1561,9 +1561,9 @@ INTERCEPTOR_WINAPI(void *, RtlAllocateHeap, HANDLE HeapHandle, DWORD Flags,
   // multiple actors passing around relative addresses and expecting allocations
   // to be at a particular location. If memory is mapped, we delegate back to
   // the real Rtl* functions.
+
   if (UNLIKELY(!heap_handle.IsSupported() || asan_unsupported_flags ||
-               heap_handle.IsLfhInternal(Flags) ||
-               IsMemoryMapped(HeapHandle))) {
+               heap_handle.IsLfhInternal(Flags) || IsMemoryMapped(HeapHandle))) {
     auto rtlguard = heap_handle.RtlReentrancyLockGuard();
 
     DCHECK_ASSERT_LOCK_INVARIANT_CALL_RTL(dbg);
@@ -1691,8 +1691,7 @@ INTERCEPTOR_WINAPI(LOGICAL, RtlFreeHeap, void *HeapHandle, DWORD Flags,
   if (LIKELY(!__sanitizer::IsProcessTerminating())) {
     auto heap_handle = GetAsanHeap(HeapHandle, dbg);
 
-    if (UNLIKELY(owner == AllocationOwnership::RTL ||
-                 IsMemoryMapped(HeapHandle))) {
+    if (UNLIKELY(owner == AllocationOwnership::RTL || IsMemoryMapped(HeapHandle))) {
       auto rtlguard = heap_handle.RtlReentrancyLockGuard();
 
       DCHECK_ASSERT_LOCK_INVARIANT_CALL_RTL(dbg);
@@ -1753,7 +1752,7 @@ INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
   auto heap_handle = GetAsanHeap(HeapHandle, dbg);
 
   if (UNLIKELY(!heap_handle.IsSupported() || heap_handle.IsLfhInternal(Flags) ||
-               IsMemoryMapped(HeapHandle))) {
+                 IsMemoryMapped(HeapHandle))) {
     auto rtlguard = heap_handle.RtlReentrancyLockGuard();
 
     DCHECK_ASSERT_LOCK_INVARIANT_CALL_RTL(dbg);
@@ -1995,33 +1994,102 @@ using GlobalLocalAlloc = HANDLE(WINAPI *)(UINT, SIZE_T);
 using GlobalLocalRealloc = HANDLE(WINAPI *)(HANDLE, SIZE_T, UINT);
 using GlobalLocalSize = SIZE_T(WINAPI *)(HANDLE);
 using GlobalLocalFree = HANDLE(WINAPI *)(HANDLE);
-HANDLE GlobalLocalGenericFree(GlobalLocalLock lockFunction,
-                              GlobalLocalUnlock unlockFunction,
-                              GlobalLocalFree freeFunction, HANDLE hMem,
-                              BufferedStackTrace &stack);
+using GlobalLocalFlags = UINT(WINAPI *)(HANDLE);
+template<__asan_win_moveable::HeapCaller Caller>
+HANDLE GlobalLocalGenericFree(HANDLE hMem, BufferedStackTrace &stack);
+
+enum class AllocationOwnershipStatus {
+  OWNED_BY_UNKNOWN,
+  OWNED_BY_ASAN,
+  OWNED_BY_RTL,
+  OWNED_BY_GLOBAL_OR_LOCAL,
+  OWNED_BY_GLOBAL_OR_LOCAL_HANDLE,
+};
+
+AllocationOwnershipStatus CheckGlobalLocalHeapOwnership(
+    HANDLE hMem, GlobalLocalLock lockFunc, GlobalLocalUnlock unlockFunc) {
+  /*  To figure the validity of hMem, we use GlobalLock/LocalLock. Those two
+   * functions can return three things: (1) the pointer that's passed in, in
+   * which case it is a pointer owned by the Global/Local heap (2) the pointer
+   * to the allocated object if it's a Global/Local heap HANDLE (3) nullptr if
+   * it's a pointer which does not belong to the Global/Local heap Using these
+   * three return types, we figure out if the pointer is TYPE_VALID_PTR or
+   * TYPE_HANDLE or TYPE_UNKNOWN_PTR
+   *
+   * NOTE: As an implementation detail, moveable memory objects also live on the
+   * heap. IsSystemHeapAddress will return true if given a moveable memory
+   * handle.
+   *
+   */
+
+  // Check whether this pointer belongs to the memory manager first.
+  if (__asan_win_moveable::IsOwned(hMem) || hMem == nullptr) {
+    return AllocationOwnershipStatus::OWNED_BY_ASAN;
+  }
+
+  // If the address passed in to check is a handle to a moveable allocation
+  // rather than the first byte of the allocation, we need to verify that
+  // it doesn't belong to the process heap as well, but only as a last resort.
+  static auto IsHandleOnProcessHeap = [](uptr hMem) {
+    if (auto potentialHandle = reinterpret_cast<uptr *>(hMem);
+        potentialHandle && *potentialHandle) {
+      return IsSystemHeapAddress(*potentialHandle, GetProcessHeap());
+    }
+    return false;
+  };
+
+  // It is not safe to pass wild pointers to GlobalLock/LocalLock.
+  if (IsSystemHeapAddress(reinterpret_cast<uptr>(hMem), GetProcessHeap()) ||
+      IsSystemHeapHandle(reinterpret_cast<uptr>(hMem), GetProcessHeap()) ||
+      IsHandleOnProcessHeap(reinterpret_cast<uptr>(hMem))) {
+    // TODO:
+    // At this point, we know that the allocation exists on the process heap.
+    // However, we don't know how to classify the allocation. It could be from
+    // malloc, GlobalAlloc, LocalAlloc, etc. If something is malloced before
+    // ASAN init, then we attempt to GlobalLock after ASAN init, we will not
+    // create an error report for invalid handle at this time. We won't have a
+    // wild pointer after the checks above, but if RtlIsValidHandle fails, we
+    // can wind up with a debug break below.
+    void *ptr = lockFunc(hMem);
+    // We don't care whether ptr is moved after this point as we're just trying
+    // to determine where it came from.
+    unlockFunc(hMem);
+    if (ptr == hMem) {
+      return AllocationOwnershipStatus::OWNED_BY_GLOBAL_OR_LOCAL;
+    } else if (ptr != nullptr) {
+      return AllocationOwnershipStatus::OWNED_BY_GLOBAL_OR_LOCAL_HANDLE;
+    }
+  }
+  return AllocationOwnershipStatus::OWNED_BY_UNKNOWN;
+}
+
+template<__asan_win_moveable::HeapCaller Caller>
+bool NotOwnedByASAN(HANDLE hMem) {
+  GlobalLocalFunctions<Caller> functions;
+  auto ownershipState =
+      CheckGlobalLocalHeapOwnership(hMem, functions.LockFunc, functions.UnlockFunc);
+
+  // If ASAN is not initialized then this needs to be default passed to the
+  // original allocator. If the allocation is owned by the RTL then just
+  // keep it there, since it's a leftover from before asan_init was called.
+  if (UNLIKELY(!asan_inited) ||
+      ((ownershipState ==
+        AllocationOwnershipStatus::OWNED_BY_GLOBAL_OR_LOCAL_HANDLE) ||
+       (ownershipState ==
+        AllocationOwnershipStatus::OWNED_BY_GLOBAL_OR_LOCAL))) {
+    return true;
+  }
+
+  return false;
+}
+
 }  // namespace __asan
 
-HANDLE SharedLock(HANDLE hMem, GlobalLocalLock lockFunc,
-                  BufferedStackTrace &stack) {
-  DCHECK(lockFunc != nullptr);
-  if (asan_inited && !__sanitizer::IsProcessTerminating() &&
-      !IsSystemHeapAddress(reinterpret_cast<uptr>(hMem), GetProcessHeap())) {
-    return __asan_win_moveable::IncrementLockCount(hMem, lockFunc, stack);
-  }
-  // The memory belongs to an RtlHeap or asan is not yet initialized:
-  return lockFunc(hMem);
-}
+template<__asan_win_moveable::HeapCaller Caller>
+HANDLE SharedLock(HANDLE hMem, BufferedStackTrace &stack);
 
-BOOL SharedUnlock(HANDLE hMem, GlobalLocalUnlock unlockFunc,
-                  BufferedStackTrace &stack) {
-  DCHECK(unlockFunc != nullptr);
-  if (asan_inited && !__sanitizer::IsProcessTerminating() &&
-      !IsSystemHeapAddress(reinterpret_cast<uptr>(hMem), GetProcessHeap())) {
-    return __asan_win_moveable::DecrementLockCount(hMem, unlockFunc, stack);
-  }
-  // The memory belongs to an RtlHeap or asan is not yet initialized:
-  return unlockFunc(hMem);
-}
+template<__asan_win_moveable::HeapCaller Caller>
+BOOL SharedUnlock(HANDLE hMem, BufferedStackTrace &stack);
 
 INTERCEPTOR_WINAPI(HGLOBAL, GlobalAlloc, UINT uFlags, SIZE_T dwBytes) {
   // If we encounter an unsupported flag, then we fall
@@ -2035,18 +2103,17 @@ INTERCEPTOR_WINAPI(HGLOBAL, GlobalAlloc, UINT uFlags, SIZE_T dwBytes) {
 
 INTERCEPTOR_WINAPI(HGLOBAL, GlobalLock, HGLOBAL hMem) {
   GET_STACK_TRACE_MALLOC;
-  return SharedLock(hMem, REAL(GlobalLock), stack);
+  return SharedLock<__asan_win_moveable::HeapCaller::GLOBAL>(hMem, stack);
 }
 
-INTERCEPTOR_WINAPI(BOOL, GlobalUnlock, HGLOBAL hMem) {
+INTERCEPTOR_WINAPI(int, GlobalUnlock, HGLOBAL hMem) {
   GET_STACK_TRACE_MALLOC;
-  return SharedUnlock(hMem, REAL(GlobalUnlock), stack);
+  return SharedUnlock<__asan_win_moveable::HeapCaller::GLOBAL>(hMem, stack);
 }
 
 INTERCEPTOR_WINAPI(HGLOBAL, GlobalFree, HGLOBAL hMem) {
   GET_STACK_TRACE_FREE;
-  return GlobalLocalGenericFree(REAL(GlobalLock), REAL(GlobalUnlock),
-                                REAL(GlobalFree), hMem, stack);
+  return GlobalLocalGenericFree<__asan_win_moveable::HeapCaller::GLOBAL>(hMem, stack);
 }
 
 INTERCEPTOR_WINAPI(HGLOBAL, GlobalHandle, HGLOBAL hMem) {
@@ -2055,26 +2122,15 @@ INTERCEPTOR_WINAPI(HGLOBAL, GlobalHandle, HGLOBAL hMem) {
   // takes place, or if reallocation logic defers to REAL(*) functions.
   // If it is not owned by RTL heap, then we can pass it to
   // ASAN heap for inspection.
-  if (!asan_inited ||
-      IsSystemHeapAddress(reinterpret_cast<uptr>(hMem), GetProcessHeap())) {
-    return REAL(GlobalHandle)(hMem);
+  //
+  // If ASAN is not initialized then this needs to be default passed to the
+  // original allocator. If the allocation is owned by the RTL then just
+  // keep it there, since it's a leftover from before asan_init was called.
+  if(NotOwnedByASAN<__asan_win_moveable::HeapCaller::GLOBAL>(hMem)) {
+        return REAL(GlobalHandle)(hMem);
   }
   GET_STACK_TRACE_MALLOC;
   return __asan_win_moveable::ResolvePointerToHandle(hMem, stack);
-}
-
-INTERCEPTOR_WINAPI(SIZE_T, GlobalSize, HGLOBAL hMem) {
-  // We need to check whether the ASAN allocator owns the pointer
-  // we're about to use. Allocations might occur before interception
-  // takes place, so if it is not owned by RTL heap, then we can
-  // pass it to ASAN heap for inspection.
-  if (!asan_inited ||
-      IsSystemHeapAddress(reinterpret_cast<uptr>(hMem), GetProcessHeap())) {
-    return REAL(GlobalSize)(hMem);
-  }
-
-  GET_STACK_TRACE_MALLOC;
-  return __asan_win_moveable::GetAllocationSize(hMem, stack);
 }
 
 INTERCEPTOR_WINAPI(UINT, GlobalFlags, HGLOBAL hMem) {
@@ -2082,25 +2138,42 @@ INTERCEPTOR_WINAPI(UINT, GlobalFlags, HGLOBAL hMem) {
   // we're about to use. Allocations might occur before interception
   // takes place, so if it is not owned by RTL heap, then we can
   // pass it to ASAN heap for inspection.
-  if(!asan_inited || IsSystemHeapAddress(reinterpret_cast<uptr>(hMem), GetProcessHeap())) {
-    return REAL(GlobalFlags)(hMem);
+  //
+  // If ASAN is not initialized then this needs to be default passed to the
+  // original allocator. If the allocation is owned by the RTL then just
+  // keep it there, since it's a leftover from before asan_init was called.
+  if(NotOwnedByASAN<__asan_win_moveable::HeapCaller::GLOBAL>(hMem)) {
+        return REAL(GlobalFlags)(hMem);
   }
   GET_STACK_TRACE_MALLOC;
   return __asan_win_moveable::Flags(hMem, stack);
 }
 
-INTERCEPTOR_WINAPI(HLOCAL, LocalLock, HLOCAL hMem) {
+INTERCEPTOR_WINAPI(SIZE_T, GlobalSize, HGLOBAL hMem) {
+  // We need to check whether the ASAN allocator owns the pointer
+  // we're about to use. Allocations might occur before interception
+  // takes place, so if it is not owned by RTL heap, then we can
+  // pass it to ASAN heap for inspection.
+  if(NotOwnedByASAN<__asan_win_moveable::HeapCaller::GLOBAL>(hMem)) {
+    return REAL(GlobalSize)(hMem);
+  }
+
   GET_STACK_TRACE_MALLOC;
-  return SharedLock(hMem, REAL(LocalLock), stack);
+  return __asan_win_moveable::GetAllocationSize(hMem, stack);
 }
 
-INTERCEPTOR_WINAPI(BOOL, LocalUnlock, HGLOBAL hMem) {
+INTERCEPTOR_WINAPI(HLOCAL, LocalLock, HLOCAL hMem) {
   GET_STACK_TRACE_MALLOC;
-  return SharedUnlock(hMem, REAL(LocalUnlock), stack);
+  return SharedLock<__asan_win_moveable::HeapCaller::LOCAL>(hMem, stack);
+}
+
+INTERCEPTOR_WINAPI(BOOL, LocalUnlock, HLOCAL hMem) {
+  GET_STACK_TRACE_MALLOC;
+  return SharedUnlock<__asan_win_moveable::HeapCaller::LOCAL>(hMem, stack);
 }
 
 INTERCEPTOR_WINAPI(HLOCAL, LocalHandle, HLOCAL hMem) {
-  if (!asan_inited) {
+  if (NotOwnedByASAN<__asan_win_moveable::HeapCaller::LOCAL>(hMem)) {
     return REAL(LocalHandle)(hMem);
   }
   GET_STACK_TRACE_MALLOC;
@@ -2108,26 +2181,81 @@ INTERCEPTOR_WINAPI(HLOCAL, LocalHandle, HLOCAL hMem) {
 }
 
 INTERCEPTOR_WINAPI(UINT, LocalFlags, HLOCAL hMem) {
-  if (!asan_inited || IsSystemHeapAddress(reinterpret_cast<uptr>(hMem))) {
+  if (NotOwnedByASAN<__asan_win_moveable::HeapCaller::LOCAL>(hMem)) {
     return REAL(LocalFlags)(hMem);
   }
   GET_STACK_TRACE_MALLOC;
   return __asan_win_moveable::Flags(hMem, stack);
 }
 
-namespace __asan {
+// Constructs the group of necessary function pointers to be used in Global/Local
+// interceptors. 
+template <__asan_win_moveable::HeapCaller Caller>
+struct GlobalLocalFunctions {
+  GlobalLocalFunctions() {
+    if constexpr (Caller == __asan_win_moveable::HeapCaller::GLOBAL) {
+      LockFunc = REAL(GlobalLock);
+      UnlockFunc = REAL(GlobalUnlock);
+      AllocFunc = REAL(GlobalAlloc);
+      ReallocFunc = REAL(GlobalReAlloc);
+      FlagsFunc = REAL(GlobalFlags);
+      FreeFunc = REAL(GlobalFree);
+      SizeFunc = REAL(GlobalSize);
+    } else {
+      LockFunc = REAL(LocalLock);
+      UnlockFunc = REAL(LocalUnlock);
+      AllocFunc = REAL(LocalAlloc);
+      ReallocFunc = REAL(LocalReAlloc);
+      FlagsFunc = REAL(LocalFlags);
+      FreeFunc = REAL(LocalFree);
+      SizeFunc = REAL(LocalSize);
+    }
+    DCHECK(AllocFunc != nullptr);
+    DCHECK(ReallocFunc != nullptr);
+    DCHECK(FlagsFunc != nullptr);
+    DCHECK(FreeFunc != nullptr);
+    DCHECK(LockFunc != nullptr);
+    DCHECK(UnlockFunc != nullptr);
+    DCHECK(SizeFunc != nullptr);
+  }
 
-enum class AllocationOwnership {
-  OWNED_BY_UNKNOWN,
-  OWNED_BY_ASAN,
-  OWNED_BY_RTL,
-  OWNED_BY_GLOBAL_OR_LOCAL,
-  OWNED_BY_GLOBAL_OR_LOCAL_HANDLE,
+  GlobalLocalLock LockFunc = nullptr;
+  GlobalLocalUnlock UnlockFunc = nullptr;
+  GlobalLocalAlloc AllocFunc = nullptr;
+  GlobalLocalRealloc ReallocFunc = nullptr;
+  GlobalLocalFlags FlagsFunc = nullptr;
+  GlobalLocalFree FreeFunc = nullptr;
+  GlobalLocalSize SizeFunc = nullptr;
 };
 
-HANDLE GlobalLocalGenericFree(GlobalLocalLock lockFunction,
-                              GlobalLocalUnlock unlockFunction,
-                              GlobalLocalFree freeFunction, HANDLE hMem,
+template<__asan_win_moveable::HeapCaller Caller>
+HANDLE SharedLock(HANDLE hMem, BufferedStackTrace &stack)
+{
+  auto lock = GlobalLocalFunctions<Caller>{}.LockFunc;
+  if (asan_inited && !__sanitizer::IsProcessTerminating() &&
+      !NotOwnedByASAN<Caller>(hMem)) {
+    return __asan_win_moveable::IncrementLockCount(hMem, lock, stack);
+  }
+  // The memory belongs to an RtlHeap or asan is not yet initialized:
+  return lock(hMem);
+}
+
+template<__asan_win_moveable::HeapCaller Caller>
+BOOL SharedUnlock(HANDLE hMem, BufferedStackTrace &stack)
+{
+  auto unlock = GlobalLocalFunctions<Caller>{}.UnlockFunc;
+  if (asan_inited && !__sanitizer::IsProcessTerminating() &&
+      !NotOwnedByASAN<Caller>(hMem)) {
+    return __asan_win_moveable::DecrementLockCount(hMem, unlock, stack);
+  }
+  // The memory belongs to an RtlHeap or asan is not yet initialized:
+  return unlock(hMem);
+}
+
+namespace __asan {
+
+template <__asan_win_moveable::HeapCaller Caller>
+HANDLE GlobalLocalGenericFree(HANDLE hMem,
                               BufferedStackTrace &stack) {
   // If the memory we are trying to free is not owned
   // by ASan heap, then fall back to the original GlobalFree.
@@ -2135,13 +2263,13 @@ HANDLE GlobalLocalGenericFree(GlobalLocalLock lockFunction,
   // Although the stack trace won't be quite as pretty, by doing this we can
   // avoid tracking which fixed allocations were already freed since RtlFreeHeap
   // will handle double-free detection.
-
+  auto globalLocalFunctions = GlobalLocalFunctions<Caller>{};
   if (__asan_win_moveable::IsOwned(hMem) || hMem == nullptr) {
     return __asan_win_moveable::Free(hMem, stack);
   }
 
   // Only call free if not null, but we need to lock to check.
-  HGLOBAL pointer = lockFunction(hMem);
+  HGLOBAL pointer = globalLocalFunctions.LockFunc(hMem);
 
   if (pointer == nullptr) {
     // Report invalid pointer.
@@ -2150,76 +2278,38 @@ HANDLE GlobalLocalGenericFree(GlobalLocalLock lockFunction,
 
   if (pointer != hMem) {
     // Only unlock moveable pointers.
-    unlockFunction(hMem);
+    globalLocalFunctions.UnlockFunc(hMem);
   }
 
-  return freeFunction(hMem);
+  return globalLocalFunctions.FreeFunc(hMem);
 }
 
-AllocationOwnership CheckGlobalLocalHeapOwnership(
-    HANDLE hMem, GlobalLocalLock lockFunc, GlobalLocalUnlock unlockFunc) {
-  /*  To figure the validity of hMem, we use GlobalLock/LocalLock. Those two
-   * functions can return three things: (1) the pointer that's passed in, in
-   * which case it is a pointer owned by the Global/Local heap (2) the pointer
-   * to the allocated object if it's a Global/Local heap HANDLE (3) nullptr if
-   * it's a pointer which does not belong to the Global/Local heap Using these
-   * three return types, we figure out if the pointer is TYPE_VALID_PTR or
-   * TYPE_HANDLE or TYPE_UNKNOWN_PTR
-   *
-   * NOTE: As an implementation detail, movable memory objects also live on the
-   * heap. IsSystemHeapAddress will return true if given a moveable memory
-   * handle.
-   *
-   */
-
-  // Check whether this pointer belongs to the memory manager first.
-  if (__asan_win_moveable::IsOwned(hMem) || hMem == nullptr) {
-    return AllocationOwnership::OWNED_BY_ASAN;
-  }
-
-  // It is not safe to pass wild pointers to GlobalLock/LocalLock.
-  if (IsSystemHeapAddress(reinterpret_cast<uptr>(hMem), GetProcessHeap())) {
-    void *ptr = lockFunc(hMem);
-    // We don't care whether ptr is moved after this point as we're just trying
-    // to determine where it came from.
-    unlockFunc(hMem);
-    if (ptr == hMem) {
-      return AllocationOwnership::OWNED_BY_GLOBAL_OR_LOCAL;
-    } else if (ptr != nullptr) {
-      return AllocationOwnership::OWNED_BY_GLOBAL_OR_LOCAL_HANDLE;
-    }
-  }
-  return AllocationOwnership::OWNED_BY_UNKNOWN;
-}
-
-void *ReAllocGlobalLocal(GlobalLocalRealloc reallocFunc,
-                         GlobalLocalSize sizeFunc, GlobalLocalFree freeFunc,
-                         GlobalLocalAlloc allocFunc, GlobalLocalLock lockFunc,
-                         GlobalLocalUnlock unlockFunc,
-                         __asan_win_moveable::HeapCaller caller, HANDLE hMem,
+template <__asan_win_moveable::HeapCaller Caller>
+void *ReAllocGlobalLocal(HANDLE hMem,
                          SIZE_T dwBytes, UINT uFlags,
                          BufferedStackTrace &stack) {
-  CHECK(reallocFunc && sizeFunc && freeFunc && allocFunc);
+  auto globalLocalFunctions = GlobalLocalFunctions<Caller>{};
 
-  AllocationOwnership ownershipState =
-      CheckGlobalLocalHeapOwnership(hMem, lockFunc, unlockFunc);
+  auto ownershipState =
+      CheckGlobalLocalHeapOwnership(hMem, globalLocalFunctions.LockFunc, globalLocalFunctions.UnlockFunc);
 
   // If ASAN is not initialized then this needs to be default passed to the
   // original allocator. If the allocation is owned by the RTL then just
   // keep it there, since it's a leftover from before asan_init was called.
   if (UNLIKELY(!asan_inited) ||
       ((ownershipState ==
-        AllocationOwnership::OWNED_BY_GLOBAL_OR_LOCAL_HANDLE) ||
-       (ownershipState == AllocationOwnership::OWNED_BY_GLOBAL_OR_LOCAL))) {
-    return reallocFunc(hMem, dwBytes, uFlags);
+        AllocationOwnershipStatus::OWNED_BY_GLOBAL_OR_LOCAL_HANDLE) ||
+       (ownershipState == AllocationOwnershipStatus::OWNED_BY_GLOBAL_OR_LOCAL))) {
+    return globalLocalFunctions.ReallocFunc(hMem, dwBytes, uFlags);
   }
   // If the pointer is nonsense pass it directly to asan to report on it.
-  if (ownershipState == AllocationOwnership::OWNED_BY_UNKNOWN)
+  if (ownershipState == AllocationOwnershipStatus::OWNED_BY_UNKNOWN) {
     return asan_realloc(hMem, dwBytes, &stack);
+  }
 
-  if (ownershipState == AllocationOwnership::OWNED_BY_ASAN) {
+  if (ownershipState == AllocationOwnershipStatus::OWNED_BY_ASAN) {
     CHECK((COMBINED_GLOBALLOCAL_UNSUPPORTED_FLAGS & uFlags) == 0);
-    return __asan_win_moveable::ReAllocate(hMem, uFlags, dwBytes, caller,
+    return __asan_win_moveable::ReAllocate(hMem, uFlags, dwBytes, Caller,
                                            stack);
   }
   return nullptr;
@@ -2229,12 +2319,7 @@ void *ReAllocGlobalLocal(GlobalLocalRealloc reallocFunc,
 INTERCEPTOR_WINAPI(HGLOBAL, GlobalReAlloc, HGLOBAL hMem, SIZE_T dwBytes,
                    UINT uFlags) {
   GET_STACK_TRACE_MALLOC;
-  return ReAllocGlobalLocal(
-      (GlobalLocalRealloc)REAL(GlobalReAlloc),
-      (GlobalLocalSize)REAL(GlobalSize), (GlobalLocalFree)REAL(GlobalFree),
-      (GlobalLocalAlloc)REAL(GlobalAlloc), (GlobalLocalLock)REAL(GlobalLock),
-      (GlobalLocalUnlock)GlobalUnlock, __asan_win_moveable::HeapCaller::GLOBAL,
-      (HANDLE)hMem, dwBytes, uFlags, stack);
+  return ReAllocGlobalLocal<__asan_win_moveable::HeapCaller::GLOBAL>((HANDLE)hMem, dwBytes, uFlags, stack);
 }
 
 INTERCEPTOR_WINAPI(HLOCAL, LocalAlloc, UINT uFlags, SIZE_T uBytes) {
@@ -2252,15 +2337,14 @@ INTERCEPTOR_WINAPI(HLOCAL, LocalFree, HGLOBAL hMem) {
   // If the memory we are trying to free is not owned
   // ASan heap, then fall back to the original LocalFree.
   GET_STACK_TRACE_FREE;
-  return GlobalLocalGenericFree(REAL(LocalLock), REAL(LocalUnlock),
-                                REAL(LocalFree), hMem, stack);
+  return GlobalLocalGenericFree<__asan_win_moveable::HeapCaller::LOCAL>(hMem, stack);
 }
 
 INTERCEPTOR_WINAPI(SIZE_T, LocalSize, HGLOBAL hMem) {
   /* We need to check whether the ASAN allocator owns the pointer we're about to
    * use. Allocations might occur before interception takes place, so if it is
    * not owned by RTL heap, the we can pass it to ASAN heap for inspection.*/
-  if (!asan_inited || IsSystemHeapAddress(reinterpret_cast<uptr>(hMem))) {
+  if (NotOwnedByASAN<__asan_win_moveable::HeapCaller::LOCAL>(hMem)) {
     return REAL(LocalSize)(hMem);
   }
 
@@ -2271,12 +2355,7 @@ INTERCEPTOR_WINAPI(SIZE_T, LocalSize, HGLOBAL hMem) {
 INTERCEPTOR_WINAPI(HLOCAL, LocalReAlloc, HGLOBAL hMem, SIZE_T dwBytes,
                    UINT uFlags) {
   GET_STACK_TRACE_MALLOC;
-  return ReAllocGlobalLocal(
-      (GlobalLocalRealloc)REAL(LocalReAlloc), (GlobalLocalSize)REAL(LocalSize),
-      (GlobalLocalFree)REAL(LocalFree), (GlobalLocalAlloc)REAL(LocalAlloc),
-      (GlobalLocalLock)REAL(LocalLock), (GlobalLocalUnlock)LocalUnlock,
-      __asan_win_moveable::HeapCaller::LOCAL, (HANDLE)hMem, dwBytes, uFlags,
-      stack);
+  return ReAllocGlobalLocal<__asan_win_moveable::HeapCaller::LOCAL>((HANDLE)hMem, dwBytes, uFlags,stack);
 }
 
 namespace __asan {

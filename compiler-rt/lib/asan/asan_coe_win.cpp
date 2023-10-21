@@ -1056,7 +1056,7 @@ void CoeSetSymOptions(DWORD add, DWORD remove = 0) {
 }
 
 // The top two OS frames don't get all the symbol
-// Sinformation because ymHandler  *path==nullptr
+// information because SymHandler *path==nullptr
 
 struct ModuleData {
   wchar_t image_name[MAX_PATH];
@@ -1066,10 +1066,10 @@ struct ModuleData {
 };
 
 // TODO - PR bug filed - create internal_strncpy_s and internal_wcscpy
+static const int kMaxPdbs = 1024 * 4;
 
 class GetModuleInfo {
   HANDLE process;
-  static const int buffer_length = 4096;
 
  public:
   GetModuleInfo(HANDLE h) : process(h) {}
@@ -1093,20 +1093,37 @@ class GetModuleInfo {
   }
 };
 
-ModuleData static_module_info_data[1024];
+// 4K maximum number of DLL's.
+//
+// NOTE: for someone to debug applications this large they must
+// set HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Session
+// Manager\DebuggerMaxModuleMsgs The default is 500.
+//
+// We have tested with up to 4,000 DLL's at a top ISV so far.
+// I do *not* want to dynamically reallocate here becuse we don't 
+// have the proper stress testing in place.
+
+static ModuleData static_module_info_array[kMaxPdbs];
+static HMODULE static_module_handles_array[kMaxPdbs];
 
 void CoeLoadModulesSymbols(HANDLE process, DWORD pid) {
-  DWORD cbNeeded;
-  ModuleData static_modules_array[128];
-  HMODULE module_handles[128];
-
-  CHECK(EnumProcessModules(process, &module_handles[0], 128 * sizeof(HMODULE),
-                           &cbNeeded));
+  DWORD cbNeeded = 0;
+  if (!EnumProcessModules(process, &static_module_handles_array[0],
+                          kMaxPdbs * sizeof(HMODULE), &cbNeeded)) {
+    if (cbNeeded > sizeof(static_module_handles_array)) {
+      RAW_CHECK_MSG(false,
+                    "Internal Asan RT Error: Loading more than 4K modules is "
+                    "not supported "
+                    "under continue_on_error.");
+    }
+    RAW_CHECK_MSG(false,
+                  "Internal ASan RT Error: Failed to enumerate all the modules "
+                  "in process.");
+  }
   int module_cnt = (cbNeeded / sizeof(HMODULE));
   GetModuleInfo gmi(process);
-
   for (int i = 0; i < module_cnt; i++) {
-    static_modules_array[i] = gmi(module_handles[i]);
+    static_module_info_array[i] = gmi(static_module_handles_array[i]);
   }
 }
 
