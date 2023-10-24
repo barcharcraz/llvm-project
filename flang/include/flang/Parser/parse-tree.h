@@ -2259,15 +2259,18 @@ struct LoopControl {
 };
 
 // R1121 label-do-stmt -> [do-construct-name :] DO label [loop-control]
+// A label-do-stmt with a do-construct-name is parsed as a non-label-do-stmt.
 struct LabelDoStmt {
   TUPLE_CLASS_BOILERPLATE(LabelDoStmt);
-  std::tuple<std::optional<Name>, Label, std::optional<LoopControl>> t;
+  std::tuple<Label, std::optional<LoopControl>> t;
 };
 
 // R1122 nonlabel-do-stmt -> [do-construct-name :] DO [loop-control]
 struct NonLabelDoStmt {
   TUPLE_CLASS_BOILERPLATE(NonLabelDoStmt);
-  std::tuple<std::optional<Name>, std::optional<LoopControl>> t;
+  std::tuple<std::optional<Name>, std::optional<Label>,
+      std::optional<LoopControl>>
+      t;
 };
 
 // R1132 end-do-stmt -> END DO [do-construct-name]
@@ -3462,8 +3465,8 @@ struct OmpDeviceTypeClause {
 // 2.12 if-clause -> IF ([ directive-name-modifier :] scalar-logical-expr)
 struct OmpIfClause {
   TUPLE_CLASS_BOILERPLATE(OmpIfClause);
-  ENUM_CLASS(DirectiveNameModifier, Parallel, Target, TargetEnterData,
-      TargetExitData, TargetData, TargetUpdate, Taskloop, Task)
+  ENUM_CLASS(DirectiveNameModifier, Parallel, Simd, Target, TargetData,
+      TargetEnterData, TargetExitData, TargetUpdate, Task, Taskloop, Teams)
   std::tuple<std::optional<DirectiveNameModifier>, ScalarLogicalExpr> t;
 };
 
@@ -3544,17 +3547,17 @@ struct OmpInReductionClause {
 //                                   variable-name-list)
 //                allocate-modifier -> allocator | align
 struct OmpAllocateClause {
-  TUPLE_CLASS_BOILERPLATE(OmpAllocateClause);
   struct AllocateModifier {
-    UNION_CLASS_BOILERPLATE(AllocateModifier);
     WRAPPER_CLASS(Allocator, ScalarIntExpr);
     WRAPPER_CLASS(Align, ScalarIntExpr);
     struct ComplexModifier {
       TUPLE_CLASS_BOILERPLATE(ComplexModifier);
       std::tuple<Allocator, Align> t;
     };
+    UNION_CLASS_BOILERPLATE(AllocateModifier);
     std::variant<Allocator, ComplexModifier, Align> u;
   };
+  TUPLE_CLASS_BOILERPLATE(OmpAllocateClause);
   std::tuple<std::optional<AllocateModifier>, OmpObjectList> t;
 };
 
@@ -3593,8 +3596,8 @@ struct OmpDependClause {
 //                 ATOMIC_DEFAULT_MEM_ORDER (SEQ_CST | ACQ_REL |
 //                                           RELAXED)
 struct OmpAtomicDefaultMemOrderClause {
-  ENUM_CLASS(Type, SeqCst, AcqRel, Relaxed)
-  WRAPPER_CLASS_BOILERPLATE(OmpAtomicDefaultMemOrderClause, Type);
+  WRAPPER_CLASS_BOILERPLATE(
+      OmpAtomicDefaultMemOrderClause, common::OmpAtomicDefaultMemOrderType);
 };
 
 // OpenMP Clauses
@@ -4244,11 +4247,19 @@ struct OpenACCDeclarativeConstruct {
 };
 
 // OpenACC directives enclosing do loop
+EMPTY_CLASS(AccEndLoop);
 struct OpenACCLoopConstruct {
   TUPLE_CLASS_BOILERPLATE(OpenACCLoopConstruct);
   OpenACCLoopConstruct(AccBeginLoopDirective &&a)
-      : t({std::move(a), std::nullopt}) {}
-  std::tuple<AccBeginLoopDirective, std::optional<DoConstruct>> t;
+      : t({std::move(a), std::nullopt, std::nullopt}) {}
+  std::tuple<AccBeginLoopDirective, std::optional<DoConstruct>,
+      std::optional<AccEndLoop>>
+      t;
+};
+
+struct OpenACCEndConstruct {
+  WRAPPER_CLASS_BOILERPLATE(OpenACCEndConstruct, llvm::acc::Directive);
+  CharBlock source;
 };
 
 struct OpenACCStandaloneConstruct {
@@ -4261,7 +4272,7 @@ struct OpenACCConstruct {
   UNION_CLASS_BOILERPLATE(OpenACCConstruct);
   std::variant<OpenACCBlockConstruct, OpenACCCombinedConstruct,
       OpenACCLoopConstruct, OpenACCStandaloneConstruct, OpenACCCacheConstruct,
-      OpenACCWaitConstruct, OpenACCAtomicConstruct>
+      OpenACCWaitConstruct, OpenACCAtomicConstruct, OpenACCEndConstruct>
       u;
 };
 

@@ -484,14 +484,23 @@ ExprDependence clang::computeDependence(DeclRefExpr *E, const ASTContext &Ctx) {
 
   //    - an identifier associated by name lookup with one or more declarations
   //      declared with a dependent type
+  //    - an identifier associated by name lookup with an entity captured by
+  //    copy ([expr.prim.lambda.capture])
+  //      in a lambda-expression that has an explicit object parameter whose
+  //      type is dependent ([dcl.fct]),
   //
   // [The "or more" case is not modeled as a DeclRefExpr. There are a bunch
   // more bullets here that we handle by treating the declaration as having a
   // dependent type if they involve a placeholder type that can't be deduced.]
   if (Type->isDependentType())
-    return Deps | ExprDependence::TypeValueInstantiation;
+    Deps |= ExprDependence::TypeValueInstantiation;
   else if (Type->isInstantiationDependentType())
     Deps |= ExprDependence::Instantiation;
+
+  //    - an identifier associated by name lookup with an entity captured by
+  //    copy ([expr.prim.lambda.capture])
+  if (E->isCapturedByCopyInLambdaWithExplicitObjectParameter())
+    Deps |= ExprDependence::Type;
 
   //    - a conversion-function-id that specifies a dependent type
   if (Decl->getDeclName().getNameKind() ==
@@ -525,13 +534,13 @@ ExprDependence clang::computeDependence(DeclRefExpr *E, const ASTContext &Ctx) {
   //   - it names a potentially-constant variable that is initialized with an
   //     expression that is value-dependent
   if (const auto *Var = dyn_cast<VarDecl>(Decl)) {
-    if (Var->mightBeUsableInConstantExpressions(Ctx)) {
-      if (const Expr *Init = Var->getAnyInitializer()) {
-        if (Init->isValueDependent())
-          Deps |= ExprDependence::ValueInstantiation;
-        if (Init->containsErrors())
-          Deps |= ExprDependence::Error;
-      }
+    if (const Expr *Init = Var->getAnyInitializer()) {
+      if (Init->containsErrors())
+        Deps |= ExprDependence::Error;
+
+      if (Var->mightBeUsableInConstantExpressions(Ctx) &&
+          Init->isValueDependent())
+        Deps |= ExprDependence::ValueInstantiation;
     }
 
     // - it names a static data member that is a dependent member of the

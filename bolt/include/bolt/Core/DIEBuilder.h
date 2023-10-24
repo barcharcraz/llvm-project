@@ -21,12 +21,12 @@
 #include "llvm/DebugInfo/DWARF/DWARFExpression.h"
 #include "llvm/DebugInfo/DWARF/DWARFUnit.h"
 #include "llvm/Support/Allocator.h"
-#include "llvm/Support/ErrorHandling.h"
 
 #include <list>
 #include <memory>
 #include <optional>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace llvm {
@@ -58,6 +58,20 @@ public:
     // A map of DIE offsets in original DWARF section to DIE ID.
     // Whih is used to access DieInfoVector.
     std::unordered_map<uint64_t, uint32_t> DIEIDMap;
+
+    // Some STL implementations don't have a noexcept move constructor for
+    // unordered_map (e.g. https://github.com/microsoft/STL/issues/165 explains
+    // why the Microsoft STL doesn't). In that case, the default move
+    // constructor generated for DWARFUnitInfo isn't noexcept either, and thus
+    // resizing a vector of DWARFUnitInfo will copy elements instead of moving
+    // them (https://en.cppreference.com/w/cpp/utility/move_if_noexcept).
+    // DWARFUnitInfo isn't copyable though, since the DieInfoVector member is a
+    // vector of unique_ptrs and unique_ptr isn't copyable, so using a vector of
+    // DWARFUnitInfo causes build errors. Explicitly marking DWARFUnitInfo as
+    // non-copyable forces vector resizes to move instead and fixes the issue.
+    DWARFUnitInfo() = default;
+    DWARFUnitInfo(const DWARFUnitInfo &) = delete;
+    DWARFUnitInfo(DWARFUnitInfo &&) = default;
   };
 
   enum class ProcessingType { DWARF4TUs, DWARF5TUs, CUs };
@@ -99,6 +113,7 @@ private:
     std::vector<LocWithReference> LocWithReferencesToProcess;
     BumpPtrAllocator DIEAlloc;
     ProcessingType Type;
+    std::unordered_set<uint64_t> DWARFDieAddressesParsed;
   };
 
   std::unique_ptr<State> BuilderState;
@@ -345,7 +360,6 @@ public:
     return Die->replaceValue(getState().DIEAlloc, Attribute, Form, NewValue);
   }
 
-  template <class T>
   bool deleteValue(DIEValueList *Die, dwarf::Attribute Attribute) {
     return Die->deleteValue(Attribute);
   }

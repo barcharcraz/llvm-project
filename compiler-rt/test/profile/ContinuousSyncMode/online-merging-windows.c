@@ -1,4 +1,5 @@
-// REQUIRES: windows
+// REQUIRES: target={{.*windows-msvc.*}}
+// REQUIRES: lld-available
 
 // Test the online merging mode (%m) along with continuous mode (%c).
 //

@@ -12,6 +12,7 @@
 
 #include "llvm/Object/OffloadBinary.h"
 
+#include "OmptCallback.h"
 #include "device.h"
 #include "private.h"
 #include "rtl.h"
@@ -42,7 +43,7 @@ PluginManager *PM;
 static char *ProfileTraceFile = nullptr;
 
 #ifdef OMPT_SUPPORT
-extern void InitOmptLibomp();
+extern void ompt::connectLibrary();
 #endif
 
 __attribute__((constructor(101))) void init() {
@@ -67,10 +68,10 @@ __attribute__((constructor(101))) void init() {
   if (ProfileTraceFile)
     timeTraceProfilerInitialize(500 /* us */, "libomptarget");
 
-  #ifdef OMPT_SUPPORT
-    // Initialize OMPT first
-    InitOmptLibomp();
-  #endif
+#ifdef OMPT_SUPPORT
+  // Initialize OMPT first
+  ompt::connectLibrary();
+#endif
 
   PM->RTLs.loadRTLs();
   PM->registerDelayedLibraries();
@@ -248,6 +249,12 @@ bool RTLsTy::attemptLoadRTL(const std::string &RTLName, RTLInfoTy &RTL) {
       DynLibrary->getAddressOfSymbol("__tgt_rtl_data_notify_mapped");
   *((void **)&RTL.data_notify_unmapped) =
       DynLibrary->getAddressOfSymbol("__tgt_rtl_data_notify_unmapped");
+  *((void **)&RTL.set_device_offset) =
+      DynLibrary->getAddressOfSymbol("__tgt_rtl_set_device_offset");
+
+  // Record Replay RTL
+  *((void **)&RTL.activate_record_replay) =
+      DynLibrary->getAddressOfSymbol("__tgt_rtl_initialize_record_replay");
 
   RTL.LibraryHandler = std::move(DynLibrary);
 
@@ -298,6 +305,10 @@ static void registerGlobalCtorsDtorsForImage(__tgt_bin_desc *Desc,
     Device.HasPendingGlobals = true;
     for (__tgt_offload_entry *Entry = Img->EntriesBegin;
          Entry != Img->EntriesEnd; ++Entry) {
+      // Globals are not callable and use a different set of flags.
+      if (Entry->size != 0)
+        continue;
+
       if (Entry->flags & OMP_DECLARE_TARGET_CTOR) {
         DP("Adding ctor " DPxMOD " to the pending list.\n",
            DPxPTR(Entry->addr));
@@ -414,6 +425,10 @@ void RTLsTy::initRTLonce(RTLInfoTy &R) {
            "RTL index should equal the number of devices used so far.");
     R.IsUsed = true;
     UsedRTLs.push_back(&R);
+
+    // If possible, set the device identifier offset
+    if (R.set_device_offset)
+      R.set_device_offset(Start);
 
     DP("RTL " DPxMOD " has index %d!\n", DPxPTR(R.LibraryHandler.get()), R.Idx);
   }

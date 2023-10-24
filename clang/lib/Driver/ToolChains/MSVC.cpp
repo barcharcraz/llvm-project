@@ -315,7 +315,7 @@ void visualstudio::Linker::ConstructJob(Compilation &C, const JobAction &JA,
     A.renderAsInput(Args, CmdArgs);
   }
 
-  addHIPRuntimeLibArgs(TC, Args, CmdArgs);
+  addHIPRuntimeLibArgs(TC, C, Args, CmdArgs);
 
   TC.addProfileRTLibs(Args, CmdArgs);
 
@@ -461,10 +461,6 @@ Tool *MSVCToolChain::buildAssembler() const {
     return new tools::darwin::Assembler(*this);
   getDriver().Diag(clang::diag::err_no_external_assembler);
   return nullptr;
-}
-
-bool MSVCToolChain::IsIntegratedAssemblerDefault() const {
-  return true;
 }
 
 ToolChain::UnwindTableLevel

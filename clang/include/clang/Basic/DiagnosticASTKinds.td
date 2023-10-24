@@ -70,6 +70,8 @@ def note_consteval_address_accessible : Note<
   "is not a constant expression">;
 def note_constexpr_uninitialized : Note<
   "subobject %0 is not initialized">;
+def note_constexpr_uninitialized_base : Note<
+  "constructor of base class %0 is not called">;
 def note_constexpr_static_local : Note<
   "control flows through the definition of a %select{static|thread_local}0 variable">;
 def note_constexpr_subobject_declared_here : Note<
@@ -351,6 +353,9 @@ def note_constexpr_new_negative : Note<
   "cannot allocate array; evaluated array bound %0 is negative">;
 def note_constexpr_new_too_large : Note<
   "cannot allocate array; evaluated array bound %0 is too large">;
+def note_constexpr_new_exceeds_limits : Note<
+  "cannot allocate array; evaluated array bound %0 exceeds the limit (%1); "
+  "use '-fconstexpr-steps' to increase this limit">;
 def note_constexpr_new_too_small : Note<
   "cannot allocate array; evaluated array bound %0 is too small to hold "
   "%1 explicitly initialized elements">;
@@ -389,6 +394,8 @@ def note_constexpr_unsupported_layout : Note<
   "type %0 has unexpected layout">;
 def note_constexpr_unsupported_flexible_array : Note<
   "flexible array initialization is not yet supported">;
+def note_constexpr_non_const_vectorelements : Note<
+  "cannot determine number of elements for sizeless vectors in a constant expression">;
 def err_experimental_clang_interp_failed : Error<
   "the experimental clang interpreter failed to evaluate an expression">;
 
@@ -400,7 +407,8 @@ def warn_fixedpoint_constant_overflow : Warning<
   InGroup<DiagGroup<"fixed-point-overflow">>;
 def warn_constexpr_unscoped_enum_out_of_range : Warning<
   "integer value %0 is outside the valid range of values [%1, %2] for the "
-  "enumeration type %3">, DefaultError, InGroup<DiagGroup<"enum-constexpr-conversion">>;
+  "enumeration type %3">, DefaultError, ShowInSystemHeader, ShowInSystemMacro,
+  InGroup<DiagGroup<"enum-constexpr-conversion">>;
 
 // This is a temporary diagnostic, and shall be removed once our
 // implementation is complete, and like the preceding constexpr notes belongs

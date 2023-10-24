@@ -42,7 +42,7 @@ kmp_uint64 abs(const kmp_uint64 _X) { return _X; }
 
 // avoid inadevertently using a library based abs
 template <typename T> T __kmp_abs(const T val) {
-  return (val < 0) ? -val: val;
+  return (val < 0) ? -val : val;
 }
 kmp_uint32 __kmp_abs(const kmp_uint32 val) { return val; }
 kmp_uint64 __kmp_abs(const kmp_uint64 val) { return val; }
@@ -51,7 +51,34 @@ kmp_uint64 __kmp_abs(const kmp_uint64 val) { return val; }
 // Common functions for working with rectangular and non-rectangular loops
 //----------------------------------------------------------------------------
 
-template <typename T> int __kmp_sign(T val) { return (T(0) < val) - (val < T(0)); }
+template <typename T> int __kmp_sign(T val) {
+  return (T(0) < val) - (val < T(0));
+}
+
+template <typename T> class CollapseAllocator {
+  typedef T *pT;
+
+private:
+  static const size_t allocaSize = 32; // size limit for stack allocations
+                                       // (8 bytes x 4 nested loops)
+  char stackAlloc[allocaSize];
+  static constexpr size_t maxElemCount = allocaSize / sizeof(T);
+  pT pTAlloc;
+
+public:
+  CollapseAllocator(size_t n) : pTAlloc(reinterpret_cast<pT>(stackAlloc)) {
+    if (n > maxElemCount) {
+      pTAlloc = reinterpret_cast<pT>(__kmp_allocate(n * sizeof(T)));
+    }
+  }
+  ~CollapseAllocator() {
+    if (pTAlloc != reinterpret_cast<pT>(stackAlloc)) {
+      __kmp_free(pTAlloc);
+    }
+  }
+  T &operator[](int index) { return pTAlloc[index]; }
+  operator const pT() { return pTAlloc; }
+};
 
 template <typename T> class CollapseAllocator {
   typedef T *pT;
@@ -972,7 +999,6 @@ bool kmp_calc_original_ivs_for_start(const bounds_info_t *original_bounds_nest,
   bool b = kmp_calc_original_ivs_from_iterations(original_bounds_nest, n,
                                                  /*in/out*/ original_ivs,
                                                  /*in/out*/ iterations, 0);
-  __kmp_free(iterations);
   return b;
 }
 

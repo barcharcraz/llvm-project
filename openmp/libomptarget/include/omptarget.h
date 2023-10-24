@@ -83,13 +83,16 @@ enum tgt_map_type {
   OMP_TGT_MAPTYPE_MEMBER_OF       = 0xffff000000000000
 };
 
+/// Flags for offload entries.
 enum OpenMPOffloadingDeclareTargetFlags {
-  /// Mark the entry as having a 'link' attribute.
+  /// Mark the entry global as having a 'link' attribute.
   OMP_DECLARE_TARGET_LINK = 0x01,
-  /// Mark the entry as being a global constructor.
+  /// Mark the entry kernel as being a global constructor.
   OMP_DECLARE_TARGET_CTOR = 0x02,
-  /// Mark the entry as being a global destructor.
-  OMP_DECLARE_TARGET_DTOR = 0x04
+  /// Mark the entry kernel as being a global destructor.
+  OMP_DECLARE_TARGET_DTOR = 0x04,
+  /// Mark the entry global as being an indirectly callable function.
+  OMP_DECLARE_TARGET_INDIRECT = 0x08
 };
 
 enum OpenMPOffloadingRequiresDirFlags {
@@ -309,6 +312,7 @@ int omp_target_memcpy_rect(void *Dst, const void *Src, size_t ElementSize,
                            const size_t *DstDimensions,
                            const size_t *SrcDimensions, int DstDevice,
                            int SrcDevice);
+void *omp_target_memset(void *Ptr, int C, size_t N, int DeviceNum);
 int omp_target_associate_ptr(const void *HostPtr, const void *DevicePtr,
                              size_t Size, size_t DeviceOffset, int DeviceNum);
 int omp_target_disassociate_ptr(const void *HostPtr, int DeviceNum);
@@ -433,6 +437,10 @@ int __tgt_target_kernel_replay(ident_t *Loc, int64_t DeviceId, void *HostPtr,
 void __tgt_set_info_flag(uint32_t);
 
 int __tgt_print_device_info(int64_t DeviceId);
+
+int __tgt_activate_record_replay(int64_t DeviceId, uint64_t MemorySize,
+                                 bool IsRecord, bool SaveOutput);
+
 #ifdef __cplusplus
 }
 #endif

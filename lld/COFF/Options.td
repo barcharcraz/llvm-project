@@ -232,6 +232,8 @@ defm demangle : B<"demangle",
 def include_optional : Joined<["/", "-", "/?", "-?"], "includeoptional:">,
     HelpText<"Add symbol as undefined, but allow it to remain undefined">;
 def kill_at : F<"kill-at">;
+defm lld_allow_duplicate_weak : B_priv<"lld-allow-duplicate-weak">;
+def lldemit : P<"lldemit", "Specify output type">;
 def lldmingw : F<"lldmingw">;
 def noseh : F<"noseh">;
 def osversion : P_priv<"osversion">;
@@ -289,12 +291,21 @@ def wrap : P_priv<"wrap">;
 
 def vfsoverlay : P<"vfsoverlay", "Path to a vfsoverlay yaml file to optionally look for /defaultlib's in">;
 
+def time_trace_eq: Joined<["--"], "time-trace=">, MetaVarName<"<file>">,
+  HelpText<"Record time trace to <file>">;
+def : Flag<["--"], "time-trace">, Alias<time_trace_eq>,
+  HelpText<"Record time trace to file next to output">;
+
+def time_trace_granularity_eq: Joined<["--"], "time-trace-granularity=">,
+    HelpText<"Minimum time granularity (in microseconds) traced by time profiler">;
+
 // Flags for debugging
 def lldmap : F<"lldmap">;
 def lldmap_file : P_priv<"lldmap">;
 def map : F<"map">;
 def map_file : P_priv<"map">;
 def map_info : P<"mapinfo", "Include the specified information in a map file">;
+def print_search_paths : F<"print-search-paths">;
 def show_timing : F<"time">;
 def summary : F<"summary">;
 

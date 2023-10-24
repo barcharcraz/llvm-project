@@ -23,8 +23,8 @@
 ; DBG-NEXT:     CLONE ir<%min> = call @llvm.smin.i32(vp<[[IV_STEPS]]>, ir<65535>)
 ; DBG-NEXT:     CLONE ir<%arrayidx> = getelementptr inbounds ir<%dst>, vp<[[IV_STEPS]]>
 ; DBG-NEXT:     CLONE store ir<%min>, ir<%arrayidx>
-; DBG-NEXT:     EMIT vp<[[INC:%.+]]> = VF * UF +(nuw)  vp<[[CAN_IV]]>
-; DBG-NEXT:     EMIT branch-on-count  vp<[[INC]]> vp<[[VEC_TC]]>
+; DBG-NEXT:     EMIT vp<[[INC:%.+]]> = VF * UF + nuw vp<[[CAN_IV]]>
+; DBG-NEXT:     EMIT branch-on-count vp<[[INC]]>, vp<[[VEC_TC]]>
 ; DBG-NEXT:   No successors
 ; DBG-NEXT: }
 ;
@@ -100,8 +100,8 @@ declare i32 @llvm.smin.i32(i32, i32)
 ; DBG-NEXT:   Successor(s): cond.false.1
 ; DBG-EMPTY:
 ; DBG-NEXT:   cond.false.1:
-; DBG-NEXT:     EMIT vp<[[CAN_IV_INC:%.+]]> = VF * UF +(nuw)  vp<[[CAN_IV]]>
-; DBG-NEXT:     EMIT branch-on-count  vp<[[CAN_IV_INC]]> vp<[[VEC_TC]]>
+; DBG-NEXT:     EMIT vp<[[CAN_IV_INC:%.+]]> = VF * UF + nuw vp<[[CAN_IV]]>
+; DBG-NEXT:     EMIT branch-on-count vp<[[CAN_IV_INC]]>, vp<[[VEC_TC]]>
 ; DBG-NEXT:   No successors
 ; DBG-NEXT: }
 ; DBG-NEXT: Successor(s): middle.block
@@ -189,10 +189,10 @@ exit:
 ; DBG-NEXT:     FIRST-ORDER-RECURRENCE-PHI ir<%for> = phi ir<0>, vp<[[SCALAR_STEPS:.+]]>
 ; DBG-NEXT:     vp<[[DERIVED_IV:%.+]]> = DERIVED-IV ir<0> + vp<[[CAN_IV]]> * ir<1> (truncated to i32)
 ; DBG-NEXT:     vp<[[SCALAR_STEPS]]> = SCALAR-STEPS vp<[[DERIVED_IV]]>, ir<1>
-; DBG-NEXT:     EMIT vp<[[SPLICE:%.+]]> = first-order splice ir<%for> vp<[[SCALAR_STEPS]]>
+; DBG-NEXT:     EMIT vp<[[SPLICE:%.+]]> = first-order splice ir<%for>, vp<[[SCALAR_STEPS]]>
 ; DBG-NEXT:     CLONE store vp<[[SPLICE]]>, ir<%dst>
-; DBG-NEXT:     EMIT vp<[[IV_INC:%.+]]> = VF * UF +(nuw)  vp<[[CAN_IV]]>
-; DBG-NEXT:     EMIT branch-on-count  vp<[[IV_INC]]> vp<[[VTC]]>
+; DBG-NEXT:     EMIT vp<[[IV_INC:%.+]]> = VF * UF + nuw vp<[[CAN_IV]]>
+; DBG-NEXT:     EMIT branch-on-count vp<[[IV_INC]]>, vp<[[VTC]]>
 ; DBG-NEXT:   No successors
 ; DBG-NEXT: }
 ; DBG-NEXT: Successor(s): middle.block
@@ -231,4 +231,39 @@ loop:
 
 exit:
   ret void
+}
+
+define i16 @reduction_with_casts() {
+; CHECK-LABEL: define i16 @reduction_with_casts() {
+; CHECK:       vector.body:
+; CHECK-NEXT:    [[INDEX:%.*]] = phi i32 [ 0, [[VECTOR_PH:%.+]] ], [ [[INDEX_NEXT:%.*]], [[VECTOR_BODY:%.+]] ]
+; CHECK-NEXT:    [[VEC_PHI:%.*]] = phi i32 [ 0, [[VECTOR_PH]] ], [ [[TMP2:%.*]], [[VECTOR_BODY]] ]
+; CHECK-NEXT:    [[VEC_PHI1:%.*]] = phi i32 [ 0, [[VECTOR_PH]] ], [ [[TMP3:%.*]], [[VECTOR_BODY]] ]
+; CHECK-NEXT:    [[TMP0:%.*]] = and i32 [[VEC_PHI]], 65535
+; CHECK-NEXT:    [[TMP1:%.*]] = and i32 [[VEC_PHI1]], 65535
+; CHECK-NEXT:    [[TMP2]] = add i32 [[TMP0]], 1
+; CHECK-NEXT:    [[TMP3]] = add i32 [[TMP1]], 1
+; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i32 [[INDEX]], 2
+; CHECK-NEXT:    [[TMP4:%.*]] = icmp eq i32 [[INDEX_NEXT]], 9998
+; CHECK-NEXT:    br i1 [[TMP4]], label [[MIDDLE_BLOCK:%.*]], label [[VECTOR_BODY]]
+; CHECK:       middle.block:
+; CHECK-NEXT:    [[BIN_RDX:%.*]] = add i32 [[TMP3]], [[TMP2]]
+; CHECK-NEXT:    br i1 false, label [[EXIT:%.*]], label %scalar.ph
+;
+entry:
+  br label %loop
+
+loop:
+  %count.0.in1 = phi i32 [ 0, %entry ], [ %add, %loop ]
+  %iv = phi i16 [ 1, %entry ], [ %iv.next, %loop ]
+  %conv1 = and i32 %count.0.in1, 65535
+  %add = add nuw nsw i32 %conv1, 1
+  %iv.next = add i16 %iv, 1
+  %cmp = icmp eq i16 %iv.next, 10000
+  br i1 %cmp, label %exit, label %loop
+
+exit:
+  %add.lcssa = phi i32 [ %add, %loop ]
+  %count.0 = trunc i32 %add.lcssa to i16
+  ret i16 %count.0
 }

@@ -486,8 +486,12 @@ static const u8 kPrologueWithShortJump2[] = {
 #endif
 
 // Returns 0 on error.
-static size_t GetInstructionSize(uptr address, size_t *rel_offset = nullptr) {
-// clang-format off
+static size_t GetInstructionSize(uptr address, size_t* rel_offset = nullptr) {
+#if SANITIZER_ARM64
+  // An ARM64 instruction is 4 bytes long.
+  return 4;
+#endif
+
 #if SANITIZER_WINDOWS64
   if (memcmp((u8*)address, kPrologueWithShortJump1,
              sizeof(kPrologueWithShortJump1)) == 0 ||
@@ -859,7 +863,7 @@ static bool CopyInstructions(uptr to, uptr from, size_t size) {
     size_t instruction_size = GetInstructionSize(from + cursor, &rel_offset);
     if (!instruction_size)
       return false;
-    _memcpy((void*)(to + cursor), (void*)(from + cursor),
+    _memcpy((void *)(to + cursor), (void *)(from + cursor),
             (size_t)instruction_size);
     if (rel_offset) {
 #  if SANITIZER_WINDOWS64

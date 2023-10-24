@@ -17,25 +17,6 @@
 // RUN:   -analyzer-checker=security.insecureAPI \
 // RUN:   -analyzer-checker=security.FloatLoopCounter
 
-// RUN: %clang_analyze_cc1 -triple x86_64-unknown-cloudabi %s -verify -Wno-fortify-source \
-// RUN:   -analyzer-checker=security.insecureAPI \
-// RUN:   -analyzer-checker=security.FloatLoopCounter
-
-// RUN: %clang_analyze_cc1 -triple x86_64-unknown-cloudabi %s -verify -Wno-fortify-source \
-// RUN:   -DUSE_BUILTINS \
-// RUN:   -analyzer-checker=security.insecureAPI \
-// RUN:   -analyzer-checker=security.FloatLoopCounter
-
-// RUN: %clang_analyze_cc1 -triple x86_64-unknown-cloudabi %s -verify -Wno-fortify-source \
-// RUN:   -DVARIANT \
-// RUN:   -analyzer-checker=security.insecureAPI \
-// RUN:   -analyzer-checker=security.FloatLoopCounter
-
-// RUN: %clang_analyze_cc1 -triple x86_64-unknown-cloudabi %s -verify -Wno-fortify-source \
-// RUN:   -DUSE_BUILTINS -DVARIANT \
-// RUN:   -analyzer-checker=security.insecureAPI \
-// RUN:   -analyzer-checker=security.FloatLoopCounter
-
 #ifdef USE_BUILTINS
 # define BUILTIN(f) __builtin_ ## f
 #else /* USE_BUILTINS */
@@ -76,9 +57,9 @@ int test_bcmp(void *a, void *b, size_t n) {
 }
 
 // Obsolete function bcopy
-void bcopy(void *, void *, size_t);
+void bcopy(const void *, void *, size_t);
 
-void test_bcopy(void *a, void *b, size_t n) {
+void test_bcopy(const void *a, void *b, size_t n) {
   bcopy(a, b, n); // expected-warning{{The bcopy() function is obsoleted by memcpy() or memmove(}}
 }
 

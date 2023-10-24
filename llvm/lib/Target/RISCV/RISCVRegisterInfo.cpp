@@ -14,6 +14,7 @@
 #include "RISCV.h"
 #include "RISCVMachineFunctionInfo.h"
 #include "RISCVSubtarget.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/BinaryFormat/Dwarf.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
@@ -103,6 +104,10 @@ BitVector RISCVRegisterInfo::getReservedRegs(const MachineFunction &MF) const {
   if (TFI->hasBP(MF))
     markSuperRegs(Reserved, RISCVABI::getBPReg()); // bp
 
+  // Additionally reserve dummy register used to form the register pair
+  // beginning with 'x0' for instructions that take register pairs.
+  markSuperRegs(Reserved, RISCV::DUMMY_REG_PAIR_WITH_X0);
+
   // V registers for code generation. We handle them manually.
   markSuperRegs(Reserved, RISCV::VL);
   markSuperRegs(Reserved, RISCV::VTYPE);
@@ -128,7 +133,7 @@ const uint32_t *RISCVRegisterInfo::getNoPreservedMask() const {
 }
 
 // Frame indexes representing locations of CSRs which are given a fixed location
-// by save/restore libcalls.
+// by save/restore libcalls or Zcmp Push/Pop.
 static const std::pair<unsigned, int> FixedCSRFIMap[] = {
   {/*ra*/  RISCV::X1,   -1},
   {/*s0*/  RISCV::X8,   -2},
@@ -431,9 +436,16 @@ bool RISCVRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
       // offset can by construction, at worst, a LUI and a ADD.
       int64_t Val = Offset.getFixed();
       int64_t Lo12 = SignExtend64<12>(Val);
-      MI.getOperand(FIOperandNum + 1).ChangeToImmediate(Lo12);
-      Offset = StackOffset::get((uint64_t)Val - (uint64_t)Lo12,
-                                Offset.getScalable());
+      if ((MI.getOpcode() == RISCV::PREFETCH_I ||
+           MI.getOpcode() == RISCV::PREFETCH_R ||
+           MI.getOpcode() == RISCV::PREFETCH_W) &&
+          (Lo12 & 0b11111) != 0)
+        MI.getOperand(FIOperandNum + 1).ChangeToImmediate(0);
+      else {
+        MI.getOperand(FIOperandNum + 1).ChangeToImmediate(Lo12);
+        Offset = StackOffset::get((uint64_t)Val - (uint64_t)Lo12,
+                                  Offset.getScalable());
+      }
     }
   }
 

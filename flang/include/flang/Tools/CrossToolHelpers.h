@@ -13,24 +13,53 @@
 #ifndef FORTRAN_TOOLS_CROSS_TOOL_HELPERS_H
 #define FORTRAN_TOOLS_CROSS_TOOL_HELPERS_H
 
+#include "flang/Frontend/CodeGenOptions.h"
 #include "flang/Frontend/LangOptions.h"
 #include <cstdint>
 
 #include "mlir/Dialect/OpenMP/OpenMPDialect.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "llvm/Frontend/Debug/Options.h"
+#include "llvm/Passes/OptimizationLevel.h"
+
+/// Configuriation for the MLIR to LLVM pass pipeline.
+struct MLIRToLLVMPassPipelineConfig {
+  explicit MLIRToLLVMPassPipelineConfig(llvm::OptimizationLevel level) {
+    OptLevel = level;
+  }
+  explicit MLIRToLLVMPassPipelineConfig(llvm::OptimizationLevel level,
+      const Fortran::frontend::CodeGenOptions &opts) {
+    OptLevel = level;
+    StackArrays = opts.StackArrays;
+    Underscoring = opts.Underscoring;
+    LoopVersioning = opts.LoopVersioning;
+    DebugInfo = opts.getDebugInfo();
+    AliasAnalysis = opts.AliasAnalysis;
+  }
+
+  llvm::OptimizationLevel OptLevel; ///< optimisation level
+  bool StackArrays = false; ///< convert memory allocations to alloca.
+  bool Underscoring = true; ///< add underscores to function names.
+  bool LoopVersioning = false; ///< Run the version loop pass.
+  bool AliasAnalysis = false; ///< Add TBAA tags to generated LLVMIR
+  llvm::codegenoptions::DebugInfoKind DebugInfo =
+      llvm::codegenoptions::NoDebugInfo; ///< Debug info generation.
+  unsigned VScaleMin = 0; ///< SVE vector range minimum.
+  unsigned VScaleMax = 0; ///< SVE vector range maximum.
+};
 
 struct OffloadModuleOpts {
   OffloadModuleOpts() {}
   OffloadModuleOpts(uint32_t OpenMPTargetDebug, bool OpenMPTeamSubscription,
       bool OpenMPThreadSubscription, bool OpenMPNoThreadState,
       bool OpenMPNoNestedParallelism, bool OpenMPIsTargetDevice,
-      uint32_t OpenMPVersion, std::string OMPHostIRFile = {})
+      bool OpenMPIsGPU, uint32_t OpenMPVersion, std::string OMPHostIRFile = {})
       : OpenMPTargetDebug(OpenMPTargetDebug),
         OpenMPTeamSubscription(OpenMPTeamSubscription),
         OpenMPThreadSubscription(OpenMPThreadSubscription),
         OpenMPNoThreadState(OpenMPNoThreadState),
         OpenMPNoNestedParallelism(OpenMPNoNestedParallelism),
-        OpenMPIsTargetDevice(OpenMPIsTargetDevice),
+        OpenMPIsTargetDevice(OpenMPIsTargetDevice), OpenMPIsGPU(OpenMPIsGPU),
         OpenMPVersion(OpenMPVersion), OMPHostIRFile(OMPHostIRFile) {}
 
   OffloadModuleOpts(Fortran::frontend::LangOptions &Opts)
@@ -40,7 +69,8 @@ struct OffloadModuleOpts {
         OpenMPNoThreadState(Opts.OpenMPNoThreadState),
         OpenMPNoNestedParallelism(Opts.OpenMPNoNestedParallelism),
         OpenMPIsTargetDevice(Opts.OpenMPIsTargetDevice),
-        OpenMPVersion(Opts.OpenMPVersion), OMPHostIRFile(Opts.OMPHostIRFile) {}
+        OpenMPIsGPU(Opts.OpenMPIsGPU), OpenMPVersion(Opts.OpenMPVersion),
+        OMPHostIRFile(Opts.OMPHostIRFile) {}
 
   uint32_t OpenMPTargetDebug = 0;
   bool OpenMPTeamSubscription = false;
@@ -48,6 +78,7 @@ struct OffloadModuleOpts {
   bool OpenMPNoThreadState = false;
   bool OpenMPNoNestedParallelism = false;
   bool OpenMPIsTargetDevice = false;
+  bool OpenMPIsGPU = false;
   uint32_t OpenMPVersion = 11;
   std::string OMPHostIRFile = {};
 };
@@ -60,6 +91,7 @@ void setOffloadModuleInterfaceAttributes(
   if (auto offloadMod = llvm::dyn_cast<mlir::omp::OffloadModuleInterface>(
           module.getOperation())) {
     offloadMod.setIsTargetDevice(Opts.OpenMPIsTargetDevice);
+    offloadMod.setIsGPU(Opts.OpenMPIsGPU);
     if (Opts.OpenMPIsTargetDevice) {
       offloadMod.setFlags(Opts.OpenMPTargetDebug, Opts.OpenMPTeamSubscription,
           Opts.OpenMPThreadSubscription, Opts.OpenMPNoThreadState,

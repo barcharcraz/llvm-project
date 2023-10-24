@@ -24,6 +24,7 @@
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/OpImplementation.h"
+#include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/Types.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
@@ -247,6 +248,12 @@ public:
   llvm::sys::SmartMutex<true> dialectRefStrAttrMutex;
   DenseMap<StringRef, SmallVector<StringAttrStorage *>>
       dialectReferencingStrAttrs;
+
+  /// A distinct attribute allocator that allocates every time since the
+  /// address of the distinct attribute storage serves as unique identifier. The
+  /// allocator is thread safe and frees the allocated storage after its
+  /// destruction.
+  DistinctAttributeAllocator distinctAttributeAllocator;
 
 public:
   MLIRContextImpl(bool threadingIsEnabled)
@@ -827,7 +834,7 @@ void OperationName::UnregisteredOpModel::populateInherentAttrs(
     Operation *op, NamedAttrList &attrs) {}
 LogicalResult OperationName::UnregisteredOpModel::verifyInherentAttrs(
     OperationName opName, NamedAttrList &attributes,
-    function_ref<InFlightDiagnostic()> getDiag) {
+    function_ref<InFlightDiagnostic()> emitError) {
   return success();
 }
 int OperationName::UnregisteredOpModel::getOpPropertyByteSize() {
@@ -844,8 +851,9 @@ void OperationName::UnregisteredOpModel::deleteProperties(
 void OperationName::UnregisteredOpModel::populateDefaultProperties(
     OperationName opName, OpaqueProperties properties) {}
 LogicalResult OperationName::UnregisteredOpModel::setPropertiesFromAttr(
-    Operation *op, Attribute attr, InFlightDiagnostic *diag) {
-  *op->getPropertiesStorage().as<Attribute *>() = attr;
+    OperationName opName, OpaqueProperties properties, Attribute attr,
+    function_ref<InFlightDiagnostic()> emitError) {
+  *properties.as<Attribute *>() = attr;
   return success();
 }
 Attribute
@@ -855,6 +863,10 @@ OperationName::UnregisteredOpModel::getPropertiesAsAttr(Operation *op) {
 void OperationName::UnregisteredOpModel::copyProperties(OpaqueProperties lhs,
                                                         OpaqueProperties rhs) {
   *lhs.as<Attribute *>() = *rhs.as<Attribute *>();
+}
+bool OperationName::UnregisteredOpModel::compareProperties(OpaqueProperties lhs,
+                                                        OpaqueProperties rhs) {
+  return *lhs.as<Attribute *>() == *rhs.as<Attribute *>();
 }
 llvm::hash_code
 OperationName::UnregisteredOpModel::hashProperties(OpaqueProperties prop) {
@@ -1062,6 +1074,12 @@ UnitAttr UnitAttr::get(MLIRContext *context) {
 
 UnknownLoc UnknownLoc::get(MLIRContext *context) {
   return context->getImpl().unknownLocAttr;
+}
+
+DistinctAttrStorage *
+detail::DistinctAttributeUniquer::allocateStorage(MLIRContext *context,
+                                                  Attribute referencedAttr) {
+  return context->getImpl().distinctAttributeAllocator.allocate(referencedAttr);
 }
 
 /// Return empty dictionary.

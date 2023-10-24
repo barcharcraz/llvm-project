@@ -575,6 +575,7 @@ bool CheckLargeFunctions::shouldOptimize(const BinaryFunction &BF) const {
 
 void LowerAnnotations::runOnFunctions(BinaryContext &BC) {
   std::vector<std::pair<MCInst *, uint32_t>> PreservedOffsetAnnotations;
+  std::vector<std::pair<MCInst *, MCSymbol *>> PreservedLabelAnnotations;
 
   for (auto &It : BC.getBinaryFunctions()) {
     BinaryFunction &BF = It.second;
@@ -609,6 +610,8 @@ void LowerAnnotations::runOnFunctions(BinaryContext &BC) {
           if (BF.requiresAddressTranslation() && BC.MIB->getOffset(*II))
             PreservedOffsetAnnotations.emplace_back(&(*II),
                                                     *BC.MIB->getOffset(*II));
+          if (auto Label = BC.MIB->getLabel(*II))
+            PreservedLabelAnnotations.emplace_back(&*II, *Label);
           BC.MIB->stripAnnotations(*II);
         }
       }
@@ -616,8 +619,11 @@ void LowerAnnotations::runOnFunctions(BinaryContext &BC) {
   }
   for (BinaryFunction *BF : BC.getInjectedBinaryFunctions())
     for (BinaryBasicBlock &BB : *BF)
-      for (MCInst &Instruction : BB)
+      for (MCInst &Instruction : BB) {
+        if (auto Label = BC.MIB->getLabel(Instruction))
+          PreservedLabelAnnotations.emplace_back(&Instruction, *Label);
         BC.MIB->stripAnnotations(Instruction);
+      }
 
   // Release all memory taken by annotations
   BC.MIB->freeAnnotations();
@@ -625,6 +631,8 @@ void LowerAnnotations::runOnFunctions(BinaryContext &BC) {
   // Reinsert preserved annotations we need during code emission.
   for (const std::pair<MCInst *, uint32_t> &Item : PreservedOffsetAnnotations)
     BC.MIB->setOffset(*Item.first, Item.second);
+  for (auto [Instr, Label] : PreservedLabelAnnotations)
+    BC.MIB->setLabel(*Instr, Label);
 }
 
 // Check for dirty state in MCSymbol objects that might be a consequence
@@ -1454,6 +1462,14 @@ void PrintProgramStats::runOnFunctions(BinaryContext &BC) {
                      100.0 * NumInferredFunctions / NumAllStaleFunctions,
                      100.0 * InferredSampleCount / TotalSampleCount,
                      InferredSampleCount, TotalSampleCount);
+    outs() << format(
+        "BOLT-INFO: inference found an exact match for %.2f%% of basic blocks"
+        " (%zu out of %zu stale) responsible for %.2f%% samples"
+        " (%zu out of %zu stale)\n",
+        100.0 * BC.Stats.NumMatchedBlocks / BC.Stats.NumStaleBlocks,
+        BC.Stats.NumMatchedBlocks, BC.Stats.NumStaleBlocks,
+        100.0 * BC.Stats.MatchedSampleCount / BC.Stats.StaleSampleCount,
+        BC.Stats.MatchedSampleCount, BC.Stats.StaleSampleCount);
   }
 
   if (const uint64_t NumUnusedObjects = BC.getNumUnusedProfiledObjects()) {
@@ -1562,10 +1578,11 @@ void PrintProgramStats::runOnFunctions(BinaryContext &BC) {
   }
 
   // Print information on missed macro-fusion opportunities seen on input.
-  if (BC.MissedMacroFusionPairs) {
-    outs() << "BOLT-INFO: the input contains " << BC.MissedMacroFusionPairs
-           << " (dynamic count : " << BC.MissedMacroFusionExecCount
-           << ") opportunities for macro-fusion optimization";
+  if (BC.Stats.MissedMacroFusionPairs) {
+    outs() << format("BOLT-INFO: the input contains %zu (dynamic count : %zu)"
+                     " opportunities for macro-fusion optimization",
+                     BC.Stats.MissedMacroFusionPairs,
+                     BC.Stats.MissedMacroFusionExecCount);
     switch (opts::AlignMacroOpFusion) {
     case MFT_NONE:
       outs() << ". Use -align-macro-fusion to fix.\n";

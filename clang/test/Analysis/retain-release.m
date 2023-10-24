@@ -1251,6 +1251,7 @@ typedef int32_t CVReturn;
 typedef struct __CVBuffer *CVBufferRef;
 typedef CVBufferRef CVImageBufferRef;
 typedef CVImageBufferRef CVPixelBufferRef;
+typedef CVBufferRef CMTaggedBufferGroupRef;
 typedef void (*CVPixelBufferReleaseBytesCallback)( void *releaseRefCon, const void *baseAddress );
 
 extern CVReturn CVPixelBufferCreateWithBytes(CFAllocatorRef allocator,
@@ -1398,6 +1399,16 @@ VTCompressionSessionEncodeFrame(
     void * _Nullable sourceFrameRefCon,
     VTEncodeInfoFlags * _Nullable infoFlagsOut);
 
+extern OSStatus
+VTCompressionSessionEncodeMultiImageFrame(
+    _Nonnull VTCompressionSessionRef session,
+    _Nonnull CVImageBufferRef imageBuffer,
+    CMTime presentationTimeStamp,
+    CMTime duration,
+    _Nullable CFDictionaryRef frameProperties,
+    void * _Nullable sourceFrameRefCon,
+    VTEncodeInfoFlags * _Nullable infoFlagsOut);
+
 OSStatus test_VTCompressionSessionCreateAndEncode_CallbackReleases(
     _Nullable CFAllocatorRef allocator,
     int32_t width,
@@ -1417,6 +1428,8 @@ OSStatus test_VTCompressionSessionCreateAndEncode_CallbackReleases(
   // The outputCallback is passed both contexts and so can release either.
   NSNumber *contextForCreate = [[NSNumber alloc] initWithInt:5]; // no-warning
   NSNumber *contextForEncode = [[NSNumber alloc] initWithInt:6]; // no-warning
+  NSNumber *contextForEncodeMultiFrame = [[NSNumber alloc] initWithInt:7]; // no-warning
+
 
   VTCompressionSessionRef session = 0;
   OSStatus status = VTCompressionSessionCreate(allocator,
@@ -1429,6 +1442,10 @@ OSStatus test_VTCompressionSessionCreateAndEncode_CallbackReleases(
 
   status = VTCompressionSessionEncodeFrame(session, imageBuffer,
       presentationTimeStamp, duration, frameProperties, contextForEncode,
+      &encodeInfoFlags);
+
+  status = VTCompressionSessionEncodeMultiImageFrame(session, imageBuffer,
+      presentationTimeStamp, duration, frameProperties, contextForEncodeMultiFrame,
       &encodeInfoFlags);
 
   return status;
@@ -1930,7 +1947,6 @@ void rdar_10824732(void) {
 }
 
 // Stop tracking objects passed to functions, which take callbacks as parameters.
-// radar://10973977
 typedef int (*CloseCallback) (void *);
 void ReaderForIO(CloseCallback ioclose, void *ioctx);
 int IOClose(void *context);
@@ -1955,7 +1971,7 @@ int IOClose(void *context);
 }
 @end
 
-// Object escapes through a selector callback: radar://11398514
+// Object escapes through a selector callback
 extern id NSApp;
 @interface MySheetController
 - (id<SInS>)inputS;

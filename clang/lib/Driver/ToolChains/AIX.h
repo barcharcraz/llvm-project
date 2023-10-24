@@ -16,7 +16,7 @@ namespace clang {
 namespace driver {
 namespace tools {
 
-/// aix -- Directly call system default assembler and linker.
+/// Directly call system default assembler and linker.
 namespace aix {
 
 class LLVM_LIBRARY_VISIBILITY Assembler : public Tool {
@@ -68,7 +68,6 @@ public:
   }
   bool isPICDefaultForced() const override { return true; }
   bool HasNativeLLVMSupport() const override { return true; }
-  bool IsIntegratedAssemblerDefault() const override { return true; }
 
   void
   AddClangSystemIncludeArgs(const llvm::opt::ArgList &DriverArgs,

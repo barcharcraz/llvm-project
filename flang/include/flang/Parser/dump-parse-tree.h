@@ -105,6 +105,7 @@ public:
   NODE(parser, AccTileExpr)
   NODE(parser, AccTileExprList)
   NODE(parser, AccLoopDirective)
+  NODE(parser, AccEndLoop)
   NODE(parser, AccWaitArgument)
   static std::string GetNodeName(const llvm::acc::Directive &x) {
     return llvm::Twine(
@@ -567,6 +568,7 @@ public:
   NODE(parser, OpenACCCombinedConstruct)
   NODE(parser, OpenACCConstruct)
   NODE(parser, OpenACCDeclarativeConstruct)
+  NODE(parser, OpenACCEndConstruct)
   NODE(parser, OpenACCLoopConstruct)
   NODE(parser, OpenACCRoutineConstruct)
   NODE(parser, OpenACCStandaloneDeclarativeConstruct)
@@ -588,7 +590,7 @@ public:
   NODE(parser, OmpAtomicClause)
   NODE(parser, OmpAtomicClauseList)
   NODE(parser, OmpAtomicDefaultMemOrderClause)
-  NODE_ENUM(OmpAtomicDefaultMemOrderClause, Type)
+  NODE_ENUM(common, OmpAtomicDefaultMemOrderType)
   NODE(parser, OpenMPFlushConstruct)
   NODE(parser, OpenMPLoopConstruct)
   NODE(parser, OpenMPExecutableAllocate)

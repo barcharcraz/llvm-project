@@ -16,7 +16,7 @@ namespace clang {
 namespace driver {
 namespace tools {
 
-/// zos -- Directly call system default assembler and linker.
+/// Directly call system default assembler and linker.
 namespace zos {
 
 class LLVM_LIBRARY_VISIBILITY Assembler : public Tool {
@@ -60,8 +60,6 @@ public:
     return false;
   }
   bool isPICDefaultForced() const override { return false; }
-
-  bool IsIntegratedAssemblerDefault() const override { return true; }
 
   void TryAddIncludeFromPath(llvm::SmallString<128> Path,
                              const llvm::opt::ArgList &DriverArgs,

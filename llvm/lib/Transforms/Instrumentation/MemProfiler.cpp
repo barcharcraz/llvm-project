@@ -38,6 +38,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/HashBuilder.h"
+#include "llvm/Support/VirtualFileSystem.h"
 #include "llvm/TargetParser/Triple.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/ModuleUtils.h"
@@ -627,7 +628,7 @@ static void addCallsiteMetadata(Instruction &I,
 
 static uint64_t computeStackId(GlobalValue::GUID Function, uint32_t LineOffset,
                                uint32_t Column) {
-  llvm::HashBuilder<llvm::TruncatedBLAKE3<8>, llvm::support::endianness::little>
+  llvm::HashBuilder<llvm::TruncatedBLAKE3<8>, llvm::endianness::little>
       HashBuilder;
   HashBuilder.add(Function, LineOffset, Column);
   llvm::BLAKE3Result<8> Hash = HashBuilder.final();
@@ -673,17 +674,31 @@ stackFrameIncludesInlinedCallStack(ArrayRef<Frame> ProfileCallStack,
   return InlCallStackIter == InlinedCallStack.end();
 }
 
-void llvm::readMemprof(Module &M, Function &F,
-                       IndexedInstrProfReader *MemProfReader,
-                       const TargetLibraryInfo &TLI) {
+static void readMemprof(Module &M, Function &F,
+                        IndexedInstrProfReader *MemProfReader,
+                        const TargetLibraryInfo &TLI) {
   auto &Ctx = M.getContext();
 
-  auto FuncName = getPGOFuncName(F);
+  auto FuncName = getIRPGOFuncName(F);
   auto FuncGUID = Function::getGUID(FuncName);
-  Expected<memprof::MemProfRecord> MemProfResult =
-      MemProfReader->getMemProfRecord(FuncGUID);
-  if (Error E = MemProfResult.takeError()) {
-    handleAllErrors(std::move(E), [&](const InstrProfError &IPE) {
+  std::optional<memprof::MemProfRecord> MemProfRec;
+  auto Err = MemProfReader->getMemProfRecord(FuncGUID).moveInto(MemProfRec);
+  if (Err) {
+    // If we don't find getIRPGOFuncName(), try getPGOFuncName() to handle
+    // profiles built by older compilers
+    Err = handleErrors(std::move(Err), [&](const InstrProfError &IE) -> Error {
+      if (IE.get() != instrprof_error::unknown_function)
+        return make_error<InstrProfError>(IE);
+      auto FuncName = getPGOFuncName(F);
+      auto FuncGUID = Function::getGUID(FuncName);
+      if (auto Err =
+              MemProfReader->getMemProfRecord(FuncGUID).moveInto(MemProfRec))
+        return Err;
+      return Error::success();
+    });
+  }
+  if (Err) {
+    handleAllErrors(std::move(Err), [&](const InstrProfError &IPE) {
       auto Err = IPE.get();
       bool SkipWarning = false;
       LLVM_DEBUG(dbgs() << "Error in reading profile for Func " << FuncName
@@ -721,15 +736,14 @@ void llvm::readMemprof(Module &M, Function &F,
   // the frame array (see comments below where the map entries are added).
   std::map<uint64_t, std::set<std::pair<const SmallVector<Frame> *, unsigned>>>
       LocHashToCallSites;
-  const auto MemProfRec = std::move(MemProfResult.get());
-  for (auto &AI : MemProfRec.AllocSites) {
+  for (auto &AI : MemProfRec->AllocSites) {
     // Associate the allocation info with the leaf frame. The later matching
     // code will match any inlined call sequences in the IR with a longer prefix
     // of call stack frames.
     uint64_t StackId = computeStackId(AI.CallStack[0]);
     LocHashToAllocInfo[StackId].insert(&AI);
   }
-  for (auto &CS : MemProfRec.CallSites) {
+  for (auto &CS : MemProfRec->CallSites) {
     // Need to record all frames from leaf up to and including this function,
     // as any of these may or may not have been inlined at this point.
     unsigned Idx = 0;
@@ -864,4 +878,50 @@ void llvm::readMemprof(Module &M, Function &F,
       }
     }
   }
+}
+
+MemProfUsePass::MemProfUsePass(std::string MemoryProfileFile,
+                               IntrusiveRefCntPtr<vfs::FileSystem> FS)
+    : MemoryProfileFileName(MemoryProfileFile), FS(FS) {
+  if (!FS)
+    this->FS = vfs::getRealFileSystem();
+}
+
+PreservedAnalyses MemProfUsePass::run(Module &M, ModuleAnalysisManager &AM) {
+  LLVM_DEBUG(dbgs() << "Read in memory profile:");
+  auto &Ctx = M.getContext();
+  auto ReaderOrErr = IndexedInstrProfReader::create(MemoryProfileFileName, *FS);
+  if (Error E = ReaderOrErr.takeError()) {
+    handleAllErrors(std::move(E), [&](const ErrorInfoBase &EI) {
+      Ctx.diagnose(
+          DiagnosticInfoPGOProfile(MemoryProfileFileName.data(), EI.message()));
+    });
+    return PreservedAnalyses::all();
+  }
+
+  std::unique_ptr<IndexedInstrProfReader> MemProfReader =
+      std::move(ReaderOrErr.get());
+  if (!MemProfReader) {
+    Ctx.diagnose(DiagnosticInfoPGOProfile(
+        MemoryProfileFileName.data(), StringRef("Cannot get MemProfReader")));
+    return PreservedAnalyses::all();
+  }
+
+  if (!MemProfReader->hasMemoryProfile()) {
+    Ctx.diagnose(DiagnosticInfoPGOProfile(MemoryProfileFileName.data(),
+                                          "Not a memory profile"));
+    return PreservedAnalyses::all();
+  }
+
+  auto &FAM = AM.getResult<FunctionAnalysisManagerModuleProxy>(M).getManager();
+
+  for (auto &F : M) {
+    if (F.isDeclaration())
+      continue;
+
+    const TargetLibraryInfo &TLI = FAM.getResult<TargetLibraryAnalysis>(F);
+    readMemprof(M, F, MemProfReader.get(), TLI);
+  }
+
+  return PreservedAnalyses::none();
 }
