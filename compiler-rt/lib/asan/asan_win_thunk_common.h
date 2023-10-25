@@ -19,6 +19,8 @@
 
 #pragma once
 
+#include <sanitizer_common/sanitizer_internal_defs.h>
+
 namespace __sanitizer {
 #if defined(_WIN64)
 typedef unsigned long long uptr;
