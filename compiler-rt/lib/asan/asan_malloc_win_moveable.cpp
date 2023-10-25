@@ -198,8 +198,13 @@ struct FlagsResult {
 
 class MoveableMemoryMap {
 private:
+#if _MSC_VER && !defined(__clang__)
     static constexpr void *ReservedAddress = reinterpret_cast<void *>(-1ULL);
-
+#else
+    // this frankly _bizarre_ expression activates an extension wherein strict constant checking is disabled in the arms of a ternary operator based on
+    // __builtin_constant_p.
+    static constexpr void *ReservedAddress = __builtin_constant_p(reinterpret_cast<void*>(-1ULL)) ? reinterpret_cast<void*>(-1ULL) : reinterpret_cast<void*>(-1ULL);
+#endif
     struct MoveableAllocation {
         explicit MoveableAllocation(void *const h) : handle(h) {}
 
