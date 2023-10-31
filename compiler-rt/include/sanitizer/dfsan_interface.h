@@ -25,11 +25,11 @@ typedef uint8_t dfsan_label;
 typedef uint32_t dfsan_origin;
 
 /// Signature of the callback argument to dfsan_set_write_callback().
-typedef void (*SANITIZER_CDECL dfsan_write_callback_t)(int fd, const void *buf,
-                                                       size_t count);
+typedef void(SANITIZER_CDECL *dfsan_write_callback_t)(int fd, const void *buf,
+                                                      size_t count);
 
 /// Signature of the callback argument to dfsan_set_conditional_callback().
-typedef void (*SANITIZER_CDECL dfsan_conditional_callback_t)(
+typedef void(SANITIZER_CDECL *dfsan_conditional_callback_t)(
     dfsan_label label, dfsan_origin origin);
 
 /// Computes the union of \c l1 and \c l2, resulting in a union label.
