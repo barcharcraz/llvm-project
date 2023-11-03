@@ -155,12 +155,6 @@ format_group.add_argument("-s", "--succinct",
 format_group.add_argument("-v", "--verbose", dest="showOutput",
                     help="Show test output for failures",
                     action="store_true", default=False)
-format_group.add_argument("-vv", "--echo-all-commands",
-                    dest="echoAllCommands",
-                    action="store_true", default=False,
-                    help="Echo all commands as they are executed to stdout.\
-                    In case of failure, last command shown will be the\
-                    failing one.")
 format_group.add_argument("-a", "--show-all", dest="showAllOutput",
                     help="Display all commandlines and output",
                     action="store_true", default=False)
@@ -282,9 +276,6 @@ if not args:
 if opts.numThreads is None:
     opts.numThreads = lit.util.usable_core_count()
 
-if opts.echoAllCommands:
-    opts.showOutput = True
-
 inputs = args
 
 STATIC_RT_FLAG = None
@@ -318,10 +309,10 @@ litConfig = lit.LitConfig.LitConfig(
         debug = opts.debug,
         isWindows = isWindows,
         params = [],
+        order="lexical",
         config_prefix = opts.configPrefix,
         maxIndividualTestTime = maxIndividualTestTime,
-        parallelism_groups = {},
-        echo_all_commands = opts.echoAllCommands)
+        parallelism_groups = {})
 
 litConfig.windows = True
 litConfig.host_os = "Windows"
@@ -629,7 +620,8 @@ def outputPath(path):
     return parent / 'Output'
 
 outputDirectories = {outputPath(test.getExecPath()) for _, test, _ in tests_to_run}
-toolsetDirectory = pathlib.Path(lit.util.which("cl.exe")).parent
+toolsetDirectory = pathlib.Path(lit.util.which("cl")).parent
+
 for outputDirectory in outputDirectories:
     lit.util.mkdir_p(outputDirectory)
     for dllToCopy in itertools.chain(\
