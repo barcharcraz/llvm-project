@@ -71,7 +71,7 @@ class Run(object):
                         assert(path != path.parent)
                     return parent / 'Output'
                 outputDirectories = {outputPath(test.getExecPath()) for test in self.tests}
-                toolsetDirectory = pathlib.Path(lit.util.which("cl.exe")).parent
+                toolsetDirectory = pathlib.Path(lit.util.which("cl")).parent
                 for outputDirectory in outputDirectories:
                     lit.util.mkdir_p(outputDirectory)
                     for dllToCopy in itertools.chain(\
