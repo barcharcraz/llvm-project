@@ -383,6 +383,7 @@ else()
       add_library(clang_rt.asan-${arch}_implib STATIC)
       target_link_libraries(clang_rt.asan-${arch}_implib RTAsan_static_implib.${arch})
       add_dependencies(clang_rt.asan-${arch}_implib clang_rt.asan${MSVC_DBG_SUFFIX}-dynamic-${arch})
+      add_dependencies(asan clang_rt.asan-${arch}_implib)
       get_compiler_rt_output_dir(${arch} IMPLIB_OUTPUT_DIR)
       set_target_properties(clang_rt.asan-${arch}_implib
         PROPERTIES ARCHIVE_OUTPUT_NAME clang_rt.asan${MSVC_DBG_SUFFIX}_dynamic-${arch}
