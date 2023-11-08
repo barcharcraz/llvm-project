@@ -486,6 +486,28 @@ alignas(SystemAllocationMap) unsigned char system_allocation_storage[sizeof(
     SystemAllocationMap)];
 SystemAllocationMap *system_allocations;
 
+namespace {
+  struct HeapLockGuard {
+    void* heap;
+
+    HeapLockGuard(void* heap_) {
+      __try {
+        ::HeapLock(heap_);
+        heap = heap_;
+      } __except (EXCEPTION_EXECUTE_HANDLER) {
+        heap = nullptr;
+      }
+    }
+    HeapLockGuard(const HeapLockGuard&) = delete;
+    ~HeapLockGuard() {
+      if (heap) {
+        ::HeapUnlock(heap);
+      }
+    }
+  };
+}
+
+
 // TODO: Should investigate all versions of msvcr to make sure that the process
 // heap is used Only allocations that happen on the process heap prior to asan
 // initialization are tracked
@@ -501,7 +523,8 @@ void CaptureSystemHeapAllocations() {
 
   HANDLE heap = ::GetProcessHeap();
   lpEntry.lpData = NULL;
-  ::HeapLock(heap);
+
+  HeapLockGuard guard(heap);
   while (::HeapWalk(heap, &lpEntry)) {
     if (lpEntry.wFlags & PROCESS_HEAP_ENTRY_BUSY) {
       // Allocations are stored agnostic of debug/release information and based
@@ -513,7 +536,6 @@ void CaptureSystemHeapAllocations() {
       *h = lpEntry;
     }
   }
-  ::HeapUnlock(heap);
 }
 
 void RemoveFromSystemHeapAllocationsMap(void *oldPtr) {
@@ -828,40 +850,24 @@ bool IsSystemHeapHandle(uptr addr, void *heap) {
   if (!addr) {
     return false;
   }
-  HANDLE heaps[128];
+
   PROCESS_HEAP_ENTRY lpEntry;
 
-  void **curr, **end;
-  if (heap == nullptr) {
-    curr = heaps;
-    DWORD num_heaps = ::GetProcessHeaps(sizeof(heaps) / sizeof(HANDLE), heaps);
-    CHECK(num_heaps <= sizeof(heaps) / sizeof(HANDLE) &&
-          "You have exceeded the maximum number of supported heaps.");
-    end = curr + num_heaps;
-  } else {
-    curr = &heap;
-    end = curr + 1;
-  }
+  HeapLockGuard guard(heap);
+  CHECK(guard.heap && "Protected heap was passed to IsSystemHeapHandle");
 
-  while (curr != end) {
-    ::HeapLock(*curr);
-    lpEntry.lpData = NULL;
+  lpEntry.lpData = NULL;
 
-    while (::HeapWalk(*curr, &lpEntry)) {
-      if (lpEntry.wFlags & PROCESS_HEAP_ENTRY_BUSY) {
-        // In the event of moveable memory, we need to check if the block
-        // contains the address in question rather than lpData
-        if (lpEntry.wFlags & PROCESS_HEAP_ENTRY_MOVEABLE) {
-          if (reinterpret_cast<uptr>(lpEntry.Block.hMem) == addr) {
-            ::HeapUnlock(*curr);
-            return true;
-          }
+  while (::HeapWalk(heap, &lpEntry)) {
+    if (lpEntry.wFlags & PROCESS_HEAP_ENTRY_BUSY) {
+      // In the event of moveable memory, we need to check if the block
+      // contains the address in question rather than lpData
+      if (lpEntry.wFlags & PROCESS_HEAP_ENTRY_MOVEABLE) {
+        if (reinterpret_cast<uptr>(lpEntry.Block.hMem) == addr) {
+          return true;
         }
       }
     }
-
-    ::HeapUnlock(*curr);
-    ++curr;
   }
 
   return false;
@@ -887,14 +893,21 @@ bool IsSystemHeapAddress(uptr addr, void *heap) {
     end = curr + 1;
   }
 
-  while (curr != end) {
-    ::HeapLock(*curr);
+  for (; curr != end; ++curr) {
+    // When a process has protected a heap, we cannot lock that heap.
+    // Given that this is called only from a deallocation function,
+    // and deallocating from a protected heap will result in a crash anyways,
+    // we consider protected heaps "not system heaps" for the purpose of this function.
+    HeapLockGuard guard(*curr);
+    if (!guard.heap) {
+      continue;
+    }
+
     lpEntry.lpData = NULL;
 
     while (::HeapWalk(*curr, &lpEntry)) {
       if (lpEntry.wFlags & PROCESS_HEAP_ENTRY_BUSY) {
         if (reinterpret_cast<uptr>(lpEntry.lpData) == addr) {
-          ::HeapUnlock(*curr);
           return true;
         }
 
@@ -902,7 +915,6 @@ bool IsSystemHeapAddress(uptr addr, void *heap) {
         // contains the address in question rather than lpData
         if (lpEntry.wFlags & PROCESS_HEAP_ENTRY_MOVEABLE) {
           if (reinterpret_cast<uptr>(lpEntry.Block.hMem) == addr) {
-            ::HeapUnlock(*curr);
             return true;
           }
         }
@@ -910,14 +922,10 @@ bool IsSystemHeapAddress(uptr addr, void *heap) {
         // The CRT adds extra space in front of an allocation in debug mode so
         // we do our best detecting such allocations.
         if (IsValidDebugAllocation(addr, lpEntry)) {
-          ::HeapUnlock(*curr);
           return true;
         }
       }
     }
-
-    ::HeapUnlock(*curr);
-    ++curr;
   }
 
   return false;
