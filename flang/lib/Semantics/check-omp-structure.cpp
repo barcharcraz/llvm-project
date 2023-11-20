@@ -609,7 +609,8 @@ void OmpStructureChecker::CheckTargetNest(const parser::OpenMPConstruct &c) {
           [&](const auto &c) {},
       },
       c.u);
-  if (!eligibleTarget) {
+  if (!eligibleTarget &&
+      context_.ShouldWarn(common::UsageWarning::Portability)) {
     context_.Say(parser::FindSourceLocation(c),
         "If %s directive is nested inside TARGET region, the behaviour "
         "is unspecified"_port_en_US,
@@ -1170,6 +1171,37 @@ void OmpStructureChecker::Enter(const parser::OpenMPDeclareTargetConstruct &x) {
   const auto &spec{std::get<parser::OmpDeclareTargetSpecifier>(x.t)};
   if (std::holds_alternative<parser::OmpDeclareTargetWithClause>(spec.u)) {
     SetClauseSets(llvm::omp::Directive::OMPD_declare_target);
+  }
+}
+
+void OmpStructureChecker::Enter(const parser::OmpDeclareTargetWithList &x) {
+  SymbolSourceMap symbols;
+  GetSymbolsInObjectList(x.v, symbols);
+  for (auto &[symbol, source] : symbols) {
+    const GenericDetails *genericDetails = symbol->detailsIf<GenericDetails>();
+    if (genericDetails) {
+      context_.Say(source,
+          "The procedure '%s' in DECLARE TARGET construct cannot be a generic name."_err_en_US,
+          symbol->name());
+      genericDetails->specific();
+    }
+    if (IsProcedurePointer(*symbol)) {
+      context_.Say(source,
+          "The procedure '%s' in DECLARE TARGET construct cannot be a procedure pointer."_err_en_US,
+          symbol->name());
+    }
+    const SubprogramDetails *entryDetails =
+        symbol->detailsIf<SubprogramDetails>();
+    if (entryDetails && entryDetails->entryScope()) {
+      context_.Say(source,
+          "The procedure '%s' in DECLARE TARGET construct cannot be an entry name."_err_en_US,
+          symbol->name());
+    }
+    if (IsStmtFunction(*symbol)) {
+      context_.Say(source,
+          "The procedure '%s' in DECLARE TARGET construct cannot be a statement function."_err_en_US,
+          symbol->name());
+    }
   }
 }
 
@@ -2738,15 +2770,17 @@ void OmpStructureChecker::Enter(const parser::OmpClause::Depend &x) {
 
 void OmpStructureChecker::CheckCopyingPolymorphicAllocatable(
     SymbolSourceMap &symbols, const llvm::omp::Clause clause) {
-  for (auto it{symbols.begin()}; it != symbols.end(); ++it) {
-    const auto *symbol{it->first};
-    const auto source{it->second};
-    if (IsPolymorphicAllocatable(*symbol)) {
-      context_.Say(source,
-          "If a polymorphic variable with allocatable attribute '%s' is in "
-          "%s clause, the behavior is unspecified"_port_en_US,
-          symbol->name(),
-          parser::ToUpperCaseLetters(getClauseName(clause).str()));
+  if (context_.ShouldWarn(common::UsageWarning::Portability)) {
+    for (auto it{symbols.begin()}; it != symbols.end(); ++it) {
+      const auto *symbol{it->first};
+      const auto source{it->second};
+      if (IsPolymorphicAllocatable(*symbol)) {
+        context_.Say(source,
+            "If a polymorphic variable with allocatable attribute '%s' is in "
+            "%s clause, the behavior is unspecified"_port_en_US,
+            symbol->name(),
+            parser::ToUpperCaseLetters(getClauseName(clause).str()));
+      }
     }
   }
 }

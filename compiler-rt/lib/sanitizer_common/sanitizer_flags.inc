@@ -278,3 +278,9 @@ COMMON_FLAG(const char *, iat_overwrite, "error",
 COMMON_FLAG(bool, windows_fast_fail_on_error, false,
             "(Windows only) terminates the process with a __fastfail(71) after "
             "printing the error report.")
+// With static linking, dladdr((void*)pthread_join) or similar will return the
+// path to the main program. This flag will replace dlopen(<main program,...>
+// with dlopen(NULL,...), which is the correct way to get a handle to the main
+// program.
+COMMON_FLAG(bool, test_only_replace_dlopen_main_program, false,
+            "TEST ONLY replace dlopen(<main program>,...) with dlopen(NULL)")

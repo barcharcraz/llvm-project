@@ -390,8 +390,8 @@ static void AsanInitInternal() {
   if (LIKELY(asan_inited))
     return;
   SanitizerToolName = "AddressSanitizer";
-  CHECK(!asan_init_is_running && "ASan init calls itself!");
-  asan_init_is_running = true;
+  CHECK(!AsanInitIsRunning() && "ASan init calls itself!");
+  SetAsanInitIsRunning(1);
 
   CacheBinaryName();
 
@@ -404,7 +404,7 @@ static void AsanInitInternal() {
   // Stop performing init at this point if we are being loaded via
   // dlopen() and the platform supports it.
   if (SANITIZER_SUPPORTS_INIT_FOR_DLOPEN && UNLIKELY(HandleDlopenInit())) {
-    asan_init_is_running = false;
+    SetAsanInitIsRunning(0);
     VReport(1, "AddressSanitizer init is being performed for dlopen().\n");
     return;
   }
@@ -484,8 +484,8 @@ static void AsanInitInternal() {
   // On Linux AsanThread::ThreadStart() calls malloc() that's why asan_inited
   // should be set to 1 prior to initializing the threads.
   replace_intrin_cached = flags()->replace_intrin;
-  asan_inited = 1;
-  asan_init_is_running = false;
+  SetAsanInited(1);
+  SetAsanInitIsRunning(0);
 
 #if SANITIZER_WINDOWS
   __asan::InitializeCOE();
@@ -609,7 +609,7 @@ static void UnpoisonFakeStack() {
 using namespace __asan;
 
 void NOINLINE __asan_handle_no_return() {
-  if (asan_init_is_running)
+  if (AsanInitIsRunning())
     return;
 
   if (!PlatformUnpoisonStacks())

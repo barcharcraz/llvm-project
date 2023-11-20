@@ -627,8 +627,8 @@ struct Allocator {
 
   // -------------------- Allocation/Deallocation routines ---------------
   void *Allocate(uptr size, uptr alignment, BufferedStackTrace *stack,
-                 AllocType alloc_type,bool can_fill) {
-    if (UNLIKELY(!asan_inited))
+                 AllocType alloc_type, bool can_fill) {
+    if (UNLIKELY(!AsanInited()))
       AsanInitFromRtl();
     if (UNLIKELY(IsRssLimitExceeded())) {
       if (AllocatorMayReturnNull())
