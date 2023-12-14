@@ -73,9 +73,18 @@ static void CheckUnwind() {
 }
 
 // -------------------------- Globals --------------------- {{{1
-int asan_inited = 0;
-bool asan_init_is_running = false;
-bool replace_intrin_cached = false;
+static int asan_inited = 0;
+static int asan_init_is_running = 0;
+
+static void SetAsanInited() { asan_inited = 1; }
+
+static void SetAsanInitIsRunning(u32 val) { asan_init_is_running = val; }
+
+bool AsanInited() { return asan_inited == 1; }
+
+static bool AsanInitIsRunning() { return asan_init_is_running == 1; }
+
+bool replace_intrin_cached;
 
 #if !ASAN_FIXED_MAPPING
 uptr kHighMemEnd, kMidMemBeg, kMidMemEnd;
@@ -484,7 +493,7 @@ static void AsanInitInternal() {
   // On Linux AsanThread::ThreadStart() calls malloc() that's why asan_inited
   // should be set to 1 prior to initializing the threads.
   replace_intrin_cached = flags()->replace_intrin;
-  SetAsanInited(1);
+  SetAsanInited();
   SetAsanInitIsRunning(0);
 
 #if SANITIZER_WINDOWS
@@ -539,7 +548,19 @@ static void AsanInitInternal() {
 
 // Initialize as requested from some part of ASan runtime library (interceptors,
 // allocator, etc).
-void AsanInitFromRtl() { AsanInitInternal(); }
+void AsanInitFromRtl() {
+  CHECK(!AsanInitIsRunning());
+  if (UNLIKELY(!AsanInited()))
+    AsanInitInternal();
+}
+
+bool TryAsanInitFromRtl() {
+  if (UNLIKELY(AsanInitIsRunning()))
+    return false;
+  if (UNLIKELY(!AsanInited()))
+    AsanInitInternal();
+  return true;
+}
 
 #if ASAN_DYNAMIC
 // Initialize runtime in case it's LD_PRELOAD-ed into unsanitized executable

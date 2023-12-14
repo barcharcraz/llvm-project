@@ -108,7 +108,7 @@ public:
     return loopEmitter.unpackTensorLevelRange(std::forward<ContainerTy>(c));
   }
 
-  unsigned getLoopDepth() const { return loopEmitter.getCurrentDepth(); }
+  unsigned getCurrentDepth() const { return loopEmitter.getCurrentDepth(); }
 
   //
   // Code generation environment verify functions.
@@ -118,9 +118,7 @@ public:
   /// It also sets the sparseOut if the output tensor is sparse.
   bool isAdmissibleTensorExp(ExprId e);
 
-  /// Returns the induction-variable for the loop identified by the given
-  /// `LoopId`.  This method handles application of the topological sort
-  /// in order to convert the `LoopId` into the corresponding `LoopOrd`.
+  /// Returns the induction-variable for the given loop.
   Value getLoopVar(LoopId i) const;
 
   //
@@ -133,8 +131,7 @@ public:
   Value getInsertionChain() const { return insChain; }
   void updateInsertionChain(Value chain);
 
-  // FIXME: clarify what this "rank" is really supposed to mean/be.
-  bool atExpandLevel(OpOperand *o, unsigned rank, LoopOrd n) const;
+  bool atExpandLevel(OpOperand *o, unsigned rank, LoopId n) const;
   void startExpand(Value values, Value filled, Value added, Value count);
   bool isExpand() const { return expValues != nullptr; }
   void updateExpandCount(Value count);
@@ -153,13 +150,16 @@ public:
   void updateReduc(Value val);
   Value getReduc() const { return redVal; }
   Value endReduc();
-  void setValidLexInsert(Value val);
-  void clearValidLexInsert();
+
+  void startValidLexInsert(Value val);
+  bool isValidLexInsert() const { return redValidLexInsert != nullptr; }
+  void updateValidLexInsert(Value val);
   Value getValidLexInsert() const { return redValidLexInsert; }
+  void endValidLexInsert();
 
   void startCustomReduc(ExprId exp);
   bool isCustomReduc() const { return redCustom != detail::kInvalidId; }
-  Value getCustomRedId();
+  Value getCustomRedId() const;
   void endCustomReduc();
 
 private:
@@ -180,7 +180,7 @@ private:
   // expansion in the innermost loop nest (`expValues` through `expCount`).
   OpOperand *sparseOut;
   // The count of outer non-filter loops, as defined by `isAdmissibleTopoOrder`.
-  LoopOrd outerParNest;
+  LoopId outerParNest;
   Value insChain;
   Value expValues;
   Value expFilled;
