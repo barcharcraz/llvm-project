@@ -1639,6 +1639,12 @@ static void __asan_wrap_RtlFreeHeap_UpdateTracking(AsanHeapHandle &heap_handle,
         // referenced heap.
       }
 
+      // If number 2 happens, technically it is valid to call RtlFreeHeap on
+      // memory from [Global/Local]Alloc. We should try to update the tracking
+      // metadata here in order to not incorrectly assert if the address happens
+      // to be reused.
+      __asan_win_moveable::UpdateTracking(BaseAddress);
+
       return;
     }
     found = *h_delete;

@@ -666,10 +666,22 @@ static auto Visit(const unsigned long flags, const Function& f) {
 
 // __asan_win_moveable Interface
 bool IsOwned(void *const item) {
-    // An address or handle is "owned" if this implementation should take care of handling
-    // frees and other requests. For moveable memory, this means anything in the reservation range
-    // and known pointer addresses.
-    return GetMoveableMemoryMap().IsOwned(item) || GetFixedMemoryMap().IsOwned(item);
+    // An address or handle is "owned" if this implementation should take care
+    // of handling frees and other requests. For moveable memory, this means
+    // anything in the reservation range and known pointer addresses.
+    return GetMoveableMemoryMap().IsOwned(item) ||
+           GetFixedMemoryMap().IsOwned(item);
+}
+
+// TODO: In the future, potentially address tracking from [Global/Local]Alloc
+// could be removed and instead rely on the checks done by the underlying ASAN
+// allocators.
+void UpdateTracking(void *item) {
+    if (GetMoveableMemoryMap().IsOwned(item)) {
+        GetMoveableMemoryMap().Remove(item);
+    } else if (GetFixedMemoryMap().IsOwned(item)) {
+        GetFixedMemoryMap().Remove(item);
+    }
 }
 
 template <typename MemoryMap>

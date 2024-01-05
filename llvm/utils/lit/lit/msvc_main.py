@@ -737,7 +737,8 @@ for result in sorted(results.keys()):
 
 print("passed %d out of %d tests"%(xpassed + xfailed ,xpassed+xfailed+passed+failed))
 
-retcode = 1
+retcode = 42 # Reserve this special exit code to indicate "there were test failures".
+             # This allows pipelines to distinguish between test-related errors and "anything else that might have gone wrong"
 if xpassed+xfailed  == xpassed+xfailed+passed+failed:
     retcode = 0
 
