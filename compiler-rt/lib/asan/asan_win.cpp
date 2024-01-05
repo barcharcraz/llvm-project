@@ -560,6 +560,8 @@ void RemoveFromSystemHeapAllocationsMap(void *oldPtr) {
 
 void InstallAtExitCheckLeaks() {}
 
+void InstallAtForkHandler() {}
+
 void AsanApplyToGlobals(globals_op_fptr op, const void *needle) {
   UNIMPLEMENTED();
 }
