@@ -48,6 +48,7 @@ namespace __asan_win_moveable {
 enum class HeapCaller { GLOBAL, LOCAL };
 
 bool IsOwned(void *item);
+void UpdateTracking(void* item);
 void *ResolvePointerToHandle(void *item, __sanitizer::BufferedStackTrace&);
 size_t GetAllocationSize(void *item, __sanitizer::BufferedStackTrace&);
 void *IncrementLockCount(void *item, GlobalLocalLock, __sanitizer::BufferedStackTrace&);
