@@ -31,16 +31,24 @@ void *__asan_memmove(void *to, const void *from, uptr size) {
   ASAN_MEMMOVE_IMPL(nullptr, to, from, size);
 }
 
+extern "C" void WINAPI RestoreLastError(DWORD);
+extern "C" DWORD WINAPI GetLastError();
+
 namespace __asan {
 
-bool ShouldReplaceIntrinsic(bool isNtdllCallee, void *addr, uptr size, const void* from) {
+bool ShouldReplaceIntrinsic(bool isNtdllCallee, void *addr, uptr size,
+                            const void *from) {
 #if SANITIZER_WINDOWS64
   if (isNtdllCallee) {
-    CommitShadowMemory(reinterpret_cast<uptr>(addr), size);
-    if(from)
-    {
+    const auto lastError = GetLastError();  // Grab last error here to maintain
+                                            // status for after internal calls
+    if (addr) {
+      CommitShadowMemory(reinterpret_cast<uptr>(addr), size);
+    }
+    if (from) {
       CommitShadowMemory(reinterpret_cast<uptr>(from), size);
     }
+    RestoreLastError(lastError);
   }
 #endif
   return flags()->replace_intrin;
