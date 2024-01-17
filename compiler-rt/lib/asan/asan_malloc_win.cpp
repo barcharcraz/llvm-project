@@ -1456,7 +1456,7 @@ INTERCEPTOR_WINAPI(void *, RtlDestroyHeap, void *HeapHandle) {
 
 INTERCEPTOR_WINAPI(size_t, RtlSizeHeap, HANDLE HeapHandle, DWORD Flags,
                    void *BaseAddress) {
-  if (UNLIKELY(!asan_inited || !BaseAddress)) {
+  if (UNLIKELY(!AsanInited() || !BaseAddress)) {
     // DebugCheck omitted: Asan can't handle the call yet/invalid arguments.
     return REAL(RtlSizeHeap)(HeapHandle, Flags, BaseAddress);
   }
@@ -1501,7 +1501,7 @@ INTERCEPTOR_WINAPI(size_t, RtlSizeHeap, HANDLE HeapHandle, DWORD Flags,
 
 INTERCEPTOR_WINAPI(bool, RtlValidateHeap, void *HeapHandle, DWORD Flags,
                    void *BaseAddress) {
-  if (UNLIKELY(!asan_inited)) {
+  if (UNLIKELY(!AsanInited())) {
     // DebugCheck omitted: Asan can't handle the call yet/invalid arguments.
     return REAL(RtlValidateHeap)(HeapHandle, Flags, BaseAddress);
   }
@@ -1538,7 +1538,7 @@ INTERCEPTOR_WINAPI(bool, RtlValidateHeap, void *HeapHandle, DWORD Flags,
 
 INTERCEPTOR_WINAPI(void *, RtlAllocateHeap, HANDLE HeapHandle, DWORD Flags,
                    size_t Size) {
-  if (UNLIKELY(!asan_inited || __sanitizer::IsProcessTerminating())) {
+  if (UNLIKELY(!AsanInited() || __sanitizer::IsProcessTerminating())) {
     // DebugCheck omitted: Asan can't handle the call yet.
     return REAL(RtlAllocateHeap)(HeapHandle, Flags, Size);
   }
@@ -1684,7 +1684,7 @@ static void __asan_wrap_RtlFreeHeap_UpdateTracking(AsanHeapHandle &heap_handle,
 
 INTERCEPTOR_WINAPI(LOGICAL, RtlFreeHeap, void *HeapHandle, DWORD Flags,
                    void *BaseAddress) {
-  if (UNLIKELY(!asan_inited || !BaseAddress || IsMemoryMapped(HeapHandle))) {
+  if (UNLIKELY(!AsanInited() || !BaseAddress || IsMemoryMapped(HeapHandle))) {
     // DebugCheck omitted: Asan can't handle the call yet/invalid arguments.
     return REAL(RtlFreeHeap)(HeapHandle, Flags, BaseAddress);
   }
@@ -1741,7 +1741,7 @@ INTERCEPTOR_WINAPI(LOGICAL, RtlFreeHeap, void *HeapHandle, DWORD Flags,
 
 INTERCEPTOR_WINAPI(void *, RtlReAllocateHeap, HANDLE HeapHandle, DWORD Flags,
                    void *BaseAddress, size_t Size) {
-  if (UNLIKELY(!asan_inited || __sanitizer::IsProcessTerminating())) {
+  if (UNLIKELY(!AsanInited() || __sanitizer::IsProcessTerminating())) {
     // DebugCheck omitted: Asan can't handle the call yet/invalid arguments.
     return REAL(RtlReAllocateHeap)(HeapHandle, Flags, BaseAddress, Size);
   }
@@ -2078,7 +2078,7 @@ bool NotOwnedByASAN(HANDLE hMem) {
   // If ASAN is not initialized then this needs to be default passed to the
   // original allocator. If the allocation is owned by the RTL then just
   // keep it there, since it's a leftover from before asan_init was called.
-  if (UNLIKELY(!asan_inited) ||
+  if (UNLIKELY(!AsanInited()) ||
       ((ownershipState ==
         AllocationOwnershipStatus::OWNED_BY_GLOBAL_OR_LOCAL_HANDLE) ||
        (ownershipState ==
@@ -2238,7 +2238,7 @@ template<__asan_win_moveable::HeapCaller Caller>
 HANDLE SharedLock(HANDLE hMem, BufferedStackTrace &stack)
 {
   auto lock = GlobalLocalFunctions<Caller>{}.LockFunc;
-  if (asan_inited && !__sanitizer::IsProcessTerminating() &&
+  if (AsanInited() && !__sanitizer::IsProcessTerminating() &&
       !NotOwnedByASAN<Caller>(hMem)) {
     return __asan_win_moveable::IncrementLockCount(hMem, lock, stack);
   }
@@ -2250,7 +2250,7 @@ template<__asan_win_moveable::HeapCaller Caller>
 BOOL SharedUnlock(HANDLE hMem, BufferedStackTrace &stack)
 {
   auto unlock = GlobalLocalFunctions<Caller>{}.UnlockFunc;
-  if (asan_inited && !__sanitizer::IsProcessTerminating() &&
+  if (AsanInited() && !__sanitizer::IsProcessTerminating() &&
       !NotOwnedByASAN<Caller>(hMem)) {
     return __asan_win_moveable::DecrementLockCount(hMem, unlock, stack);
   }
@@ -2302,7 +2302,7 @@ void *ReAllocGlobalLocal(HANDLE hMem,
   // If ASAN is not initialized then this needs to be default passed to the
   // original allocator. If the allocation is owned by the RTL then just
   // keep it there, since it's a leftover from before asan_init was called.
-  if (UNLIKELY(!asan_inited) ||
+  if (UNLIKELY(!AsanInited()) ||
       ((ownershipState ==
         AllocationOwnershipStatus::OWNED_BY_GLOBAL_OR_LOCAL_HANDLE) ||
        (ownershipState == AllocationOwnershipStatus::OWNED_BY_GLOBAL_OR_LOCAL))) {

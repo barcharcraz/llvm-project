@@ -25,6 +25,7 @@
 namespace __asan {
 
 // AsanThreadContext implementation.
+atomic_uint8_t mainThreadCreated{0};
 
 void AsanThreadContext::OnCreated(void *arg) {
   CreateThreadContextArgs *args = static_cast<CreateThreadContextArgs*>(arg);
@@ -73,19 +74,40 @@ AsanThreadContext *GetThreadContextByTidLocked(u32 tid) {
 }
 
 // AsanThread implementation.
-
-AsanThread *AsanThread::Create(thread_callback_t start_routine, void *arg,
-                               u32 parent_tid, StackTrace *stack,
-                               bool detached) {
+AsanThread *AsanThread::CreateThreadImpl(thread_callback_t start_routine,
+                                         void *arg, u32 parent_tid,
+                                         StackTrace *stack, bool detached) {
   uptr PageSize = GetPageSizeCached();
   uptr size = RoundUpTo(sizeof(AsanThread), PageSize);
-  AsanThread *thread = (AsanThread*)MmapOrDie(size, __func__);
+  AsanThread *thread = (AsanThread *)MmapOrDie(size, __func__);
   thread->start_routine_ = start_routine;
   thread->arg_ = arg;
   AsanThreadContext::CreateThreadContextArgs args = {thread, stack};
   asanThreadRegistry().CreateThread(0, detached, parent_tid, &args);
 
   return thread;
+}
+
+#if SANITIZER_WINDOWS
+AsanThread *AsanThread::CreateMainThread(thread_callback_t start_routine,
+                                         void *arg, u32 parent_tid,
+                                         StackTrace *stack, bool detached) {
+  auto mainThread =
+      CreateThreadImpl(start_routine, arg, parent_tid, stack, detached);
+  atomic_store(&mainThreadCreated, 1, memory_order_release);
+  return mainThread;
+}
+#endif
+
+AsanThread *AsanThread::Create(thread_callback_t start_routine, void *arg,
+                               u32 parent_tid, StackTrace *stack,
+                               bool detached) {
+#if SANITIZER_WINDOWS
+  while (atomic_load(&mainThreadCreated, memory_order_acquire) == 0) {
+    internal_sched_yield();
+  }
+#endif
+  return CreateThreadImpl(start_routine, arg, parent_tid, stack, detached);
 }
 
 void AsanThread::TSDDtor(void *tsd) {
@@ -288,9 +310,15 @@ thread_return_t AsanThread::ThreadStart(tid_t os_id) {
 }
 
 AsanThread *CreateMainThread() {
+#if SANITIZER_WINDOWS
+  AsanThread *main_thread = AsanThread::CreateMainThread(
+      /* start_routine */ nullptr, /* arg */ nullptr, /* parent_tid */ kMainTid,
+      /* stack */ nullptr, /* detached */ true);
+#else
   AsanThread *main_thread = AsanThread::Create(
       /* start_routine */ nullptr, /* arg */ nullptr, /* parent_tid */ kMainTid,
       /* stack */ nullptr, /* detached */ true);
+#endif
   SetCurrentThread(main_thread);
   main_thread->ThreadStart(internal_getpid());
   return main_thread;

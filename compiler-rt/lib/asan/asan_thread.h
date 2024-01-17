@@ -60,6 +60,10 @@ class AsanThread {
  public:
   static AsanThread *Create(thread_callback_t start_routine, void *arg,
                             u32 parent_tid, StackTrace *stack, bool detached);
+#if SANITIZER_WINDOWS
+  static AsanThread *CreateMainThread(thread_callback_t start_routine, void *arg,
+                            u32 parent_tid, StackTrace *stack, bool detached);
+#endif
   static void TSDDtor(void *tsd);
   void Destroy();
 
@@ -134,6 +138,8 @@ class AsanThread {
  private:
   // NOTE: There is no AsanThread constructor. It is allocated
   // via mmap() and *must* be valid in zero-initialized state.
+  static AsanThread *CreateThreadImpl(thread_callback_t start_routine, void *arg,
+                            u32 parent_tid, StackTrace *stack, bool detached);
 
   void SetThreadStackAndTls(const InitOptions *options);
 

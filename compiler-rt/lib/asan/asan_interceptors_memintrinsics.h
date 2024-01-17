@@ -103,12 +103,9 @@ struct AsanInterceptorContext {
 // See http://llvm.org/bugs/show_bug.cgi?id=11763.
 #define ASAN_MEMCPY_IMPL(ctx, to, from, size)                      \
   do {                                                             \
-    if (UNLIKELY(!asan_inited))                                    \
+    if (UNLIKELY(!AsanInited()))                                   \
       return internal_memcpy(to, from, size);                      \
-    if (asan_init_is_running) {                                    \
-      return REAL(memcpy)(to, from, size);                         \
-    }                                                              \
-    ENSURE_ASAN_INITED();                                          \
+    AsanInitFromRtl();                                              \
     if (ShouldReplaceIntrinsic(IS_NTDLL_CALLEE, to, size, from)) { \
       if (to != from) {                                            \
         CHECK_RANGES_OVERLAP("memcpy", to, size, from, size);      \
@@ -122,12 +119,9 @@ struct AsanInterceptorContext {
 // memset is called inside Printf.
 #define ASAN_MEMSET_IMPL(ctx, block, c, size)                   \
   do {                                                          \
-    if (UNLIKELY(!asan_inited))                                 \
+    if (UNLIKELY(!AsanInited()))                                \
       return internal_memset(block, c, size);                   \
-    if (asan_init_is_running) {                                 \
-      return REAL(memset)(block, c, size);                      \
-    }                                                           \
-    ENSURE_ASAN_INITED();                                       \
+    AsanInitFromRtl();                                       \
     if (ShouldReplaceIntrinsic(IS_NTDLL_CALLEE, block, size)) { \
       ASAN_WRITE_RANGE(ctx, block, size);                       \
     }                                                           \
@@ -136,9 +130,9 @@ struct AsanInterceptorContext {
 
 #define ASAN_MEMMOVE_IMPL(ctx, to, from, size)                     \
   do {                                                             \
-    if (UNLIKELY(!asan_inited))                                    \
+    if (UNLIKELY(!AsanInited()))                                   \
       return internal_memmove(to, from, size);                     \
-    ENSURE_ASAN_INITED();                                          \
+    AsanInitFromRtl();                                          \
     if (ShouldReplaceIntrinsic(IS_NTDLL_CALLEE, to, size, from)) { \
       ASAN_READ_RANGE(ctx, from, size);                            \
       ASAN_WRITE_RANGE(ctx, to, size);                             \

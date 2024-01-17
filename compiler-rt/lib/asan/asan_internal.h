@@ -60,6 +60,7 @@ class AsanThread;
 using __sanitizer::StackTrace;
 
 void AsanInitFromRtl();
+bool TryAsanInitFromRtl();
 
 // asan_win.cpp
 void InitializePlatformExceptionHandlers();
@@ -170,9 +171,20 @@ bool HandleDlopenInit();
 #define ASAN_ON_ERROR() \
   if (&__asan_on_error) __asan_on_error()
 
-extern int asan_inited;
-// Used to avoid infinite recursion in __asan_init().
-extern bool asan_init_is_running;
+// Depending on the loading thread and when ASAN is loaded on Windows,
+// race conditions can appear causing incorrect states or internal check
+// failures.
+//
+// From a multithreaded managed environment, if an ASAN instrumented dll
+// is on a spawned thread, an intercepted function may be called on multiple
+// threads while ASAN is still in the process of initialization. This can also
+// cause the ASAN thread registry to create the "main" thread after another
+// thread, resulting in a TID != 0.
+//
+// Two threads can also race to initialize ASAN, resulting in either incorrect
+// state or internal check failures for init already running.
+bool AsanInited();
+
 extern void (*death_callback)(void);
 // These magic values are written to shadow for better error reporting.
 const int kAsanHeapLeftRedzoneMagic = 0xfa;

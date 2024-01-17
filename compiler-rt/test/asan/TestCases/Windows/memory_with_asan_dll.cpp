@@ -1,5 +1,10 @@
 #include "Windows.h"
 
+extern "C" __declspec(dllexport) HGLOBAL
+    __stdcall GlobalAllocThunk(UINT uFlags, SIZE_T dwBytes) {
+  return GlobalAlloc(uFlags, dwBytes);
+}
+
 extern "C" __declspec(dllexport) void FreeMemoryThunk(void *p) { free(p); }
 
 extern "C" __declspec(dllexport) void FreeAlignedMemoryThunk(void *p) {
