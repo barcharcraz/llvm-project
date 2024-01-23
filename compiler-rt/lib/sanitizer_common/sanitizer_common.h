@@ -506,6 +506,17 @@ class InternalMmapVectorNoCtor {
     }
     internal_memcpy(&data_[size_++], &element, sizeof(T));
   }
+  template <typename... Args>
+  T *emplace_back(Args &&...args) {
+    // Requires including sanitizer_placement_new.h
+    CHECK_LE(size_, capacity());
+    if (size_ == capacity()) {
+      uptr new_capacity = RoundUpToPowerOfTwo(size_ + 1);
+      Realloc(new_capacity);
+    }
+    T *p = new (&data_[size_++]) T(static_cast<Args &&>(args)...);
+    return p;
+  }
   T &back() {
     CHECK_GT(size_, 0);
     return data_[size_ - 1];

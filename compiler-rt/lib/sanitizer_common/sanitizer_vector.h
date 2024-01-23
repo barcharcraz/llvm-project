@@ -70,14 +70,6 @@ class Vector {
     return p;
   }
 
-  template <typename... Args>
-  T *EmplaceBack(Args&&... args) {
-    // Requires including sanitizer_placement_new.h
-    EnsureSize(Size() + 1);
-    T *p = new (&end_[-1]) T(static_cast<Args&&>(args)...);
-    return p;
-  }
-
   void PopBack() {
     DCHECK_GT(end_, begin_);
     end_--;

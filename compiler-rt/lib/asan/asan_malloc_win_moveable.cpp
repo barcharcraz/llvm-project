@@ -93,7 +93,6 @@ public:
     }
 
     size_t HandleToIndex(void *const handle) const {
-        CHECK(IsValidHandle(handle));
         return reinterpret_cast<size_t>(handle) & Mask;
     }
 
@@ -202,11 +201,15 @@ private:
 
     struct MoveableAllocation {
         explicit MoveableAllocation(void *const h) : handle(h) {}
+        MoveableAllocation(const MoveableAllocation &) = delete;
+        MoveableAllocation &operator=(const MoveableAllocation &) = delete;
+        MoveableAllocation(MoveableAllocation &&) = default;
+        MoveableAllocation &operator=(MoveableAllocation &&) = default;
 
-        void *const handle; // encodes index into moveable entries
+        void *const handle;  // encodes index into moveable entries
         void *addr = ReservedAddress;
         size_t lock_count = 0;
-        bool active = true; // false when in reuse list
+        bool active = true;  // false when in reuse list
     };
 
     // After a lock is taken GMEM_LOCKCOUNT times via GlobalLock/LocalLock, the lock counter stops incrementing.
@@ -216,6 +219,11 @@ private:
 
 public:
     static constexpr size_t MaxHandleValue = 0xFFFF;
+
+    MoveableMemoryMap() {
+        _moveable_entries.Initialize(MaxHandleValue);
+        _handle_reuse_list.Initialize(MaxHandleValue);
+    }
 
     bool IsOwned(void *const handle_or_addr) {
         return _index_handle_map.IsValidHandle(handle_or_addr) || _QueryPointerEntryMapping(handle_or_addr);
@@ -424,24 +432,24 @@ private:
         // First, create a moveable entry up until the maximum handle count.
         // If full, use available slots stored in the handle reuse list.
         // Note that moveable entries never shrinks once allocated.
-        const size_t next_available_index = _moveable_entries.Size();
+        const size_t next_available_index = _moveable_entries.size();
 
         if (next_available_index <= MaxHandleValue) {
-            return _moveable_entries.EmplaceBack(_index_handle_map.IndexToHandle(next_available_index));
+            return _moveable_entries.emplace_back(_index_handle_map.IndexToHandle(next_available_index));
         }
 
-        if (_handle_reuse_list.Empty()) {
+        if (_handle_reuse_list.empty()) {
             return nullptr;
         }
 
-        MoveableAllocation *const reuse_entry = _handle_reuse_list.Back();
-        _handle_reuse_list.PopBack();
+        MoveableAllocation *const reuse_entry = _handle_reuse_list.back();
 
         // reuse_entry->handle already contains correct handle
         // since it is derived from the index into _moveable_entries
         reuse_entry->addr = ReservedAddress;
         reuse_entry->lock_count = 0;
         reuse_entry->active = true;
+        _handle_reuse_list.pop_back();
         return reuse_entry;
     }
 
@@ -449,7 +457,7 @@ private:
         CHECK(entry != nullptr);
         CHECK(entry->active == true);
         entry->active = false;
-        _handle_reuse_list.PushBack(entry);
+        _handle_reuse_list.push_back(entry);
     }
 
     struct _GetEntryQueryResult {
@@ -462,7 +470,7 @@ private:
         void *const handle = _ToHandle(handle_or_addr);
 
         const size_t index = _index_handle_map.HandleToIndex(handle);
-        if (index >= _moveable_entries.Size()) {
+        if (index >= _moveable_entries.size()) {
             return {nullptr, {handle_or_addr, Error::InvalidHandle}};
         }
 
@@ -520,12 +528,12 @@ private:
         return *h;
     }
 
-    PointerToEntryMap              _pointer_to_entry_map;
-    Vector<MoveableAllocation>     _moveable_entries;
-    Vector<MoveableAllocation *>   _handle_reuse_list;
-    IndexHandleMap<MaxHandleValue> _index_handle_map;
-    SpinMutex                      _lock = {};
-    atomic_uint32_t                _thread_id = {};
+    PointerToEntryMap                                _pointer_to_entry_map;
+    InternalMmapVectorNoCtor<MoveableAllocation>     _moveable_entries;
+    InternalMmapVectorNoCtor<MoveableAllocation *>   _handle_reuse_list;
+    IndexHandleMap<MaxHandleValue>                   _index_handle_map;
+    SpinMutex                                        _lock = {};
+    atomic_uint32_t                                  _thread_id = {};
 };
 
 class FixedMemoryMap
