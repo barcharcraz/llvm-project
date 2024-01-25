@@ -479,6 +479,10 @@ static size_t GetInstructionSize(uptr address, size_t *rel_offset = nullptr) {
     case 0xC3:  // C3 : ret   (for small/empty function interception
     case 0xCC:  // CC : int 3  i.e. registering weak functions)
       return 1;
+      
+    case 0x9C: // 9C : popf(q)
+    case 0x9D: // 9D : pushf(q)
+      return 1;
 
     case 0x50:  // push eax / rax
     case 0x51:  // push ecx / rcx
