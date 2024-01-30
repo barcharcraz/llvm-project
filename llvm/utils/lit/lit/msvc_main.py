@@ -525,6 +525,7 @@ if not cc_files:
 
 #set up some blank lists and dicts for use later.
 tests_to_run = []
+disabled_tests = []
 results = {}
 xfails = dict()
 
@@ -594,7 +595,17 @@ for cc_file in cc_files:
         __suite = lit.Test.TestSuite("msvc",sys.argv[1], os.path.join(__testConfig.environment['TEST_OUTPUT_DIR'],cc_file.replace(".","")+opts.testTargetArch), __testConfig)
         __test = lit.Test.Test(__suite,[ cc_file],__testConfig)
         print("found test %s"%(cc_file))
-        tests_to_run.append( (cc_file, __test, __litConfig) )
+
+        if isWindows:
+            disabled_test_parser = lit.TestRunner.IntegratedTestKeywordParser('MSVC-DISABLED:', lit.TestRunner.ParserKind.LIST),
+            disabled_parsed = lit.TestRunner._parseKeywords(__test.getSourcePath(), additional_parsers=disabled_test_parser, require_script=False)
+            if("MSVC-DISABLED:" in disabled_parsed and disabled_parsed["MSVC-DISABLED:"] is not None):
+                if(disabled_parsed['MSVC-DISABLED:'][0] == ""):
+                    raise RuntimeError("Must specify a reason for disabling a test.")
+                disabled_tests.append( (cc_file, disabled_parsed['MSVC-DISABLED:']) )
+            else:
+                tests_to_run.append( (cc_file, __test, __litConfig) )
+
         if opts.print_env:
             for item in sorted(__testConfig.environment.keys()):
                 print(str(item) + "=" + __testConfig.environment[item])
@@ -690,6 +701,7 @@ xpassed = 0
 passed = 0
 xfailed = 0
 failed = 0
+disabled = 0
 total = 0
 
 print("Outputs =================================================================")
@@ -742,6 +754,12 @@ for result in sorted(results.keys()):
         failed += 1
         fails.append(result)
         print(result)
+
+print("Disabled Tests ======================================================================")
+
+for test in sorted(disabled_tests):
+    disabled += 1
+    print(test[0] + " : " + test[1][0])
 
 print("passed %d out of %d tests"%(xpassed + xfailed ,xpassed+xfailed+passed+failed))
 
