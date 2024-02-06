@@ -55,6 +55,20 @@ void initialize_thunks(const sanitizer_thunk *begin,
       ".INTR$M")) int (*__sanitizer_static_thunk_##local_function)() = \
       intercept_##local_function;
 
+// if `alias` aliases `alias_target`, we don't want to intercept it, but instead rely on the interceptor of `alias_target`.
+#define INTERCEPT_ALIASING_LIBRARY_FUNCTION(alias, alias_target, alias_export) \
+  extern "C" void alias();                                                    \
+  extern "C" void alias_target();                                             \
+  static int intercept_##alias() {                                            \
+    if (alias == alias_target) return 1;                                      \
+    return __sanitizer::override_function(                                    \
+        alias_export,                                                         \
+        reinterpret_cast<__sanitizer::uptr>(alias));                          \
+  }                                                                           \
+  __pragma(section(".INTR$M", long, read)) __declspec(allocate(               \
+      ".INTR$M")) int (*__sanitizer_static_thunk_##alias)() =                 \
+      intercept_##alias;
+
 // ------------------ Weak symbol registration macros ---------------------- //
 // Use .WEAK segment to register function pointers that are iterated over during
 // startup that will replace sanitizer_export with local_function

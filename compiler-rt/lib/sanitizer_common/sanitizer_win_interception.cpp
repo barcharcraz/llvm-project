@@ -83,6 +83,37 @@ static void RunWeakFunctionCallbacks(uptr export_address) {
 
 }  // namespace __sanitizer
 
+DECLARE_REAL(long, strtol_static, const char *nptr, char **endptr, int base)
+DECLARE_REAL(int, atoi_static, const char *nptr)
+DECLARE_REAL(long, atol_static, const char *nptr)
+// For the provided static interceptor (static export), if this interceptor is uniquely reserved for static interception
+// (i.e., it is not also re-used as an interceptor for dynamic-linking scenarios), return the corresponding REAL pointer dedicated
+// to be used only by this static interceptor. This pointer will then presumably be populated in OverrideFunction by the static interception logic.
+//
+// If the export is *not* unique, but gets re-used for dynamic-linking interception too, then this function will return NULL,
+// and the REAL pointer that is shared by the static and dynamic interceptors is presumed to be populated by the dynamic-linking interception logic.
+__interception::uptr* GetUniqueRealAddressForStaticExport(const char* export_name)
+{
+  struct export_to_addr {
+    const char* name;
+    __interception::uptr * addr;
+  };
+  // It is a hard-coded fact which functions have dedicated static interceptors
+  static const export_to_addr exports[] = {
+    { "__asan_wrap_strtol_static", (__interception::uptr *)&REAL(strtol_static) },
+    { "__asan_wrap_atoi_static", (__interception::uptr *)&REAL(atoi_static) },
+    { "__asan_wrap_atol_static", (__interception::uptr *)&REAL(atol_static) },
+  };
+
+  for (const auto& e : exports) {
+    if (!internal_strcmp(export_name, e.name)) {
+      return e.addr;
+    }
+  }
+
+  return nullptr;
+}
+
 extern "C" __declspec(dllexport) bool __cdecl __sanitizer_override_function(
     const char *export_name, const uptr user_function,
     uptr *const old_user_function) {
@@ -91,8 +122,19 @@ extern "C" __declspec(dllexport) bool __cdecl __sanitizer_override_function(
 
   const uptr sanitizer_function = GetSanitizerDllExport(export_name);
 
+  // If the export is unique to static interception, then we will use a dedicated REAL pointer for this static interceptor.
+  // Otherwise, the caller has the option to pass in the REAL pointer via old_user_function.
+  uptr * real_address = GetUniqueRealAddressForStaticExport(export_name);
+  if (!real_address)
+    real_address = old_user_function;
+  else
+    CHECK(!old_user_function && "old_user_function is not null but function has a dedicated static interceptor");
+
+  // If GetUniqueRealAddressForStaticExport returns nullptr, then the REAL pointer will *not* be updated, and is assumed to be be
+  // set during interception for DLLs. Strictly speaking this means that the REAL function for static and dynamic linking
+  // will be shared. This is currently the case for most functions, and should be fixed in the future.
   const bool function_overridden = __interception::OverrideFunction(
-      user_function, sanitizer_function, old_user_function);
+      user_function, sanitizer_function, real_address);
   if (!function_overridden) {
     Report(
         "ERROR: Failed to override local function at '%p' with sanitizer "

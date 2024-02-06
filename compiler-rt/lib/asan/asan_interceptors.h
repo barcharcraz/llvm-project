@@ -130,6 +130,30 @@ DECLARE_REAL(char*, strstr, const char *s1, const char *s2)
         if (!INTERCEPT_FUNCTION(name))                                       \
           VReport(1, "AddressSanitizer: failed to intercept '%s'\n", #name); \
       } while (0)
+
+#if SANITIZER_WINDOWS
+    // Intercept the function <name> only for the provided DLL.
+    #define ASAN_INTERCEPT_FUNC_FORDLL(name, dll) \
+      do { \
+        if (!__interception::OverrideFunction(#name, (::__interception::uptr)WRAP(name##_##dll), (::__interception::uptr *)&REAL(name##_##dll), #dll".dll", /* failIfDllNotFound*/ false)) \
+          { \
+            /* Note: if the DLL is not found, then this call will still succeed. But if the DLL is found yet interception fails, then we log an error. */ \
+            VReport(1, "AddressSanitizer: failed to intercept '%s' in %s\n", #name, #dll".dll"); \
+          } \
+      } while (false)
+
+    #define ASAN_INTERCEPT_FUNC_FORDLLS(func) \
+    ASAN_INTERCEPT_FUNC_FORDLL(func, ntdll);     \
+    ASAN_INTERCEPT_FUNC_FORDLL(func, msvcr100);  \
+    ASAN_INTERCEPT_FUNC_FORDLL(func, msvcr110);  \
+    ASAN_INTERCEPT_FUNC_FORDLL(func, msvcr120);  \
+    ASAN_INTERCEPT_FUNC_FORDLL(func, ucrtbase);  \
+    ASAN_INTERCEPT_FUNC_FORDLL(func, msvcr100d); \
+    ASAN_INTERCEPT_FUNC_FORDLL(func, msvcr110d); \
+    ASAN_INTERCEPT_FUNC_FORDLL(func, msvcr120d); \
+    ASAN_INTERCEPT_FUNC_FORDLL(func, ucrtbased);
+#endif // SANITIZER_WINDOWS
+
 #    define ASAN_INTERCEPT_FUNC_VER(name, ver)                           \
       do {                                                               \
         if (!INTERCEPT_FUNCTION_VER(name, ver))                          \

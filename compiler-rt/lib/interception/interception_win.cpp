@@ -479,7 +479,7 @@ static size_t GetInstructionSize(uptr address, size_t *rel_offset = nullptr) {
     case 0xC3:  // C3 : ret   (for small/empty function interception
     case 0xCC:  // CC : int 3  i.e. registering weak functions)
       return 1;
-      
+
     case 0x9C: // 9C : popf(q)
     case 0x9D: // 9D : pushf(q)
       return 1;
@@ -1316,29 +1316,70 @@ uptr InternalGetProcAddress(void *module, const char *func_name) {
   return 0;
 }
 
+struct AliasPair {
+    // Function "alias" is an alias for function "alias_target"
+    const char* alias;
+    const char* alias_target;
+};
+
+static const AliasPair potential_aliases[] =
+{
+    // These aliases are expected to exist in at least some DLLs
+    {"atoi", "atol"}
+};
+
 bool OverrideFunction(const char *func_name, uptr new_func, uptr *orig_old_func,
-                      const char *dllName) {
-  bool hooked = false;
+                      const char *dllName, bool failIfDllNotFound) {
+
+  bool interceptedForAtLeastOneDLL = false;
   dll_info *DLLs = InterestingDLLsAvailable();
   for (size_t i = 0; DLLs[i].data; ++i) {
     uptr func_addr = InternalGetProcAddress(DLLs[i].data, func_name);
-    auto attemptOverride = [&]() -> bool {
-      return func_addr && OverrideFunction(func_addr, new_func, orig_old_func,
-                                           DLLs[i].guaranteed_hotpatchable);
-    };
-    // If a dll name was passed in, we only want to override the function for
-    // that specific dll and exit
-    if (dllName && !_strcmp(DLLs[i].dll_name, dllName)) {
-      return attemptOverride();
+
+    // If dllName was not provided, we will attempt an interception for *all* DLLs.
+    // Otherwise, we will try to intercept for the matching DLL only, regardless of whether the interception succeeds or fails.
+    bool interceptOnlyThisDLL = (dllName && !_strcmp(DLLs[i].dll_name, dllName));
+    if (dllName && !interceptOnlyThisDLL)
+      continue;
+
+    if (!func_addr)
+    {
+        if (interceptOnlyThisDLL)
+            return false;
+        continue; // try the next DLL
     }
 
-    // If a dll name wasn't passed in, keep iterating through the dlls
-    // and trying to override the function by name
-    else if (!dllName && attemptOverride()) {
-      hooked = true;
+    // If function A is an alias for function B, then we *only* want to intercept B. Otherwise, the interceptions
+    // are at risk of clobbering each other.
+    for (const auto& aliasPair : potential_aliases)
+    {
+      if (!_strcmp(func_name, aliasPair.alias) &&
+           func_addr == InternalGetProcAddress(DLLs[i].data, aliasPair.alias_target))
+      {
+          // For this DLL, they are indeed aliases, so don't actually intercept the alias.
+          // Treat the interception attempt as successful though, since the alias target's interception is what matters.
+          if (interceptOnlyThisDLL)
+              return true;
+          interceptedForAtLeastOneDLL = true;
+          continue;
+      }
     }
+
+    bool functionWasIntercepted = OverrideFunction(func_addr, new_func, orig_old_func, DLLs[i].guaranteed_hotpatchable);
+    if (interceptOnlyThisDLL)
+    {
+        return functionWasIntercepted;
+    }
+    interceptedForAtLeastOneDLL |= functionWasIntercepted;
   }
-  return hooked;
+
+  // If we are passed a dllName, we will exit in the loop above if the DLL is found.
+  // So if a dllName was passed in and we reached this point, that means that the DLL was not found.
+  if (dllName)
+      return !failIfDllNotFound;
+
+  // Otherwise, all that matters is that at least one DLL had func_name successfully intercepted.
+  return interceptedForAtLeastOneDLL;
 }
 
 bool OverrideImportedFunction(const char *module_to_patch,
@@ -1408,4 +1449,4 @@ bool OverrideImportedFunction(const char *module_to_patch,
 }
 
 }  // namespace __interception
-#endif  // SANITIZER_MAC
+#endif  // SANITIZER_WINDOWS
