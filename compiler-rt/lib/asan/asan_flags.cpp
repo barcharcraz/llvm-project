@@ -16,6 +16,7 @@
 #include "asan_activation.h"
 #include "asan_interface_internal.h"
 #include "asan_stack.h"
+#include "asan_coe_win.h"
 #include "lsan/lsan_common.h"
 #include "sanitizer_common/sanitizer_common.h"
 #include "sanitizer_common/sanitizer_flag_parser.h"
@@ -239,6 +240,12 @@ void InitializeFlags() {
 
       DisplayHelpMessages(&asan_parser);
       ProcessFlags();
+
+      // TODO: update other globals and data structures that may change after
+      // initialization due to these flags potentially changing
+      if (flags()->continue_on_error) {
+        __asan::InitializeCOE();
+      }
     });
 
 #if CAN_SANITIZE_UB

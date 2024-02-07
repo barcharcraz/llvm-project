@@ -11,12 +11,15 @@
 //
 // ASan-private header for asan_allocator.cpp.
 //===----------------------------------------------------------------------===//
-#ifndef ASAN_COE_WIN_H
-#define ASAN_COE_WIN_H 
+#pragma once
 
-
+#if SANITIZER_WINDOWS
 #include "asan_errors.h"
 #include "sanitizer_common\sanitizer_stacktrace.h"
+
+namespace __asan {
+  void InitializeCOE();
+}
 
 // Platform abstract declaration used for instatiation 
 // in a sealed class with no use of virtual. 
@@ -70,5 +73,4 @@ struct COE_Windows {
   // Override sanitizer_printf TODO: move to sanitizer_common
   void RawWrite(const char *buffer) { __coe_win::RawWrite(buffer); }
 };
-
-#endif ASAN_COE_WIN_H
+#endif

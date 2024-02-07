@@ -13,6 +13,7 @@
 
 #include "asan_activation.h"
 #include "asan_allocator.h"
+#include "asan_coe_win.h"
 #include "asan_fake_stack.h"
 #include "asan_interceptors.h"
 #include "asan_interface_internal.h"
@@ -37,8 +38,6 @@ int __asan_option_detect_stack_use_after_return;  // Global interface symbol.
 uptr *__asan_test_only_reported_buggy_pointer;    // Used only for testing asan.
 
 namespace __asan {
-
-void InitializeCOE();
 
 uptr AsanMappingProfile[kAsanMappingProfileSize];
 
