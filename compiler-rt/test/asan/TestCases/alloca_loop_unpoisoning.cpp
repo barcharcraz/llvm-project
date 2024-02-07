@@ -30,19 +30,23 @@ ATTRIBUTE_NOINLINE void foo(int len) {
 
   ATTRIBUTE_ALIGNED(32)
 #ifdef MSVC
-  char *array = (char *)alloca(len);
+  volatile char *array = (char *)alloca(len);
 #else
-  char array[len];
+  volatile char array[len];
 #endif
+  if(len)
+    array[0] = 0;
   assert(!(reinterpret_cast<uintptr_t>(array) & 31L));
   alloca(len);
   for (int i = 0; i < 32; ++i) {
     ATTRIBUTE_ALIGNED(32)
 #ifdef MSVC
-    char *array = (char *)alloca(i);
+    volatile char *array = (char *)alloca(i);
 #else
-    char array[i]; // NOLINT
+    volatile char array[i]; // NOLINT
 #endif
+    if(i)
+      array[0] = 0;
     bot = alloca(i);
     assert(!(reinterpret_cast<uintptr_t>(bot) & 31L));
   }
