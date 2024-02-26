@@ -80,12 +80,13 @@ namespace __asan {
 // pointing to some block of memory.
 // If new memory is allocated, it will then be tracked by asan since
 // rtl functions are intercepted
-#define CHECK_AND_CALL(allocationCheck, functionPointer, asanFunction, ptr, \
-                       ...)                                                 \
-  do {                                                                      \
-    if (!asan_mz_size(ptr) && allocationCheck(ptr)) {                                             \
+#define CHECK_AND_CALL(allocationCheck, functionPointer, asanFunction, ptr,   \
+                         ...)                                                 \
+  do {                                                                        \
+    if (UNLIKELY(!AsanInited()) ||                                            \
+        !asan_mz_size(ptr) && allocationCheck(ptr)) {                         \
       return functionPointer(ptr, ##__VA_ARGS__);                             \
-    } else                                                                  \
+    } else                                                                    \
       return asanFunction(ptr, ##__VA_ARGS__);                                \
   } while (0)
 
@@ -94,7 +95,7 @@ namespace __asan {
 #define CHECK_AND_CALL_FREE(allocationCheck, functionPointer, asanFunction,   \
                             ptr, ...)                                         \
   do {                                                                        \
-    if (UNLIKELY(!asan_inited)) {                                             \
+    if (UNLIKELY(!AsanInited())) {                                            \
       functionPointer(ptr, ##__VA_ARGS__);                                      \
     }                                                                         \
     if (!asan_mz_size(ptr) && allocationCheck(ptr)) {                         \
@@ -117,7 +118,7 @@ namespace __asan {
 #define SWITCH_TO_ASAN_ALLOCATION(allocationCheck, functionPointer,            \
                                   sizeCheck, asanFunction, freeFn, ptr, ...)   \
   do {                                                                         \
-    if (UNLIKELY(!asan_inited)) {                                              \
+    if (UNLIKELY(!AsanInited())) {                                             \
       return functionPointer(ptr, ##__VA_ARGS__);                                \
     }                                                                          \
     if (!asan_mz_size(ptr) && allocationCheck(ptr)) {                          \

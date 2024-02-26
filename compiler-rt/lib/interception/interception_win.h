@@ -30,7 +30,7 @@ bool OverrideFunction(uptr old_func, uptr new_func, uptr *orig_old_func = 0,
 
 // Overrides a function in a system DLL or DLL CRT by its exported name.
 bool OverrideFunction(const char *name, uptr new_func, uptr *orig_old_func = 0,
-                      const char *dll = nullptr);
+                      const char *dll = nullptr, bool failIfDllNotFound = true);
 
 // Windows-only replacement for GetProcAddress. Useful for some sanitizers.
 uptr InternalGetProcAddress(void *module, const char *func_name);

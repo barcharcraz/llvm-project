@@ -567,13 +567,8 @@ INTERCEPTOR(char*, strdup, const char *s) {
   uptr length = internal_strlen(s);
   if (flags()->replace_str) {
     ASAN_READ_RANGE(ctx, s, length + 1);
-  }
   GET_STACK_TRACE_MALLOC;
   void *new_mem = asan_malloc(length + 1, &stack);
-  if (new_mem) {
-    REAL(memcpy)(new_mem, s, length + 1);
-  }
-  return reinterpret_cast<char*>(new_mem);
 }
 #endif // !SANITIZER_WINDOWS
 
@@ -581,8 +576,8 @@ INTERCEPTOR(char*, strdup, const char *s) {
 INTERCEPTOR(char*, _strdup, const char *s) {
   void *ctx;
   ASAN_INTERCEPTOR_ENTER(ctx, _strdup);
-  if (UNLIKELY(!asan_inited)) return internal_strdup(s);
-  ENSURE_ASAN_INITED();
+  if (UNLIKELY(!TryAsanInitFromRtl())) return internal_strdup(s);
+  AsanInitFromRtl();
   uptr length = REAL(strlen)(s);
   if (flags()->replace_str) {
     ASAN_READ_RANGE(ctx, s, length + 1);
@@ -646,8 +641,10 @@ static ALWAYS_INLINE auto StrtolImpl(void *ctx, Fn real, const char *nptr,
       return StrtolImpl(ctx, REAL(func), nptr, endptr, base);                \
     }
 
+#  if !SANITIZER_WINDOWS
 INTERCEPTOR_STRTO_BASE(long, strtol)
 INTERCEPTOR_STRTO_BASE(long long, strtoll)
+#  endif
 
 #  if SANITIZER_GLIBC
 INTERCEPTOR_STRTO_BASE(long, __isoc23_strtol)
@@ -690,6 +687,134 @@ INTERCEPTOR(long, atol, const char *nptr) {
   return result;
 }
 
+#if SANITIZER_WINDOWS
+
+#define INTERCEPTOR_ONEPERDLL(func) \
+INTERCEPTOR_##func##_FORDLL(ntdll)     \
+INTERCEPTOR_##func##_FORDLL(msvcr100)  \
+INTERCEPTOR_##func##_FORDLL(msvcr110)  \
+INTERCEPTOR_##func##_FORDLL(msvcr120)  \
+INTERCEPTOR_##func##_FORDLL(ucrtbase)  \
+INTERCEPTOR_##func##_FORDLL(msvcr100d) \
+INTERCEPTOR_##func##_FORDLL(msvcr110d) \
+INTERCEPTOR_##func##_FORDLL(msvcr120d) \
+INTERCEPTOR_##func##_FORDLL(ucrtbased) \
+INTERCEPTOR_##func##_FORDLL(static) /* special-case: used for static linking */ \
+
+/*
+ *  strtol and dependent functions get intercepted per-DLL.
+ * This is to ensure that the `_errno` function that gets called by the interceptor
+ * corresponds to the errno that is used by the user code.
+ * i.e., if the user is using strtol from ucrtbased.dll, we want to make sure our interceptor calls
+ *       strtol (and subsequently _errno) from the same DLL. Otherwise, when the user attempts to read
+ *       errno later on, it will not be the same errno that was set by the intercepted call to strtol.
+ */
+
+// Each function below will define its interceptor in a generic way so as to mark its name with the DLL it's intended for.
+
+#define INTERCEPTOR_STRTOL_FORDLL(dll) INTERCEPTOR_STRTO_BASE(long, strtol_##dll)
+INTERCEPTOR_ONEPERDLL(STRTOL)
+#endif
+#endif
+
+//////////////// ATOI ///////////////////
+#if SANITIZER_WINDOWS
+#define INTERCEPTOR_ATOI_FORDLL(dll) \
+INTERCEPTOR(int, atoi_##dll, const char *nptr) {                    \
+  void *ctx;                                                        \
+  ASAN_INTERCEPTOR_ENTER(ctx, atoi_##dll);                          \
+  AsanInitFromRtl();                                                \
+  if (!flags()->replace_str) {                                      \
+    return REAL(atoi_##dll)(nptr);                                  \
+  }                                                                 \
+  char *real_endptr;                                                \
+  /* "man atoi" tells that behavior of atoi(nptr) is the same as
+   * strtol(nptr, 0, 10), i.e. it sets errno to ERANGE if the
+   * parsed integer can't be stored in *long* type (even if it's
+   * different from int). So, we just imitate this behavior. */     \
+  int result = REAL(strtol_##dll)(nptr, &real_endptr, 10);          \
+  FixRealStrtolEndptr(nptr, &real_endptr);                          \
+  ASAN_READ_STRING(ctx, nptr, (real_endptr - nptr) + 1);            \
+  return result;                                                    \
+}
+
+INTERCEPTOR_ONEPERDLL(ATOI)
+#else
+  void *ctx;
+  ASAN_INTERCEPTOR_ENTER(ctx, atoi);
+  if (SANITIZER_APPLE && UNLIKELY(!AsanInited()))
+    return REAL(atoi)(nptr);
+  AsanInitFromRtl();
+  if (!flags()->replace_str) {
+    return REAL(atoi)(nptr);
+  }
+  char *real_endptr;
+  // "man atoi" tells that behavior of atoi(nptr) is the same as
+  // strtol(nptr, 0, 10), i.e. it sets errno to ERANGE if the
+  // parsed integer can't be stored in *long* type (even if it's
+  // different from int). So, we just imitate this behavior.
+  int result = REAL(strtol)(nptr, &real_endptr, 10);
+  FixRealStrtolEndptr(nptr, &real_endptr);
+  ASAN_READ_STRING(ctx, nptr, (real_endptr - nptr) + 1);
+  return result;
+}
+#endif
+//////////////// end ATOI ///////////////////
+
+
+//////////////// ATOL ///////////////////
+#if SANITIZER_WINDOWS
+#define INTERCEPTOR_ATOL_FORDLL(dll) \
+INTERCEPTOR(long, atol_##dll, const char *nptr) {               \
+  void *ctx;                                                    \
+  ASAN_INTERCEPTOR_ENTER(ctx, atol_##dll);                      \
+  AsanInitFromRtl();                                            \
+  if (!flags()->replace_str) {                                  \
+    return REAL(atol_##dll)(nptr);                              \
+  }                                                             \
+  char *real_endptr;                                            \
+  long result = REAL(strtol_##dll)(nptr, &real_endptr, 10);     \
+  FixRealStrtolEndptr(nptr, &real_endptr);                      \
+  ASAN_READ_STRING(ctx, nptr, (real_endptr - nptr) + 1);        \
+  return result;                                                \
+}
+
+INTERCEPTOR_ONEPERDLL(ATOL)
+#else
+INTERCEPTOR(long, atol, const char *nptr) {
+  void *ctx;
+  ASAN_INTERCEPTOR_ENTER(ctx, atol);
+  if (SANITIZER_APPLE && UNLIKELY(!AsanInited()))
+    return REAL(atol)(nptr);
+  AsanInitFromRtl();
+  if (!flags()->replace_str) {
+    return REAL(atol)(nptr);
+  }
+  char *real_endptr;
+  long result = REAL(strtol)(nptr, &real_endptr, 10);
+  FixRealStrtolEndptr(nptr, &real_endptr);
+  ASAN_READ_STRING(ctx, nptr, (real_endptr - nptr) + 1);
+  return result;
+}
+#endif
+//////////////// end ATOL ///////////////////
+
+// strtoll and atoll don't get per-DLL interceptors since we don't intercept them on Windows:
+
+#if ASAN_INTERCEPT_ATOLL_AND_STRTOLL
+INTERCEPTOR(long long, strtoll, const char *nptr, char **endptr, int base) {
+  void *ctx;
+  ASAN_INTERCEPTOR_ENTER(ctx, strtoll);
+  AsanInitFromRtl();
+  if (!flags()->replace_str) {
+    return REAL(strtoll)(nptr, endptr, base);
+  }
+  char *real_endptr;
+  long long result = REAL(strtoll)(nptr, &real_endptr, base);
+  StrtolFixAndCheck(ctx, nptr, endptr, real_endptr, base);
+  return result;
+}
+
 INTERCEPTOR(long long, atoll, const char *nptr) {
   void *ctx;
   ASAN_INTERCEPTOR_ENTER(ctx, atoll);
@@ -703,6 +828,8 @@ INTERCEPTOR(long long, atoll, const char *nptr) {
   ASAN_READ_STRING(ctx, nptr, (real_endptr - nptr) + 1);
   return result;
 }
+
+#endif
 
 #if ASAN_INTERCEPT___CXA_ATEXIT || ASAN_INTERCEPT_ATEXIT
 static void AtCxaAtexit(void *unused) {
@@ -788,8 +915,18 @@ void InitializeAsanInterceptors() {
   ASAN_INTERCEPT_FUNC(index);
 #endif
 
+#if SANITIZER_WINDOWS
+  // Note: if there is aliasing going on between atol and atoi, atoi will *not* be intercepted.
+  // (see OverrideFunction in interception_win.cpp)
+  ASAN_INTERCEPT_FUNC_FORDLLS(atoi);
+  ASAN_INTERCEPT_FUNC_FORDLLS(atol);
+  ASAN_INTERCEPT_FUNC_FORDLLS(strtol);
+#else
+  ASAN_INTERCEPT_FUNC(strtol);
   ASAN_INTERCEPT_FUNC(atoi);
   ASAN_INTERCEPT_FUNC(atol);
+#endif
+#if ASAN_INTERCEPT_ATOLL_AND_STRTOLL
   ASAN_INTERCEPT_FUNC(atoll);
   ASAN_INTERCEPT_FUNC(strtol);
   ASAN_INTERCEPT_FUNC(strtoll);

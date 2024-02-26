@@ -987,7 +987,7 @@ void CoeRawWrite(const char* buffer) {
                 &cbWritten,               // bytes written
                 (LPOVERLAPPED) nullptr);  // not overlapped
 
-  RAW_CHECK_MSG(fSuccess,"Internal error duing continue on error: Fail on write()\n");
+  RAW_CHECK_MSG(fSuccess,"Internal error during continue on error: Fail on write()\n");
 }
 
 // API called in  void StackTrace::Print() const { }
@@ -1533,12 +1533,11 @@ static void CoeDynamicallyLoadDbghelp() {
 
 HANDLE CoeCreateLogFile(const wchar_t* wszResultsFilePath) {
   CHECK(wszResultsFilePath);
-  auto coe_res_file_handle =
-      ::CreateFileW(wszResultsFilePath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
-                    FILE_ATTRIBUTE_NORMAL, NULL);
+  auto fileHandle = ::CreateFileW(wszResultsFilePath, GENERIC_WRITE, 0, NULL,
+                                  CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 
-  if (coe_res_file_handle != INVALID_HANDLE_VALUE) {
-    return coe_res_file_handle;
+  if (fileHandle != INVALID_HANDLE_VALUE) {
+    return fileHandle;
   }
 
   LPWSTR coe_temp_file_path = (LPWSTR)wszResultsFilePath;
@@ -1575,28 +1574,39 @@ HANDLE CoeCreateLogFile(const wchar_t* wszResultsFilePath) {
   return h_coe_tmp_file;
 }
 
-
 void InitializeCOE() {
-  // Called from AsanInitInternal() in asan\asan_rtl.cpp 
+  // Called from AsanInitInternal() in asan\asan_rtl.cpp
   const wchar_t* wszResultsFilePath =
       GetEnvironmentVariableValue(coe_wcs_log_file_name);
   if (wszResultsFilePath) {
     if (!(coe_res_file_handle = CoeCreateLogFile(wszResultsFilePath))) {
-      RAW_CHECK_MSG(
-          false,
-          "Internal error duing continue on error: Failed log file creation.\n");
+      RAW_CHECK_MSG(false,
+                    "Internal error during continue on error: Failed log file "
+                    "creation.\n");
     }
-    // Ensure down stream functionaly if user only specified a log file name
+    // Ensure down stream functionality if user only specified a log file name
     flags()->continue_on_error = true;
+  } else if (flags()->continue_on_error != 0) {
+    // No log file specified. Provide a choice of stdout or stderr if available.
+    if (auto availableOutput =
+            GetStdHandle(flags()->continue_on_error == 1 ? STD_OUTPUT_HANDLE
+                                                         : STD_ERROR_HANDLE);
+        availableOutput) {
+      coe_res_file_handle = availableOutput;
+    } else {
+      // WinMain won't have this, just create a default log file
+      wszResultsFilePath = L"asan_coe.log";
+      if (!(coe_res_file_handle = CoeCreateLogFile(wszResultsFilePath))) {
+        RAW_CHECK_MSG(false,
+                      "Internal error during continue on error: Failed log file "
+                      "creation.\n");
+      }
+    }
   }
-  else if (0 != flags()->continue_on_error) {
-    // No log file specified. Provide a choice of stdout or stderr.
-    coe_res_file_handle = GetStdHandle(
-        flags()->continue_on_error == 1 ? STD_OUTPUT_HANDLE : STD_ERROR_HANDLE);
-  }
-  // This must take place after InitializeFlags() in AsanInitInteral()
+  // This must take place after InitializeFlags() in AsanInitInternal()
   // Global constructor ordering is link line dependent.
-  // Calling what follows, in a construcor, caused race conditions with parsing flags.
+  // Calling what follows, in a constructor, caused race conditions with parsing
+  // flags.
   CoeDynamicallyLoadDbghelp();
 }
 
