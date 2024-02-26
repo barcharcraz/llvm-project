@@ -107,7 +107,8 @@ INTERCEPTOR_WINAPI(void, RtlRaiseException, EXCEPTION_RECORD *ExceptionRecord) {
   CHECK(REAL(RtlRaiseException));
   // This is a noreturn function, unless it's one of the exceptions raised to
   // communicate with the debugger, such as the one from OutputDebugString.
-  if (ExceptionRecord->ExceptionCode != DBG_PRINTEXCEPTION_C)
+  if (ExceptionRecord->ExceptionCode != DBG_PRINTEXCEPTION_C &&
+      ExceptionRecord->ExceptionCode != DBG_PRINTEXCEPTION_WIDE_C)
     __asan_handle_no_return();
   REAL(RtlRaiseException)(ExceptionRecord);
 }
@@ -118,7 +119,8 @@ INTERCEPTOR_WINAPI(void, RaiseException, DWORD dwExceptionCode,
   CHECK(REAL(RaiseException));
   // This is a noreturn function, unless it's one of the exceptions raised to
   // communicate with the debugger, such as the one from OutputDebugStringA.
-  if (dwExceptionCode != DBG_PRINTEXCEPTION_C)
+  if (dwExceptionCode != DBG_PRINTEXCEPTION_C &&
+      dwExceptionCode != DBG_PRINTEXCEPTION_WIDE_C)
     __asan_handle_no_return();
   REAL(RaiseException)
   (dwExceptionCode, dwExceptionFlags, nNumberOfArguments, lpArguments);
@@ -130,7 +132,9 @@ INTERCEPTOR_WINAPI(EXCEPTION_DISPOSITION, __C_specific_handler,
                    _EXCEPTION_RECORD *a, void *b, _CONTEXT *c,
                    _DISPATCHER_CONTEXT *d) {
   CHECK(REAL(__C_specific_handler));
-  __asan_handle_no_return();
+  if (a->ExceptionCode != DBG_PRINTEXCEPTION_C &&
+      a->ExceptionCode != DBG_PRINTEXCEPTION_WIDE_C)
+    __asan_handle_no_return();
   return REAL(__C_specific_handler)(a, b, c, d);
 }
 
@@ -245,19 +249,22 @@ static_assert(VEH_SHADOW_USER_HANDLER != VEH_SHADOW_EXCEPTION_HANDLERS,
 
 static VEHShadowBehavior __cdecl ShadowExceptionHandler(
     PEXCEPTION_POINTERS exception_pointers) {
+  auto code = exception_pointers->ExceptionRecord->ExceptionCode;
+
   // If it's an exception for communicating with the debugger,
   // don't send it to the user-provided exception handler.
-  if (auto code = exception_pointers->ExceptionRecord->ExceptionCode;
-      code >= SANITIZER_SEH_SANITIZER && code <= SANITIZER_SEH_MAX) {
+  if (code >= SANITIZER_SEH_SANITIZER && code <= SANITIZER_SEH_MAX) {
     __asan_handle_no_return();
     return VEH_SHADOW_EXCEPTION_HANDLERS;
   }
 
   // Only handle access violations.
-  if (exception_pointers->ExceptionRecord->ExceptionCode !=
-          EXCEPTION_ACCESS_VIOLATION ||
+  if (code != EXCEPTION_ACCESS_VIOLATION ||
       exception_pointers->ExceptionRecord->NumberParameters < 2) {
-    __asan_handle_no_return();
+    if (code != DBG_PRINTEXCEPTION_C && code != DBG_PRINTEXCEPTION_WIDE_C) {
+      __asan_handle_no_return();
+    }
+
     return VEH_SHADOW_USER_HANDLER;
   }
 
