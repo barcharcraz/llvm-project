@@ -182,7 +182,7 @@ MEMORY_REGION_INFORMATION QueryVirtualMemory(void *addr) {
   return mem_info;
 }
 
-void UnmapOrDie(void *addr, uptr size) {
+void UnmapOrDie(void *addr, uptr size, bool raw_report) {
   if (!size || !addr)
     return;
 
@@ -194,22 +194,13 @@ void UnmapOrDie(void *addr, uptr size) {
   // Confirm that the range we are attempting to unmap is legal.
   if (UNLIKELY((uptr)mem_info.AllocationBase + (uptr)mem_info.RegionSize <
                (uptr)addr + size)) {
-    Report(
-        "ERROR: %s failed to deallocate 0x%zx (%zd) bytes at address %p. "
-        "Allocation begins at %p and is of size %zd\n",
-        SanitizerToolName, size, size, addr, mem_info.AllocationBase,
-        mem_info.RegionSize);
-    CHECK("unable to unmap" && 0);
+    ReportMunmapFailureAndDie(addr, size, GetLastError(), raw_report);
   }
 
   // Fast path for when we're unmapping a whole allocation.
   if (mem_info.AllocationBase == addr && mem_info.RegionSize == size) {
     if (VirtualFree(addr, 0, MEM_RELEASE) == 0) {
-      Report(
-          "ERROR: %s failed to "
-          "deallocate 0x%zx (%zd) bytes at address %p (error code: %d)\n",
-          SanitizerToolName, size, size, addr, GetLastError());
-      CHECK("unable to unmap" && 0);
+      ReportMunmapFailureAndDie(addr, size, GetLastError(), raw_report);
     }
 
     return;
