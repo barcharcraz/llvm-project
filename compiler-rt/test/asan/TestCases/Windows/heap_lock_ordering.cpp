@@ -1,4 +1,4 @@
-// MSVC-DISABLED: Flaky due to timing and unable to stop test on CI
+// MSVC-DISABLED:*, Flaky due to timing and unable to stop test on CI
 
 // RUN: %clang_cl_asan -Od %s -Fe%t
 // RUN: %run %t

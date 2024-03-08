@@ -1,4 +1,4 @@
-// MSVC-DISABLED: Flaky due to shared heap permissions on CI
+// MSVC-DISABLED:*, Flaky due to shared heap permissions on CI
 
 // RUN: %clang_cl_asan /EHsc -Od %s /std:c++17 /DASAN_PROCESS -Fe%tSend
 // RUN: %clang_cl_asan /EHsc -Od %s /std:c++17 -Fe%tReceive

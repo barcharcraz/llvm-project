@@ -1,4 +1,4 @@
-// MSVC-DISABLED: Flaky due to permissions on Windows CI
+// MSVC-DISABLED:*, Flaky due to permissions on Windows CI
 
 // RUN: %clang_cl_asan /D_DISABLE_VECTOR_ANNOTATION /D_DISABLE_STRING_ANNOTATION -Od %s -Fe%t
 // RUN: %clang_cl_asan /D_DISABLE_VECTOR_ANNOTATION /D_DISABLE_STRING_ANNOTATION /DTEST_DRIVER -Od %s -Fe%t_driver.exe
