@@ -570,7 +570,17 @@ INTERCEPTOR(char *, strcpy, char *to, const char *from) {
   return REAL(strcpy)(to, from);
 }
 
-#if !SANITIZER_WINDOWS
+// Windows doesn't always define the strdup identifier,
+// and when it does it's a macro defined to either _strdup
+// or _strdup_dbg, _strdup_dbg ends up calling _strdup, so
+// we want to intercept that. push/pop_macro are used to avoid problems
+// if this file ends up including <string.h> in the future.
+#  if SANITIZER_WINDOWS
+#    pragma push_macro("strdup")
+#    undef strdup
+#    define strdup _strdup
+#  endif
+
 INTERCEPTOR(char*, strdup, const char *s) {
   void *ctx;
   ASAN_INTERCEPTOR_ENTER(ctx, strdup);
@@ -582,26 +592,9 @@ INTERCEPTOR(char*, strdup, const char *s) {
   GET_STACK_TRACE_MALLOC;
   void *new_mem = asan_malloc(length + 1, &stack);
 }
-#endif // !SANITIZER_WINDOWS
 
-#if SANITIZER_WINDOWS
-INTERCEPTOR(char*, _strdup, const char *s) {
-  void *ctx;
-  ASAN_INTERCEPTOR_ENTER(ctx, _strdup);
-  if (UNLIKELY(!TryAsanInitFromRtl())) return internal_strdup(s);
-  AsanInitFromRtl();
-  uptr length = REAL(strlen)(s);
-  if (flags()->replace_str) {
-    ASAN_READ_RANGE(ctx, s, length + 1);
-  }
-  GET_STACK_TRACE_MALLOC;
-  void *new_mem = asan_malloc(length + 1, &stack);
-  REAL(memcpy)(new_mem, s, length + 1);
-  return reinterpret_cast<char*>(new_mem);
-}
-#endif // SANITIZER_WINDOWS
 
-#if ASAN_INTERCEPT___STRDUP
+#  if ASAN_INTERCEPT___STRDUP
 INTERCEPTOR(char*, __strdup, const char *s) {
   void *ctx;
   ASAN_INTERCEPTOR_ENTER(ctx, strdup);
@@ -919,8 +912,7 @@ void InitializeAsanInterceptors() {
   ASAN_INTERCEPT_FUNC(_strdup);
 #else
   ASAN_INTERCEPT_FUNC(strdup);
-#endif
-#if ASAN_INTERCEPT___STRDUP
+#  if ASAN_INTERCEPT___STRDUP
   ASAN_INTERCEPT_FUNC(__strdup);
 #endif
 #if ASAN_INTERCEPT_INDEX && ASAN_USE_ALIAS_ATTRIBUTE_FOR_INDEX
@@ -1025,6 +1017,10 @@ void InitializeAsanInterceptors() {
 
   VReport(1, "AddressSanitizer: libc interceptors initialized\n");
 }
+
+#  if SANITIZER_WINDOWS
+#    pragma pop_macro("strdup")
+#  endif
 
 } // namespace __asan
 
