@@ -520,6 +520,34 @@ disabled_tests = []
 results = {}
 xfails = dict()
 
+# For a test and testConfig, returns a 2-tuple: (<is test disabled>:boolean,<reason why it's disabled>:string)
+def GetTestDisableInfo(test, testConfig):
+    disabled_test_parser = lit.TestRunner.IntegratedTestKeywordParser('MSVC-DISABLED:', lit.TestRunner.ParserKind.LIST),
+    disabled_parsed = lit.TestRunner._parseKeywords(test.getSourcePath(), additional_parsers=disabled_test_parser, require_script=False)
+    if("MSVC-DISABLED:" in disabled_parsed and disabled_parsed["MSVC-DISABLED:"] is not None):
+        disableArgsUsage = """Expected format: MSVC-DISABLED:<selectors>,<reason>   where:
+                                    <selectors> If the test should be disabled for all configurations, <selectors> is the wildcard *
+                                                Otherwise, it is a semi-colon-separated list of available features for which this test should be disabled
+                                                (see testConfig.available_features in msvc_main.py).
+                                    <reason> is the reason for disabling the test (must not contain commas)."""
+
+        # the ParserKind.LIST parser automatically splits on the comma, giving us (<selectors>) at index 0, and <reason> at index 1
+        if (len(disabled_parsed['MSVC-DISABLED:']) != 2):
+            raise RuntimeError(disableArgsUsage)
+
+        selector = disabled_parsed['MSVC-DISABLED:'][0]
+
+        if selector != "*":
+            selectors = selector.split(';')
+            if not set(selectors).issubset(set(testConfig.available_features)):
+                return (False, "") # Test is not disabled for the current configuration
+
+        reason = disabled_parsed['MSVC-DISABLED:'][1].strip()
+        if reason == "":
+            raise RuntimeError("Must specify a reason for disabling a test.")
+        return (True, reason)
+    return (False, "")
+
 for cc_file in cc_files:
     # we're making a copy of each config and environment since we're
     # passing a copy to each thread we start.
@@ -588,12 +616,9 @@ for cc_file in cc_files:
         print("found test %s"%(cc_file))
 
         if isWindows:
-            disabled_test_parser = lit.TestRunner.IntegratedTestKeywordParser('MSVC-DISABLED:', lit.TestRunner.ParserKind.LIST),
-            disabled_parsed = lit.TestRunner._parseKeywords(__test.getSourcePath(), additional_parsers=disabled_test_parser, require_script=False)
-            if("MSVC-DISABLED:" in disabled_parsed and disabled_parsed["MSVC-DISABLED:"] is not None):
-                if(disabled_parsed['MSVC-DISABLED:'][0] == ""):
-                    raise RuntimeError("Must specify a reason for disabling a test.")
-                disabled_tests.append( (cc_file, disabled_parsed['MSVC-DISABLED:']) )
+            (isDisabled, reason) = GetTestDisableInfo(__test, testConfig)
+            if isDisabled:
+                disabled_tests.append( (cc_file, reason) )
             else:
                 tests_to_run.append( (cc_file, __test, __litConfig) )
 
@@ -751,7 +776,7 @@ print("Disabled Tests ==========================================================
 
 for test in sorted(disabled_tests):
     disabled += 1
-    print(test[0] + " : " + test[1][0])
+    print(test[0] + " : " + test[1])
 
 print("passed %d out of %d tests"%(xpassed + xfailed ,xpassed+xfailed+passed+failed))
 

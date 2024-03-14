@@ -1,6 +1,7 @@
 // FIXME: This test infinite loops on darwin because it crashes
 // printing a stack trace repeatedly
 UNSUPPORTED: darwin
+MSVC-DISABLED:*, VSO-1987088: Hangs inconsistently in CI
 
 RUN: %cpp_compiler %S/TraceMallocTest.cpp -o %t-TraceMallocTest
 

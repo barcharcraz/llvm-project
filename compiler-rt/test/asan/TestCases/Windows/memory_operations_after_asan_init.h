@@ -499,6 +499,8 @@ void AddRandomAlignmentAllocations(MemoryForManipulating<MemoryType> &memory) {
       std::ostringstream s;
       auto size = dist(rng);
       s << "AlignedMemory size: " << size << " alignment: " << i;
+
+      // In debug, alignment (i) must be power of 2
       memory.AddAllocationTest(s.str(), TestType::Alloc, size, i);
     }
   }
@@ -507,9 +509,15 @@ void AddRandomAlignmentAllocations(MemoryForManipulating<MemoryType> &memory) {
     for (auto i = 2; i < 4096; i *= 2) {
       std::ostringstream s;
       auto size = dist(rng);
+
+      // In debug, alignment (i) must be power of 2, and offset must be strictly less than size.
+      constexpr auto offset = 16;
+      if (size <= offset) {
+        size = offset + size*2;
+      }
       s << "AlignedOffsetMemory size: " << size << " alignment: " << i
-        << " offset: " << 16;
-      memory.AddAllocationTest(s.str(), TestType::Alloc, size, i, 16);
+      << " offset: " << offset;
+      memory.AddAllocationTest(s.str(), TestType::Alloc, size, i, offset);
     }
   }
 }
