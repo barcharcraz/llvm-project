@@ -21,14 +21,6 @@
 
 #include <sanitizer_common/sanitizer_internal_defs.h>
 
-namespace __sanitizer {
-#if defined(_WIN64)
-typedef unsigned long long uptr;
-#else
-typedef unsigned long uptr;
-#endif
-}  // namespace __sanitizer
-
 __declspec(noinline) inline __sanitizer::uptr __asan_GetCurrentPc() {
   return GET_CALLER_PC();
 }
