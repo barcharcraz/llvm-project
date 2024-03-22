@@ -51,13 +51,13 @@ There are 4 projects you might care about under `src/vctools/asan/mt`:
 <br></br>
 
 
-Currently, `x86` and `amd64` are the active development platforms. `MSBuild` is used for building the project. You can specify `chk` or `ret` for the different types of builds.
+Currently, `x86` and `x64` are the active development platforms. `MSBuild` is used for building the project. You can specify `chk` or `ret` for the different types of builds.
 
-For the rest of the examples, we will use `amd64` and `chk` as the `Platform` and `Configuration` for `MSBuild`. 
+For the rest of the examples, we will use `x64` and `chk` as the `Platform` and `Configuration` for `MSBuild`.
 
 ### Example of building the ASan runtime:
 ```
-call infra\msvc\MSBuild.cmd /m /p:Platform=amd64 /p:Configuration=chk <msvc_root>\src\vctools\asan\mt\libasan.vcxproj
+call infra\msvc\MSBuild.cmd /m /p:Platform=x64 /p:Configuration=chk <msvc_root>\src\vctools\asan\mt\libasan.vcxproj
 ```
 
 Congratulations! The project is built. Binaries will be produced at `<msvc_root>\binaries\<Platform><Configuration>\bin\<Platform>\sanitizers` and `<msvc_root>\binaries\<Platform><Configuration>\lib\<Platform>\sanitizers`. The artifacts here are shipped to customers by means of:
@@ -92,8 +92,8 @@ There are several different ways to test changes to the ASan runtime.
     * This will likely be used most of the time for regular development, and does not require `setenv` from the development environment
     * It utilizes the [`LLVM Integrated Tester` AKA lit](https://llvm.org/docs/CommandGuide/lit.html#lit-llvm-integrated-tester)
     * The script can test whole suites (e.g. `Asan`, `AsanWindows`, or `Fuzzer`) or individual tests
-        * Whole suite example: `powershell src\qa\sanitizers\asan\SetupAndRunLocalTests-Msvc.ps1 -MsvcHostArch <Platform> -TestSuite AsanWindows`
-        * Individual test example: `powershell src\qa\sanitizers\asan\SetupAndRunLocalTests-Msvc.ps1 -MsvcHostArch <Platform> -TestSuite AsanWindows -RunTest hello_world.cpp`
+        * Whole suite example: `powershell src\qa\sanitizers\asan\SetupAndRunLocalTests-Msvc.ps1 -MsvcHostArch amd64 -TestSuite AsanWindows`
+        * Individual test example: `powershell src\qa\sanitizers\asan\SetupAndRunLocalTests-Msvc.ps1 -MsvcHostArch x86 -TestSuite AsanWindows -RunTest hello_world.cpp`
     * This is the script used by CI, and runs each suite under all different configuration types
     * For more info, try running the script with no arguments to better understand the different options
 2. Compiling and running executables manually
