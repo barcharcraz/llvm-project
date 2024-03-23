@@ -113,17 +113,17 @@ void AsanThread::GetStartData(void *out, uptr out_size) const {
 }
 
 #if SANITIZER_WINDOWS
-AsanThread *AsanThread::CreateMainThread(thread_callback_t start_routine,
-                                         void *arg, u32 parent_tid,
+AsanThread *AsanThread::CreateMainThread(const void *start_data,
+                                         uptr data_size, u32 parent_tid,
                                          StackTrace *stack, bool detached) {
   auto mainThread =
-      CreateThreadImpl(start_routine, arg, parent_tid, stack, detached);
+      CreateThreadImpl(start_data, data_size, parent_tid, stack, detached);
   atomic_store(&mainThreadCreated, 1, memory_order_release);
   return mainThread;
 }
 #endif
 
-AsanThread *AsanThread::Create(thread_callback_t start_routine, void *arg,
+AsanThread *AsanThread::Create(const void *start_data, uptr data_size,
                                u32 parent_tid, StackTrace *stack,
                                bool detached) {
 #if SANITIZER_WINDOWS
@@ -131,7 +131,7 @@ AsanThread *AsanThread::Create(thread_callback_t start_routine, void *arg,
     internal_sched_yield();
   }
 #endif
-  return CreateThreadImpl(start_routine, arg, parent_tid, stack, detached);
+  return CreateThreadImpl(start_data, data_size, parent_tid, stack, detached);
 }
 
 void AsanThread::TSDDtor(void *tsd) {
@@ -313,7 +313,7 @@ void AsanThread::ThreadStart(tid_t os_id) {
 AsanThread *CreateMainThread() {
 #if SANITIZER_WINDOWS
   AsanThread *main_thread = AsanThread::CreateMainThread(
-      /* start_routine */ nullptr, /* arg */ nullptr, /* parent_tid */ kMainTid,
+      /* start_data */ nullptr, /* data_size */ 0, /* parent_tid */ kMainTid,
       /* stack */ nullptr, /* detached */ true);
 #else
   AsanThread *main_thread = AsanThread::Create(
