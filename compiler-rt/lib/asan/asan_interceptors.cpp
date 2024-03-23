@@ -589,8 +589,13 @@ INTERCEPTOR(char*, strdup, const char *s) {
   uptr length = internal_strlen(s);
   if (flags()->replace_str) {
     ASAN_READ_RANGE(ctx, s, length + 1);
+  }
   GET_STACK_TRACE_MALLOC;
   void *new_mem = asan_malloc(length + 1, &stack);
+  if (new_mem) {
+    REAL(memcpy)(new_mem, s, length + 1);
+  }
+  return reinterpret_cast<char*>(new_mem);
 }
 
 
@@ -656,6 +661,7 @@ INTERCEPTOR_STRTO_BASE(long, __isoc23_strtol)
 INTERCEPTOR_STRTO_BASE(long long, __isoc23_strtoll)
 #  endif
 
+#if !SANITIZER_WINDOWS
 INTERCEPTOR(int, atoi, const char *nptr) {
   void *ctx;
   ASAN_INTERCEPTOR_ENTER(ctx, atoi);
@@ -691,6 +697,7 @@ INTERCEPTOR(long, atol, const char *nptr) {
   ASAN_READ_STRING(ctx, nptr, (real_endptr - nptr) + 1);
   return result;
 }
+#endif
 
 #if SANITIZER_WINDOWS
 
@@ -720,7 +727,6 @@ INTERCEPTOR_##func##_FORDLL(static) /* special-case: used for static linking */ 
 #define INTERCEPTOR_STRTOL_FORDLL(dll) INTERCEPTOR_STRTO_BASE(long, strtol_##dll)
 INTERCEPTOR_ONEPERDLL(STRTOL)
 #endif
-#endif
 
 //////////////// ATOI ///////////////////
 #if SANITIZER_WINDOWS
@@ -744,25 +750,6 @@ INTERCEPTOR(int, atoi_##dll, const char *nptr) {                    \
 }
 
 INTERCEPTOR_ONEPERDLL(ATOI)
-#else
-  void *ctx;
-  ASAN_INTERCEPTOR_ENTER(ctx, atoi);
-  if (SANITIZER_APPLE && UNLIKELY(!AsanInited()))
-    return REAL(atoi)(nptr);
-  AsanInitFromRtl();
-  if (!flags()->replace_str) {
-    return REAL(atoi)(nptr);
-  }
-  char *real_endptr;
-  // "man atoi" tells that behavior of atoi(nptr) is the same as
-  // strtol(nptr, 0, 10), i.e. it sets errno to ERANGE if the
-  // parsed integer can't be stored in *long* type (even if it's
-  // different from int). So, we just imitate this behavior.
-  int result = REAL(strtol)(nptr, &real_endptr, 10);
-  FixRealStrtolEndptr(nptr, &real_endptr);
-  ASAN_READ_STRING(ctx, nptr, (real_endptr - nptr) + 1);
-  return result;
-}
 #endif
 //////////////// end ATOI ///////////////////
 
@@ -908,9 +895,6 @@ void InitializeAsanInterceptors() {
   ASAN_INTERCEPT_FUNC(strcpy);
   ASAN_INTERCEPT_FUNC(strncat);
   ASAN_INTERCEPT_FUNC(strncpy);
-#if SANITIZER_WINDOWS
-  ASAN_INTERCEPT_FUNC(_strdup);
-#else
   ASAN_INTERCEPT_FUNC(strdup);
 #  if ASAN_INTERCEPT___STRDUP
   ASAN_INTERCEPT_FUNC(__strdup);
@@ -932,8 +916,8 @@ void InitializeAsanInterceptors() {
 #endif
 #if ASAN_INTERCEPT_ATOLL_AND_STRTOLL
   ASAN_INTERCEPT_FUNC(atoll);
-  ASAN_INTERCEPT_FUNC(strtol);
   ASAN_INTERCEPT_FUNC(strtoll);
+#endif
 #  if SANITIZER_GLIBC
   ASAN_INTERCEPT_FUNC(__isoc23_strtol);
   ASAN_INTERCEPT_FUNC(__isoc23_strtoll);
