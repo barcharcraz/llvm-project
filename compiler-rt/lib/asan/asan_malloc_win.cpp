@@ -2301,7 +2301,7 @@ bool NotOwnedByASAN(HANDLE hMem) {
   // If ASAN is not initialized then this needs to be default passed to the
   // original allocator. If the allocation is owned by the RTL then just
   // keep it there, since it's a leftover from before asan_init was called.
-  if (UNLIKELY(!asan_inited) ||
+  if (UNLIKELY(!AsanInited()) ||
       ((ownershipState ==
         AllocationOwnershipStatus::OWNED_BY_GLOBAL_OR_LOCAL_HANDLE) ||
        (ownershipState ==
