@@ -211,23 +211,23 @@
 // call into dbghlp in this process at this point.
 static const u32 kMaxDepthForLookAhead = 512;
 
-// Two pages (8K) for an internal sprintf() and 
+// Two pages (8K) for an internal sprintf() and
 // then output to a stream. See varargs Write().
 static const u32 kSprintfFormatBufferLen = 1 << 13;
 
-// When printing the function:line if it's lager 
+// When printing the function:line if it's lager
 // than this len. then start tabbed, on next line
 static const u32 kMaxFuncFileLineLen = 60;
 
 // Used for indexing the accumulated parts
 // of an errror that will be hashed. Invarient
 // is that the point of catchin an error goes to:
-// 
+//
 // current_error_stacks[kFirstCapturedStackIndex].size;
 static const u32 kFirstCapturedStackIndex = 0;
 
 // Second limit if we were able to determine we
-// could call dbghlp in process. See the constant 
+// could call dbghlp in process. See the constant
 // kMaxDepthForLookAhead for capture and filter
 // of current in process stack depth.
 static const u32 kPrintStackDepthLimit = 64;
@@ -246,12 +246,13 @@ static const u32 kStringTablePrimeSize = 1999;
 
 // Used for optimization. If we are printingsymbolizing in process
 // there is no need to update meta-data from safe meta data in the
-// allocators. We assume the in process symboizer does not trash 
+// allocators. We assume the in process symboizer does not trash
 // memory.
 static bool modules_loading = false;
 
 // All output goes to this file handle
 static HANDLE coe_res_file_handle = nullptr;
+static wchar_t* coe_file_handle_path = nullptr;
 
 // Upon exit when printing summay into, if we are in
 // a really clobbered state, optimize out some actions in
@@ -260,6 +261,69 @@ bool crt_state_tearing_down = false;
 
 static int coe_total_error_cnt = 0;
 static wchar_t coe_wcs_log_file_name[] = L"COE_LOG_FILE";
+
+namespace __coe_win {
+void RawWrite(const char* buffer);
+}
+
+// Checks available output stream based on outputHandle, and sets it to
+// coe_res_file_handle if available. Returns true if coe_res_file_handle is set,
+// false otherwise.
+static bool CheckAndSetOutputStream(DWORD outputHandle) {
+  if (const auto availableOutput = GetStdHandle(outputHandle);
+      availableOutput) {
+    coe_res_file_handle = availableOutput;
+    return true;
+  }
+  return false;
+}
+
+// Depending on if this is WinMain or main, stdout/stderr can be allocated
+// after we have initialized COE or ran the __asan_default_flags weak
+// callback. Since this is called prior to any logging, we can check again
+// here to determine if we need to redirect output to stdout/stderr. We
+// unfortunately cannot know when the user will allocate a console, so we must
+// check each time unless we find one.
+bool COEWriteFile(const char* buffer, DWORD bytesWritten) {
+  static bool allocatedConsolePresent = false;
+  if (!coe_res_file_handle && !allocatedConsolePresent) {
+    allocatedConsolePresent = CheckAndSetOutputStream(
+        __asan::flags()->continue_on_error == 1 ? STD_OUTPUT_HANDLE
+                                                : STD_ERROR_HANDLE);
+  }
+
+  auto success =
+      WriteFile(coe_res_file_handle,      // handle for file,stderr,or stdout
+                buffer,                   // message
+                strlen(buffer),           // message length
+                &bytesWritten,            // bytes written
+                (LPOVERLAPPED) nullptr);  // not overlapped
+
+  // If we fail to write, we should write to stderr if possible. If that fails,
+  // we should let the user know it was not possible to use the file
+  // handle or stderr, and attempt to allocate a stream. If that fails, we will
+  // crash.
+  if (!success) {
+    allocatedConsolePresent = CheckAndSetOutputStream(STD_ERROR_HANDLE);
+    success = WriteFile(coe_res_file_handle, buffer, strlen(buffer),
+                        &bytesWritten, (LPOVERLAPPED) nullptr);
+    if (!success) {
+      // We will try ourselves to allocate a console for the user and continue
+      // the process. Otherwise, we will just crash.
+      if (AllocConsole()) {
+        __coe_win::RawWrite(
+            "Failed to write to user provided file handle or failed to write "
+            "to "
+            "stderr as backup. Make sure the continue-on-error options are set "
+            "correctly. Attempting now to allocate and write to console.\n\n");
+        success = WriteFile(coe_res_file_handle, buffer, strlen(buffer),
+                            &bytesWritten, (LPOVERLAPPED) nullptr);
+      }
+    }
+  }
+
+  return success;
+}
 
 // This is a very complex but concise way to pass "..." which is varargs
 // in a printf() extern declaration. This is how COE hijaks output(s)
@@ -275,12 +339,7 @@ static void Write(const char* format, Args... args) {
 
   __sanitizer::internal_snprintf(tmp, kSprintfFormatBufferLen, format, args...);
 
-  bool fSuccess =
-      WriteFile(coe_res_file_handle,      // handle for file,stderr,or stdout
-                tmp,                      // message
-                strlen(tmp),              // message length
-                &cbWritten,               // bytes written
-                (LPOVERLAPPED) nullptr);  // not overlapped
+  bool fSuccess = COEWriteFile(tmp, cbWritten);
 
   CHECK(fSuccess);
 }
@@ -292,8 +351,9 @@ HMODULE hmDbgHelp;
 static SpinMutex fallback_mutex;
 
 bool COE() {
-  if (flags()->continue_on_error)
+  if (flags()->continue_on_error) {
     return true;
+  }
   return false;
 }
 
@@ -335,7 +395,7 @@ struct SourceErrors {
   void ReportOneErrorSummary(const char* bug_descr,
                              const __sanitizer::StackTrace* stack);
   void ReportOneUnhashedErrorSummary(const char* bug_descr,
-                                const __sanitizer::StackTrace* stack);
+                                     const __sanitizer::StackTrace* stack);
   struct H1Element {
     u16 file;
     u32 count;
@@ -409,7 +469,7 @@ decltype(::SymGetOptions)* SymGetOptions;
 decltype(::SymGetSearchPathW)* SymGetSearchPathW;
 decltype(::SymGetSymFromAddr64)* SymGetSymFromAddr64;
 decltype(::SymInitialize)* SymInitialize;
-decltype(::SymLoadModuleExW)* SymLoadModuleExW;;
+decltype(::SymLoadModuleExW)* SymLoadModuleExW;
 decltype(::SymSetOptions)* SymSetOptions;
 decltype(::SymSetScopeFromAddr)* SymSetScopeFromAddr;
 decltype(::SymSetSearchPathW)* SymSetSearchPathW;
@@ -525,7 +585,7 @@ struct ErrorHashing {
 
   uptr CurrentError() {
     CHECK(coe_current_error_hash_index >= 0 &&
-          coe_current_error_hash_index<  kHashTablePrimeSize);
+          coe_current_error_hash_index < kHashTablePrimeSize);
     return (uptr)coe_current_error_hash_index;
   }
 
@@ -546,11 +606,11 @@ struct ErrorHashing {
 
  private:
   void SetCurrentError(uptr xhash) {
-    CHECK(coe_current_error_hash_index== -1);
-    coe_current_error_hash_index= (int)xhash;
+    CHECK(coe_current_error_hash_index == -1);
+    coe_current_error_hash_index = (int)xhash;
   }
 
-  int coe_current_error_hash_index= -1;
+  int coe_current_error_hash_index = -1;
 };
 
 static ErrorHashing hash;
@@ -572,7 +632,7 @@ void SourceErrors::ReportOneUnhashedErrorSummary(
   // #1 description
   u16 bug_descr_xhash = CoeStringFindOrIntern(bug_descr);
   char* unique_string = StringTable[bug_descr_xhash];
-  
+
   Printf("SUMMARY: AddressSanitizer: %s ", unique_string);
 
   HANDLE hProcess = ::GetCurrentProcess();
@@ -587,7 +647,7 @@ void SourceErrors::ReportOneUnhashedErrorSummary(
     u16 file_name_xhash = CoeStringFindOrIntern(line.FileName);
     unique_string = StringTable[file_name_xhash];
 
-    Printf("%s:%d at offset %x", unique_string, line.LineNumber);
+    Printf("%s:%d at offset %x ", unique_string, line.LineNumber);
 
     // #3 Function name - using class symbol definition
     Symbol func(hProcess, (DWORD64)pc);
@@ -980,12 +1040,7 @@ void CoeCloseError(ErrorDescription& edesc) {
 
 void CoeRawWrite(const char* buffer) {
   DWORD cbWritten = 0;
-  bool fSuccess =
-      WriteFile(coe_res_file_handle,     // handle for file,stderr,or stdout
-                buffer,                   // message
-                strlen(buffer),           // message length
-                &cbWritten,               // bytes written
-                (LPOVERLAPPED) nullptr);  // not overlapped
+  bool fSuccess = COEWriteFile(buffer, cbWritten);
 
   RAW_CHECK_MSG(fSuccess,"Internal error during continue on error: Fail on write()\n");
 }
@@ -1039,9 +1094,9 @@ class SymHandler {
       Printf("SymCleanup() returned error : %d\n", error);
       RAW_CHECK_MSG(false, "Unexpected failure: Unable to shutown dbghelp.dll");
     }
-    // Recycle everything in quarantine. Effectively garbage collect all 
+    // Recycle everything in quarantine. Effectively garbage collect all
     // the symbol/module storage from symbolizing an error in proc. Then
-    // restore the quarantine space [here] to the check point of user's space 
+    // restore the quarantine space [here] to the check point of user's space
     // (restore cache and base object).
     asan_quarantine_restore_checkpoint();
     modules_loading = false;
@@ -1100,7 +1155,7 @@ class GetModuleInfo {
 // Manager\DebuggerMaxModuleMsgs The default is 500.
 //
 // We have tested with up to 4,000 DLL's at a top ISV so far.
-// I do *not* want to dynamically reallocate here becuse we don't 
+// I do *not* want to dynamically reallocate here becuse we don't
 // have the proper stress testing in place.
 
 static ModuleData static_module_info_array[kMaxPdbs];
@@ -1165,7 +1220,7 @@ struct CoeShutDown {
 
     if (coe_total_error_cnt == 0)
       return;
-    
+
     // First, create an error report prioritized on
     // File,Func,Line hit counts. Provides global
     // overview of all the bugs found.
@@ -1241,7 +1296,7 @@ u16 CoeStringFindOrIntern(const char* name) {
 
 // Per error: accumulation of symbolized call stack information.
 // {file,function,line} in each frame on the stack at an "event".
-// Events like point of allocation, point of free and point of 
+// Events like point of allocation, point of free and point of
 // error detection.
 
 class CoeStack {
@@ -1370,7 +1425,7 @@ void PrintCallStack(HANDLE hProcess, StackTrace* trace_pcs) {
 // Using .data becuase VirtualAlloc() is a 64K granularity on Windows
 
 void ASanLiteCacheError(const ErrorDescription& error) {
-  
+
   if (hash.CurrentErrorWasNotHashed()) {
     return;
   }
@@ -1531,21 +1586,21 @@ static void CoeDynamicallyLoadDbghelp() {
   }
 }
 
-HANDLE CoeCreateLogFile(const wchar_t* wszResultsFilePath) {
-  CHECK(wszResultsFilePath);
-  auto fileHandle = ::CreateFileW(wszResultsFilePath, GENERIC_WRITE, 0, NULL,
+HANDLE CoeCreateLogFile() {
+  CHECK(coe_file_handle_path);
+  auto fileHandle = ::CreateFileW(coe_file_handle_path, GENERIC_WRITE, 0, NULL,
                                   CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 
   if (fileHandle != INVALID_HANDLE_VALUE) {
     return fileHandle;
   }
 
-  LPWSTR coe_temp_file_path = (LPWSTR)wszResultsFilePath;
+  LPWSTR coe_temp_file_path = (LPWSTR)coe_file_handle_path;
   u32 dwError = GetLastError();
   Write(
       "\nFailed to open file %ws. Internal error %x.\nTrying to default to "
       "a newly created temp file.",
-      wszResultsFilePath, dwError);
+      coe_file_handle_path, dwError);
   // ...otherwise, create a tmp file in the %TMP% then %TEMP% directories
   // Windwos specifies 14 on MSDN
   auto tmp_path_wchar_cnt = GetTempPathW(MAX_PATH - 14, coe_temp_file_path);
@@ -1557,7 +1612,8 @@ HANDLE CoeCreateLogFile(const wchar_t* wszResultsFilePath) {
 
   if (!GetTempFileNameW(coe_temp_file_path, L"Asan_COE", 0,
                         &coe_temp_file_path[tmp_path_wchar_cnt])) {
-    Write("\nFailed to get temp file name. Internal error %x\n", GetLastError());
+    Write("\nFailed to get temp file name. Internal error %x\n",
+          GetLastError());
     return nullptr;
   }
 
@@ -1575,11 +1631,15 @@ HANDLE CoeCreateLogFile(const wchar_t* wszResultsFilePath) {
 }
 
 void InitializeCOE() {
-  // Called from AsanInitInternal() in asan\asan_rtl.cpp
-  const wchar_t* wszResultsFilePath =
-      GetEnvironmentVariableValue(coe_wcs_log_file_name);
-  if (wszResultsFilePath) {
-    if (!(coe_res_file_handle = CoeCreateLogFile(wszResultsFilePath))) {
+  // Called from AsanInitInternal() in asan\asan_rtl.cpp as well as from weak
+  // callbacks if registered to update state
+  auto wszResultsFilePath = GetEnvironmentVariableValue(coe_wcs_log_file_name);
+  if (wszResultsFilePath && wszResultsFilePath != coe_file_handle_path) {
+    coe_file_handle_path =
+        wszResultsFilePath;  // Potentially the environment variable can be set
+                             // programmatically, meaning we should use that
+                             // instead
+    if (!(coe_res_file_handle = CoeCreateLogFile())) {
       RAW_CHECK_MSG(false,
                     "Internal error during continue on error: Failed log file "
                     "creation.\n");
@@ -1588,20 +1648,9 @@ void InitializeCOE() {
     flags()->continue_on_error = true;
   } else if (flags()->continue_on_error != 0) {
     // No log file specified. Provide a choice of stdout or stderr if available.
-    if (auto availableOutput =
-            GetStdHandle(flags()->continue_on_error == 1 ? STD_OUTPUT_HANDLE
-                                                         : STD_ERROR_HANDLE);
-        availableOutput) {
-      coe_res_file_handle = availableOutput;
-    } else {
-      // WinMain won't have this, just create a default log file
-      wszResultsFilePath = L"asan_coe.log";
-      if (!(coe_res_file_handle = CoeCreateLogFile(wszResultsFilePath))) {
-        RAW_CHECK_MSG(false,
-                      "Internal error during continue on error: Failed log file "
-                      "creation.\n");
-      }
-    }
+    CheckAndSetOutputStream(__asan::flags()->continue_on_error == 1
+                                ? STD_OUTPUT_HANDLE
+                                : STD_ERROR_HANDLE);
   }
   // This must take place after InitializeFlags() in AsanInitInternal()
   // Global constructor ordering is link line dependent.

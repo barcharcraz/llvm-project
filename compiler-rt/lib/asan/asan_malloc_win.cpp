@@ -2211,7 +2211,7 @@ INTERCEPTOR_WINAPI(HLOCAL, LocalFree, HGLOBAL hMem) {
 INTERCEPTOR_WINAPI(SIZE_T, LocalSize, HGLOBAL hMem) {
   /* We need to check whether the ASAN allocator owns the pointer we're about to
    * use. Allocations might occur before interception takes place, so if it is
-   * not owned by RTL heap, the we can pass it to ASAN heap for inspection.*/
+   * not owned by RTL heap, then we can pass it to ASAN heap for inspection.*/
   if (NotOwnedByASAN<__asan_win_moveable::HeapCaller::LOCAL>(hMem)) {
     return REAL(LocalSize)(hMem);
   }

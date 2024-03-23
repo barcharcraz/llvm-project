@@ -159,9 +159,9 @@ class ChunkBase : public ChunkHeader {
 };
 
 // AsanChunk conveys positional information (beginning of user_data).
-// This safe copy node doe NOT encapsulate that semantic. In the
+// This safe copy node does NOT encapsulate that semantic. In the
 // real AsanChunk in a block the methods use the this pointer as an
-// explicitly offset. That creates a pointer to real user data in a block.
+// explicit offset. That creates a pointer to real user data in a block.
 // This copy contains a pointer to the real AsanChunk if positional
 // information is required. This is mainly used to restore the AsanChunk
 // in the minimal number of places.
@@ -597,10 +597,21 @@ struct Allocator {
     m->Copy(reinterpret_cast<ChunkSafeCopy*>(smd));
   }
 
-  ChunkSafeCopy* AsanChunkCOE_Get(AsanChunk* m) {
+  ChunkSafeCopy *AsanChunkCOE_Get(AsanChunk *m) {
     void *alloc_beg = get_allocator().GetBlockBegin((void *)m);
     ChunkSafeCopy *smd = reinterpret_cast<ChunkSafeCopy *>(
         get_allocator().GetMetaData(alloc_beg, sizeof(ChunkSafeCopy)));
+    if (!smd || !smd->real_chunk) {
+      // In the event that we have somehow missed this allocation,
+      // like if it was allocated by ASan before COE was enabled,
+      // we should retroactively create an entry for the safe metadata.
+      AsanChunkView av(m);
+      if (av.IsValid()) {
+        AsanChunkCOE_Allocate(av.Beg(), m);
+      }
+      CHECK(smd);
+      CHECK(smd->real_chunk);
+    }
     return smd;
   }
 

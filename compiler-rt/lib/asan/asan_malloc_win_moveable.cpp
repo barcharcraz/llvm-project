@@ -197,13 +197,7 @@ struct FlagsResult {
 
 class MoveableMemoryMap {
 private:
-#if _MSC_VER && !defined(__clang__)
-    static constexpr void *ReservedAddress = reinterpret_cast<void *>(-1ULL);
-#else
-    // this frankly _bizarre_ expression activates an extension wherein strict constant checking is disabled in the arms of a ternary operator based on
-    // __builtin_constant_p.
-    static constexpr void *ReservedAddress = __builtin_constant_p(reinterpret_cast<void*>(-1ULL)) ? reinterpret_cast<void*>(-1ULL) : reinterpret_cast<void*>(-1ULL);
-#endif
+    static constexpr uptr ReservedAddress = -1ULL;
     struct MoveableAllocation {
         explicit MoveableAllocation(void *const h) : handle(h) {}
         MoveableAllocation(const MoveableAllocation &) = delete;
@@ -212,7 +206,7 @@ private:
         MoveableAllocation &operator=(MoveableAllocation &&) = default;
 
         void *const handle;  // encodes index into moveable entries
-        void *addr = ReservedAddress;
+        void *addr = reinterpret_cast<void*>(ReservedAddress);
         size_t lock_count = 0;
         bool active = true;  // false when in reuse list
     };
@@ -271,7 +265,7 @@ public:
             // No lock necessary to add to pointer->handle map since structure is atomic.
             CHECK(addr != nullptr);
             CHECK(Valid());
-            CHECK(_reserved_entry->addr == ReservedAddress);
+            CHECK(_reserved_entry->addr == reinterpret_cast<void*>(ReservedAddress));
             _reserved_entry->addr = addr;
             _map._AddPointerEntryMapping(_reserved_entry);
             return _reserved_entry->handle;
@@ -451,7 +445,7 @@ private:
 
         // reuse_entry->handle already contains correct handle
         // since it is derived from the index into _moveable_entries
-        reuse_entry->addr = ReservedAddress;
+        reuse_entry->addr = reinterpret_cast<void*>(ReservedAddress);
         reuse_entry->lock_count = 0;
         reuse_entry->active = true;
         _handle_reuse_list.pop_back();
@@ -480,7 +474,7 @@ private:
         }
 
         MoveableAllocation &entry = _moveable_entries[index];
-        CHECK(entry.addr != ReservedAddress);
+        CHECK(entry.addr != reinterpret_cast<void*>(ReservedAddress));
 
         if (!entry.active) {
             CHECK(entry.addr != nullptr);
