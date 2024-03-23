@@ -220,6 +220,8 @@ include_directories(..)
 set(SANITIZER_COMMON_DEFINITIONS
   HAVE_RPC_XDR_H=${HAVE_RPC_XDR_H})
 
+# note: L not I, this is nodefaultlibs for msvc
+append_list_if(MSVC /Zl SANITIZER_COMMON_CFLAGS)
 set(SANITIZER_CFLAGS ${SANITIZER_COMMON_CFLAGS})
 
 # Too many existing bugs, needs cleanup.
@@ -243,7 +245,6 @@ add_compiler_rt_object_libraries(RTSanitizerCommon
   ADDITIONAL_HEADERS ${SANITIZER_IMPL_HEADERS}
   CFLAGS ${SANITIZER_CFLAGS}
   DEFS ${SANITIZER_COMMON_DEFINITIONS})
-
 add_compiler_rt_object_libraries(RTSanitizerCommonNoTermination
   ${OS_OPTION}
   ARCHS ${SANITIZER_COMMON_SUPPORTED_ARCH}
@@ -251,7 +252,6 @@ add_compiler_rt_object_libraries(RTSanitizerCommonNoTermination
   ADDITIONAL_HEADERS ${SANITIZER_IMPL_HEADERS}
   CFLAGS ${SANITIZER_CFLAGS}
   DEFS ${SANITIZER_COMMON_DEFINITIONS})
-
 add_compiler_rt_object_libraries(RTSanitizerCommonNoLibc
   ${OS_OPTION}
   ARCHS ${SANITIZER_COMMON_SUPPORTED_ARCH}
@@ -259,7 +259,6 @@ add_compiler_rt_object_libraries(RTSanitizerCommonNoLibc
   ADDITIONAL_HEADERS ${SANITIZER_IMPL_HEADERS}
   CFLAGS ${SANITIZER_CFLAGS}
   DEFS ${SANITIZER_COMMON_DEFINITIONS})
-
 add_compiler_rt_object_libraries(RTSanitizerCommonLibc
   ${OS_OPTION}
   ARCHS ${SANITIZER_COMMON_SUPPORTED_ARCH}
@@ -267,18 +266,6 @@ add_compiler_rt_object_libraries(RTSanitizerCommonLibc
   ADDITIONAL_HEADERS ${SANITIZER_IMPL_HEADERS}
   CFLAGS ${SANITIZER_CFLAGS}
   DEFS ${SANITIZER_COMMON_DEFINITIONS})
-
-if (MSVC)
-  add_compiler_rt_object_libraries(RTSanitizerCommonLibc_dbg
-    "${COMPILER_RT_WINDOWS_RT_VERSIONS}"
-    ${OS_OPTION}
-    ARCHS ${SANITIZER_COMMON_SUPPORTED_ARCH}
-    SOURCES ${SANITIZER_LIBCDEP_SOURCES}
-    ADDITIONAL_HEADERS ${SANITIZER_IMPL_HEADERS}
-    CFLAGS ${SANITIZER_DEBUG_CFLAGS}
-    DEFS ${SANITIZER_DEBUG_DEFINITIONS})
-endif()
-
 add_compiler_rt_object_libraries(RTSanitizerCommonCoverage
   ${OS_OPTION}
   ARCHS ${SANITIZER_COMMON_SUPPORTED_ARCH}
@@ -286,7 +273,6 @@ add_compiler_rt_object_libraries(RTSanitizerCommonCoverage
   ADDITIONAL_HEADERS ${SANITIZER_IMPL_HEADERS}
   CFLAGS ${SANITIZER_CFLAGS}
   DEFS ${SANITIZER_COMMON_DEFINITIONS})
-
 add_compiler_rt_object_libraries(RTSanitizerCommonSymbolizer
   ${OS_OPTION}
   ARCHS ${SANITIZER_COMMON_SUPPORTED_ARCH}
@@ -320,8 +306,8 @@ add_compiler_rt_object_libraries(RTSanitizerCommonSymbolizerNoHooks
   DEFS ${SANITIZER_COMMON_DEFINITIONS})
 
 if(WIN32)
-  set(RUNTIME_THUNK_CFLAGS ${NO_DEFAULT_LIBS_OPTION} -DSANITIZER_DYNAMIC_RUNTIME_THUNK -DSANITIZER_STATIC_RUNTIME_THUNK)
-
+  set(RUNTIME_THUNK_CFLAGS -DSANITIZER_DYNAMIC_RUNTIME_THUNK -DSANITIZER_STATIC_RUNTIME_THUNK)
+  append_list_if(MSVC /Zl RUNTIME_THUNK_CFLAGS)
   add_compiler_rt_object_libraries(SanitizerRuntimeThunk
     ${SANITIZER_COMMON_SUPPORTED_OS}
     ARCHS ${SANITIZER_COMMON_SUPPORTED_ARCH}
@@ -338,7 +324,6 @@ if(WIN32)
       sanitizer_coverage_win_sections.cpp
     CFLAGS ${SANITIZER_CFLAGS} ${RUNTIME_THUNK_CFLAGS}
     DEFS ${SANITIZER_COMMON_DEFINITIONS})
-
 endif()
 
 # Unit tests for common sanitizer runtime.
