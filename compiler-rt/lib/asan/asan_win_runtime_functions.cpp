@@ -359,7 +359,7 @@ struct __RuntimeFunctions {
     uptr *OldFunction;
   };
 
-  static void OverrideFunctions(const char *dllName) {
+  static void OverrideFunctions(DLL dll) {
     static const OverrideFunctionInfo functions[] = {
         {"_aligned_free_dbg", reinterpret_cast<uptr>(&AlignedFreeDbg),
          reinterpret_cast<uptr *>(&pAlignedFreeDbg)},
@@ -420,10 +420,10 @@ struct __RuntimeFunctions {
          reinterpret_cast<uptr *>(&pFree)}};
 
     for (auto &[name, newFunction, oldFunction] : functions) {
-      if (GetModuleHandleA(dllName)) {
-        if (!__interception::OverrideFunction(name, newFunction, oldFunction,
-                                              dllName)) {
-          VPrintf(2, "Failed to override function %s in %s\n", name, dllName);
+      if (GetModuleHandleA(dll_info[dll].name)) {
+        if (!__interception::OverrideFunctionForDLL(name, newFunction, oldFunction,
+                                                    dll, /* failIfDllNotFound */ true)) {
+          VPrintf(2, "Failed to override function %s in %s\n", name, dll_info[dll].name);
         }
       }
     }
@@ -436,8 +436,7 @@ struct __RuntimeFunctions {
 // Overrides functions in "msvcr100.dll"
 struct Msvcr100 {
   Msvcr100() {
-    const char *dllName = "msvcr100.dll";
-    runtime.OverrideFunctions(dllName);
+    runtime.OverrideFunctions(MSVCR100);
   }
 
   static __RuntimeFunctions<Msvcr100> runtime;
@@ -446,8 +445,7 @@ struct Msvcr100 {
 // Overrides functions in "msvcr100d.dll"
 struct Msvcr100d {
   Msvcr100d() {
-    const char *dllName = "msvcr100d.dll";
-    runtime.OverrideFunctions(dllName);
+    runtime.OverrideFunctions(MSVCR100D);
   }
 
   static __RuntimeFunctions<Msvcr100d> runtime;
@@ -456,8 +454,7 @@ struct Msvcr100d {
 // Overrides functions in "msvcr110.dll"
 struct Msvcr110 {
   Msvcr110() {
-    const char *dllName = "msvcr110.dll";
-    runtime.OverrideFunctions(dllName);
+    runtime.OverrideFunctions(MSVCR110);
   }
 
   static __RuntimeFunctions<Msvcr110> runtime;
@@ -466,8 +463,7 @@ struct Msvcr110 {
 // Overrides functions in "msvcr110d.dll"
 struct Msvcr110d {
   Msvcr110d() {
-    const char *dllName = "msvcr110d.dll";
-    runtime.OverrideFunctions(dllName);
+    runtime.OverrideFunctions(MSVCR110D);
   }
 
   static __RuntimeFunctions<Msvcr110d> runtime;
@@ -476,8 +472,7 @@ struct Msvcr110d {
 // Overrides functions in "msvcr120.dll"
 struct Msvcr120 {
   Msvcr120() {
-    const char *dllName = "msvcr120.dll";
-    runtime.OverrideFunctions(dllName);
+    runtime.OverrideFunctions(MSVCR120);
   }
 
   static __RuntimeFunctions<Msvcr120> runtime;
@@ -486,8 +481,7 @@ struct Msvcr120 {
 // Overrides functions in "msvcr120d.dll"
 struct Msvcr120d {
   Msvcr120d() {
-    const char *dllName = "msvcr120d.dll";
-    runtime.OverrideFunctions(dllName);
+    runtime.OverrideFunctions(MSVCR120D);
   }
 
   static __RuntimeFunctions<Msvcr120d> runtime;
@@ -496,8 +490,7 @@ struct Msvcr120d {
 // Overrides functions in "vcruntime140.dll"
 struct Vcruntime140 {
   Vcruntime140() {
-    const char *dllName = "vcruntime140.dll";
-    runtime.OverrideFunctions(dllName);
+    runtime.OverrideFunctions(VCRUNTIME140);
   }
 
   static __RuntimeFunctions<Vcruntime140> runtime;
@@ -506,8 +499,7 @@ struct Vcruntime140 {
 // Overrides functions in "vcruntime140d.dll"
 struct Vcruntime140d {
   Vcruntime140d() {
-    const char *dllName = "vcruntime140d.dll";
-    runtime.OverrideFunctions(dllName);
+    runtime.OverrideFunctions(VCRUNTIME140D);
   }
 
   static __RuntimeFunctions<Vcruntime140d> runtime;
@@ -516,8 +508,7 @@ struct Vcruntime140d {
 // Overrides functions in "ucrtbase.dll"
 struct Ucrtbase {
   Ucrtbase() {
-    const char *dllName = "ucrtbase.dll";
-    runtime.OverrideFunctions(dllName);
+    runtime.OverrideFunctions(UCRTBASE);
   }
 
   static __RuntimeFunctions<Ucrtbase> runtime;
@@ -526,8 +517,7 @@ struct Ucrtbase {
 // Overrides functions in "ucrtbased.dll"
 struct Ucrtbased {
   Ucrtbased() {
-    const char *dllName = "ucrtbased.dll";
-    runtime.OverrideFunctions(dllName);
+    runtime.OverrideFunctions(UCRTBASED);
   }
 
   static __RuntimeFunctions<Ucrtbased> runtime;
@@ -536,8 +526,7 @@ struct Ucrtbased {
 // Overrides functions in "ntdll.dll"
 struct Ntdll {
   Ntdll() {
-    const char *dllName = "ntdll.dll";
-    runtime.OverrideFunctions(dllName);
+    runtime.OverrideFunctions(NTDLL);
   }
 
   static __RuntimeFunctions<Ntdll> runtime;

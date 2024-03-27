@@ -36,11 +36,11 @@ constexpr const char *VirtualProtectcStr = "VirtualProtect";
 constexpr const char *VirtualQueryStr = "VirtualQuery";
 
 struct Kernel32 {
-  static constexpr const char *Name = "kernel32.dll";
+  static constexpr const char *Name = dll_info[KERNEL32].name;
 };
 
 struct KernelBase {
-  static constexpr const char *Name = "kernelbase.dll";
+  static constexpr const char *Name = dll_info[KERNELBASE].name;
 };
 
 template <typename CoreLibrary>

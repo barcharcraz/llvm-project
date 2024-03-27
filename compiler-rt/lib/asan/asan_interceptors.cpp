@@ -488,17 +488,45 @@ INTERCEPTOR(char*, strncpy, char *to, const char *from, uptr size) {
 
 
 #if SANITIZER_WINDOWS
-#define INTERCEPTOR_ONEPERDLL(func) \
-INTERCEPTOR_##func##_FORDLL(ntdll)     \
-INTERCEPTOR_##func##_FORDLL(msvcr100)  \
-INTERCEPTOR_##func##_FORDLL(msvcr110)  \
-INTERCEPTOR_##func##_FORDLL(msvcr120)  \
-INTERCEPTOR_##func##_FORDLL(ucrtbase)  \
-INTERCEPTOR_##func##_FORDLL(msvcr100d) \
-INTERCEPTOR_##func##_FORDLL(msvcr110d) \
-INTERCEPTOR_##func##_FORDLL(msvcr120d) \
-INTERCEPTOR_##func##_FORDLL(ucrtbased) \
-INTERCEPTOR_##func##_FORDLL(static) /* special-case: used for static linking */ \
+// The functions strtol, atol, and atoi are defined in these DLLs
+#define INTERCEPTOR_ONEPERDLL_STRTOL_FAMILY(func) \
+    INTERCEPTOR_##func##_FORDLL(NTDLL)            \
+    INTERCEPTOR_##func##_FORDLL(MSVCR100)         \
+    INTERCEPTOR_##func##_FORDLL(MSVCR110)         \
+    INTERCEPTOR_##func##_FORDLL(MSVCR120)         \
+    INTERCEPTOR_##func##_FORDLL(UCRTBASE)         \
+    INTERCEPTOR_##func##_FORDLL(MSVCR100D)        \
+    INTERCEPTOR_##func##_FORDLL(MSVCR110D)        \
+    INTERCEPTOR_##func##_FORDLL(MSVCR120D)        \
+    INTERCEPTOR_##func##_FORDLL(UCRTBASED)        \
+    INTERCEPTOR_##func##_FORDLL(static) /* special-case: used for static linking */
+
+// Invoke interception specifically for the DLLs that define the strtol family functions.
+#define ASAN_INTERCEPT_STRTOL_FAMILY(func)       \
+    ASAN_INTERCEPT_FUNC_FORDLL(func, NTDLL);     \
+    ASAN_INTERCEPT_FUNC_FORDLL(func, MSVCR100);  \
+    ASAN_INTERCEPT_FUNC_FORDLL(func, MSVCR110);  \
+    ASAN_INTERCEPT_FUNC_FORDLL(func, MSVCR120);  \
+    ASAN_INTERCEPT_FUNC_FORDLL(func, UCRTBASE);  \
+    ASAN_INTERCEPT_FUNC_FORDLL(func, MSVCR100D); \
+    ASAN_INTERCEPT_FUNC_FORDLL(func, MSVCR110D); \
+    ASAN_INTERCEPT_FUNC_FORDLL(func, MSVCR120D); \
+    ASAN_INTERCEPT_FUNC_FORDLL(func, UCRTBASED);
+// Special-case interception invocation for atoi and atol, because atoi may alias atol.
+// Ensure that atol is intercepted first, because if atoi does alias it, then *only* atol
+// will be intercepted, but atoi's REAL pointer will be set to point to atol's REAL pointer.
+#define ASAN_INTERCEPT_ATOI_AND_ATOL()                           \
+    ASAN_INTERCEPT_STRTOL_FAMILY(atol);                          \
+    ASAN_INTERCEPT_FUNC_FORDLL(atoi, atol, NTDLL);     \
+    ASAN_INTERCEPT_FUNC_FORDLL(atoi, atol, MSVCR100);  \
+    ASAN_INTERCEPT_FUNC_FORDLL(atoi, atol, MSVCR110);  \
+    ASAN_INTERCEPT_FUNC_FORDLL(atoi, atol, MSVCR120);  \
+    ASAN_INTERCEPT_FUNC_FORDLL(atoi, atol, UCRTBASE);  \
+    ASAN_INTERCEPT_FUNC_FORDLL(atoi, atol, MSVCR100D); \
+    ASAN_INTERCEPT_FUNC_FORDLL(atoi, atol, MSVCR110D); \
+    ASAN_INTERCEPT_FUNC_FORDLL(atoi, atol, MSVCR120D); \
+    ASAN_INTERCEPT_FUNC_FORDLL(atoi, atol, UCRTBASED);
+
 
 /*
  *  strtol and dependent functions get intercepted per-DLL.
@@ -529,7 +557,7 @@ INTERCEPTOR(long, strtol##suffix, const char *nptr, char **endptr, int base) { \
 }
 #if SANITIZER_WINDOWS
 #define INTERCEPTOR_STRTOL_FORDLL(dll) STRTOL_SHARED_INTERCEPTOR(_##dll)
-INTERCEPTOR_ONEPERDLL(STRTOL)
+INTERCEPTOR_ONEPERDLL_STRTOL_FAMILY(STRTOL)
 #else
 STRTOL_SHARED_INTERCEPTOR() // empty suffix
 #endif
@@ -556,7 +584,7 @@ INTERCEPTOR(int, atoi_##dll, const char *nptr) {                    \
   return result;                                                    \
 }
 
-INTERCEPTOR_ONEPERDLL(ATOI)
+INTERCEPTOR_ONEPERDLL_STRTOL_FAMILY(ATOI)
 #else
 INTERCEPTOR(int, atoi, const char *nptr) {
   void *ctx;
@@ -599,7 +627,7 @@ INTERCEPTOR(long, atol_##dll, const char *nptr) {               \
   return result;                                                \
 }
 
-INTERCEPTOR_ONEPERDLL(ATOL)
+INTERCEPTOR_ONEPERDLL_STRTOL_FAMILY(ATOL)
 #else
 INTERCEPTOR(long, atol, const char *nptr) {
   void *ctx;
@@ -740,11 +768,10 @@ void InitializeAsanInterceptors() {
 #endif
 
 #if SANITIZER_WINDOWS
-  // Note: if there is aliasing going on between atol and atoi, atoi will *not* be intercepted.
-  // (see OverrideFunction in interception_win.cpp)
-  ASAN_INTERCEPT_FUNC_FORDLLS(atoi);
-  ASAN_INTERCEPT_FUNC_FORDLLS(atol);
-  ASAN_INTERCEPT_FUNC_FORDLLS(strtol);
+  ASAN_INTERCEPT_STRTOL_FAMILY(atol);
+  // note: atoi may be an alias for atol for some DLLs / platforms, so it should go after atol
+  ASAN_INTERCEPT_STRTOL_FAMILY(atoi);
+  ASAN_INTERCEPT_STRTOL_FAMILY(strtol);
 #else
   ASAN_INTERCEPT_FUNC(strtol);
   ASAN_INTERCEPT_FUNC(atoi);

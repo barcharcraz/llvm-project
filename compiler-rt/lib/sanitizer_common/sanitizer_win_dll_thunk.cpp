@@ -25,7 +25,7 @@ void abort();
 namespace __sanitizer {
 uptr dllThunkGetRealAddrOrDie(const char *name) {
   uptr ret =
-      __interception::InternalGetProcAddress((void *)GetModuleHandleA(0), name);
+      __interception::InternalGetProcAddress((void *)GetModuleHandleA(nullptr), name);
   if (!ret)
     abort();
   return ret;
@@ -33,7 +33,7 @@ uptr dllThunkGetRealAddrOrDie(const char *name) {
 
 int dllThunkIntercept(const char* main_function, uptr dll_function) {
   uptr wrapper = dllThunkGetRealAddrOrDie(main_function);
-  if (!__interception::OverrideFunction(dll_function, wrapper, 0))
+  if (!__interception::OverrideFunction(dll_function, wrapper, nullptr))
     abort();
   return 0;
 }
@@ -41,10 +41,10 @@ int dllThunkIntercept(const char* main_function, uptr dll_function) {
 int dllThunkInterceptWhenPossible(const char* main_function,
     const char* default_function, uptr dll_function) {
   uptr wrapper = __interception::InternalGetProcAddress(
-    (void *)GetModuleHandleA(0), main_function);
+    (void *)GetModuleHandleA(nullptr), main_function);
   if (!wrapper)
     wrapper = dllThunkGetRealAddrOrDie(default_function);
-  if (!__interception::OverrideFunction(dll_function, wrapper, 0))
+  if (!__interception::OverrideFunction(dll_function, wrapper, nullptr))
     abort();
   return 0;
 }

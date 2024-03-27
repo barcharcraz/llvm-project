@@ -1174,7 +1174,7 @@ void CheckVMASize() {
 void InitializePlatformEarly() {
   DCHECK(!QueryVirtualMemoryInformation);
 
-  HMODULE handle = GetModuleHandleA("KERNELBASE.DLL");
+  HMODULE handle = GetModuleHandleA(dll_info[KERNELBASE].name);
   QueryVirtualMemoryInformation =
       reinterpret_cast<QueryVirtualMemoryInformation_t>(
           __interception::InternalGetProcAddress(
@@ -1347,7 +1347,7 @@ bool IsMemoryMapped(HANDLE Handle) {
 
 static MODULEINFO ntdllInfo;
 void InitializeNtdllInfo() {
-  GetModuleInformation(GetCurrentProcess(), GetModuleHandle(L"ntdll.dll"),
+  GetModuleInformation(GetCurrentProcess(), GetModuleHandleA(dll_info[NTDLL].name),
                        &ntdllInfo, sizeof(ntdllInfo));
 }
 

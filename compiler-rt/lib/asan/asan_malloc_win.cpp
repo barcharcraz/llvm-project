@@ -2386,7 +2386,7 @@ namespace __asan {
 static void TryToOverrideFunction(const char *fname, uptr new_func) {
   // Failure here is not fatal. The CRT may not be present, and different CRT
   // versions use different symbols.
-  if (!__interception::OverrideFunction(fname, new_func))
+  if (!__interception::OverrideFunction(fname, new_func, /* orig_old_func */ nullptr))
     VPrintf(2, "Failed to override function %s\n", fname);
 }
 

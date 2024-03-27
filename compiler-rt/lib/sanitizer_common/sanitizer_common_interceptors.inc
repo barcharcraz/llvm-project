@@ -142,7 +142,7 @@ extern const short *_tolower_tab_;
 #else
 #define PLATFORM_HAS_DIFFERENT_MEMCPY_AND_MEMMOVE 1
 #define PLATFORM_MEMCPY_MEMMOVE_CAN_BE_FOLDED 0
-#endif  
+#endif
 
 #ifndef COMMON_INTERCEPTOR_INITIALIZE_RANGE
 #define COMMON_INTERCEPTOR_INITIALIZE_RANGE(p, size) {}
@@ -828,7 +828,7 @@ INTERCEPTOR(void *, memcpy, void *dst, const void *src, uptr size) {
   void *ctx;
   #ifndef PLATFORM_HAS_DIFFERENT_MEMCPY_AND_MEMMOVE
 #error "Undefined"
-#endif 
+#endif
 
 #ifndef PLATFORM_MEMCPY_MEMMOVE_CAN_BE_FOLDED
 #error "Undefined"
@@ -841,9 +841,19 @@ INTERCEPTOR(void *, memcpy, void *dst, const void *src, uptr size) {
 #endif
 }
 
-// On i386 Windows memcpy and memmove are implemented identically but they
+#if SANITIZER_WINDOWS
+// Note: on i386 Windows memcpy and memmove are implemented identically but they
 // have two different definitions, so they can have distinct locations in
 // memory. This means that memcpy may still needs to be intercepted.
+#define INIT_MEMCPY                                                                   \
+  do {                                                                                \
+    if (!::__interception::OverrideFunction("memcpy",                                 \
+                                            (::__interception::uptr)WRAP(memcpy),     \
+                                            (::__interception::uptr *)&REAL(memcpy))) \
+      VReport(1, "AddressSanitizer: failed to intercept 'memcpy'\n");                 \
+    CHECK(REAL(memcpy));                                                              \
+  } while (false)
+#else
 #define INIT_MEMCPY                                  \
   do {                                               \
     if (PLATFORM_HAS_DIFFERENT_MEMCPY_AND_MEMMOVE || \
@@ -855,10 +865,11 @@ INTERCEPTOR(void *, memcpy, void *dst, const void *src, uptr size) {
     }                                                \
     CHECK(REAL(memcpy));                             \
   } while (false)
+#endif
 
 #else
 #define INIT_MEMCPY
-#endif
+#endif // SANITIZER_INTERCEPT_MEMCPY
 
 #if SANITIZER_INTERCEPT_MEMCMP
 DECLARE_WEAK_INTERCEPTOR_HOOK(__sanitizer_weak_hook_memcmp, uptr called_pc,

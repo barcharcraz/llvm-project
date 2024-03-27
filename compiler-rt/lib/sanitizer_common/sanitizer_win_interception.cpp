@@ -86,12 +86,10 @@ static void RunWeakFunctionCallbacks(uptr export_address) {
 DECLARE_REAL(long, strtol_static, const char *nptr, char **endptr, int base)
 DECLARE_REAL(int, atoi_static, const char *nptr)
 DECLARE_REAL(long, atol_static, const char *nptr)
-// For the provided static interceptor (static export), if this interceptor is uniquely reserved for static interception
-// (i.e., it is not also re-used as an interceptor for dynamic-linking scenarios), return the corresponding REAL pointer dedicated
-// to be used only by this static interceptor. This pointer will then presumably be populated in OverrideFunction by the static interception logic.
-//
-// If the export is *not* unique, but gets re-used for dynamic-linking interception too, then this function will return NULL,
-// and the REAL pointer that is shared by the static and dynamic interceptors is presumed to be populated by the dynamic-linking interception logic.
+DECLARE_REAL(void *, memcpy, void *dst, const void *src, uptr size)
+DECLARE_REAL(void *, memmove, void *dst, const void *src, uptr size)
+// For the provided interceptor export_name, return the corresponding REAL pointer. 
+// Each function included here needs to have a corresponding DECLARE_REAL up above.
 __interception::uptr* GetUniqueRealAddressForStaticExport(const char* export_name)
 {
   struct export_to_addr {
@@ -103,6 +101,8 @@ __interception::uptr* GetUniqueRealAddressForStaticExport(const char* export_nam
     { "__asan_wrap_strtol_static", (__interception::uptr *)&REAL(strtol_static) },
     { "__asan_wrap_atoi_static", (__interception::uptr *)&REAL(atoi_static) },
     { "__asan_wrap_atol_static", (__interception::uptr *)&REAL(atol_static) },
+    { "__asan_wrap_memcpy", (__interception::uptr *)&REAL(memcpy) },
+    { "__asan_wrap_memmove", (__interception::uptr *)&REAL(memmove) },
   };
 
   for (const auto& e : exports) {
