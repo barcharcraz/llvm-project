@@ -1,5 +1,3 @@
-// MSVC-DISABLED:*, Flaky due to permissions on Windows CI
-
 // RUN: %clang_cl_asan /D_DISABLE_VECTOR_ANNOTATION /D_DISABLE_STRING_ANNOTATION -Od %s -Fe%t
 // RUN: %clang_cl_asan /D_DISABLE_VECTOR_ANNOTATION /D_DISABLE_STRING_ANNOTATION /DTEST_DRIVER -Od %s -Fe%t_driver.exe
 // RUN: not %run %t_driver.exe %t 2>&1 | FileCheck %s
@@ -49,7 +47,7 @@ int main(int argc, const char *argv[]) {
       }
 
       // Wait until child process exits, wait time in milliseconds
-      auto processExitStatus = WaitForSingleObject(pi.hProcess, 500);
+      auto processExitStatus = WaitForSingleObject(pi.hProcess, 15000);
 
       // Close process and thread handles
       CloseHandle(pi.hProcess);
