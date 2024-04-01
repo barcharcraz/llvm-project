@@ -6,7 +6,7 @@ import re
 import shlex
 
 import lit.formats
-
+from lit.TestingConfig import SubstituteCaptures
 
 def get_required_attr(config, attr_name):
     attr_value = getattr(config, attr_name, None)
@@ -75,7 +75,9 @@ target_is_msvc = bool(re.match(r".*-windows-msvc$", config.target_triple))
 asan_dynamic_flags = []
 if config.asan_dynamic:
     asan_dynamic_flags = ["-shared-libasan"]
-    if platform.system() == "Windows" and target_is_msvc:
+    if platform.system() == "Windows" and target_is_msvc and config.compiler_id != "MSVC":
+        # If we're testing with msvc then %clang and %clangxx are cl.exe, and should
+        # use clang-cl arguments, as below
         # On MSVC target, we need to simulate "clang-cl /MD" on the clang driver side.
         asan_dynamic_flags += [
             "-D_MT",
@@ -108,17 +110,17 @@ def build_invocation(compile_flags, with_lto=False):
 
     return " " + " ".join([config.clang] + lto_flags + compile_flags) + " "
 
-
-config.substitutions.append(("%clang ", build_invocation(target_cflags)))
-config.substitutions.append(("%clangxx ", build_invocation(target_cxxflags)))
-config.substitutions.append(("%clang_asan ", build_invocation(clang_asan_cflags)))
-config.substitutions.append(("%clangxx_asan ", build_invocation(clang_asan_cxxflags)))
-config.substitutions.append(
-    ("%clang_asan_lto ", build_invocation(clang_asan_cflags, True))
-)
-config.substitutions.append(
-    ("%clangxx_asan_lto ", build_invocation(clang_asan_cxxflags, True))
-)
+if config.compiler_id != "MSVC":
+    config.substitutions.append(("%clang ", build_invocation(target_cflags)))
+    config.substitutions.append(("%clangxx ", build_invocation(target_cxxflags)))
+    config.substitutions.append(("%clang_asan ", build_invocation(clang_asan_cflags)))
+    config.substitutions.append(("%clangxx_asan ", build_invocation(clang_asan_cxxflags)))
+    config.substitutions.append(
+        ("%clang_asan_lto ", build_invocation(clang_asan_cflags, True))
+    )
+    config.substitutions.append(
+        ("%clangxx_asan_lto ", build_invocation(clang_asan_cxxflags, True))
+    )
 if config.asan_dynamic:
     if config.host_os in ["Linux", "FreeBSD", "NetBSD", "SunOS"]:
         shared_libasan_path = os.path.join(
@@ -154,11 +156,16 @@ if platform.system() == "Windows":
     # MSVC-specific tests might also use the clang-cl.exe driver.
     if target_is_msvc:
         clang_cl_cxxflags = [
-            "-WX",
+            "-EHs",
             "-D_HAS_EXCEPTIONS=0",
         ] + config.debug_info_flags + target_cflags
         if config.compiler_id != "MSVC":
             clang_cl_cxxflags = ["-Wno-deprecated-declarations"] + clang_cl_cxxflags
+        else:
+            clang_cl_cxxflags = [
+                "/wd4700", # uninitialized local variable (MSVCs is much less clever than clang's)
+                "/wd4805"  # 'operation' : unsafe mix of type int and type bool in operation
+            ] + clang_cl_cxxflags
         clang_cl_asan_cxxflags = ["-fsanitize=address"] + clang_cl_cxxflags
         if config.asan_dynamic:
             clang_cl_asan_cxxflags.append("-MD")
@@ -200,6 +207,32 @@ if platform.system() == "Windows":
             ("%asan_static_runtime_thunk", base_lib % "_static_runtime_thunk")
         )
         config.substitutions.append(("%asan_dll_thunk", base_lib % "_dll_thunk"))
+
+        if config.compiler_id == "MSVC":
+            config.substitutions.append(("%clang ", build_invocation(clang_cl_cxxflags)))
+            config.substitutions.append(("%clangxx ", build_invocation(clang_cl_cxxflags)))
+            config.substitutions.append(("%clang_asan ", build_invocation(clang_cl_asan_cxxflags)))
+            config.substitutions.append(("%clangxx_asan ", build_invocation(clang_cl_asan_cxxflags)))
+            config.substitutions.append(
+                ("%clang_asan_lto ", build_invocation(clang_cl_asan_cxxflags, True))
+            )
+            config.substitutions.append(
+                ("%clangxx_asan_lto ", build_invocation(clang_cl_asan_cxxflags, True))
+            )
+
+            config.substitutions.append(
+                ("(?<! (-|/)c )-o %t( |)", SubstituteCaptures("/Fe:%t\g<2>"))
+            )
+            config.substitutions.append(
+                ("(-|/)c -o %t( |)", SubstituteCaptures("/c /Fo:%t\g<2>"))
+            )
+            config.substitutions.append(("-O0", "/Od"))
+            config.substitutions.append(("-O1", "/O1i-"))
+            config.substitutions.append(("-O2", "/O2i-"))
+            config.substitutions.append(("-O3", "/O2"))
+            config.substitutions.append(("-x c", "/TC"))
+            config.substitutions.append(("-Wl,/DEBUG:NONE", "/link /DEBUG:NONE"))
+
     else:
         # To make some of these tests work on MinGW target without changing their
         # behaviour for MSVC target, substitute clang-cl flags with gcc-like ones.
@@ -290,6 +323,10 @@ if config.host_os == "Windows":
 if config.compiler_id == "MSVC":
     config.environment["LIB"] = os.path.pathsep.join(
         [config.compiler_rt_libdir, config.environment.get("LIB", "")]
+    )
+    config.environment["INCLUDE"] = os.path.pathsep.join(
+        [os.path.join(config.compiler_rt_libdir, "..", "..", "include"), 
+         config.environment.get("INCLUDE", "")]
     )
 
 print(os.environ["LIB"])

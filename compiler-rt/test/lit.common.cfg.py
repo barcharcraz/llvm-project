@@ -147,7 +147,7 @@ if compiler_id == "Clang":
         config.debug_info_flags.append("-gcodeview")
         config.debug_info_flags.append("-gcolumn-info")
 elif compiler_id == "MSVC":
-    config.debug_info_flags = ["/Z7"]
+    config.debug_info_flags = ["/Zi /Fd%t.pdb"]
     config.cxx_mode_flags = []
 elif compiler_id == "GNU":
     config.cxx_mode_flags = ["-x c++"]
