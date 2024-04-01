@@ -713,7 +713,10 @@ if(MSVC OR (LINUX AND DEFINED USING_GCC_TOOLSET_12 AND
   # deprecated declarations in gcc-toolset-12 used in Google Tests have been
   # observed to be _GLIBCXX17_DEPRECATED and should go away once
   # CMAKE_CXX_STANDARD is greater than 17.
-  list(APPEND COMPILER_RT_GTEST_CFLAGS -Wno-deprecated-declarations)
+  if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    # above excludes "real" msvc, but not clang-cl
+    list(APPEND COMPILER_RT_GTEST_CFLAGS -Wno-deprecated-declarations)
+  endif()
 endif()
 
 # Warnings to turn off for all libraries, not just sanitizers.

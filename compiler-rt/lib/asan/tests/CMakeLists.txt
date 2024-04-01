@@ -29,11 +29,16 @@ set(ASAN_UNITTEST_COMMON_CFLAGS
   -I${COMPILER_RT_SOURCE_DIR}/lib/asan
   -I${COMPILER_RT_SOURCE_DIR}/lib/sanitizer_common/tests
   -DSANITIZER_COMMON_NO_REDEFINE_BUILTINS
-  -fno-rtti
   -O2
-  -Wno-format
-  -Werror=sign-compare)
+)
+if(NOT COMPILER_RT_TEST_COMPILER_ID MATCHES "MSVC")
+  list(APPEND ASAN_UNITTEST_COMMON_CFLAGS
+    -fno-rtti
+    -Werror=sign-compare)
+  list(APPEND ASAN_UNITTEST_COMMON_LINK_FLAGS -g)
+endif()
 append_list_if(COMPILER_RT_HAS_WVARIADIC_MACROS_FLAG -Wno-variadic-macros ASAN_UNITTEST_COMMON_CFLAGS)
+append_list_if(COMPILER_RT_HAS_WNO_FORMAT -Wno-format ASAN_UNITTEST_COMMON_CFLAGS)
 
 # This will ensure the target linker is used
 # during cross compilation
@@ -45,13 +50,14 @@ set(ASAN_UNITTEST_COMMON_LINK_FLAGS
 # -gline-tables-only must be enough for ASan, so use it if possible.
 if(COMPILER_RT_TEST_COMPILER_ID MATCHES "Clang")
   list(APPEND ASAN_UNITTEST_COMMON_CFLAGS -gline-tables-only)
+  if(MSVC)
+    list(APPEND ASAN_UNITTEST_COMMON_CFLAGS -gcodeview)
+  endif()
+elseif(COMPILER_RT_TEST_COMPILER_ID MATCHES "MSVC")
+  list(APPEND ASAN_UNITTEST_COMMON_CFLAGS /Zi /FS /EHsc /GR-)
 else()
   list(APPEND ASAN_UNITTEST_COMMON_CFLAGS -g)
 endif()
-if(MSVC)
-  list(APPEND ASAN_UNITTEST_COMMON_CFLAGS -gcodeview)
-endif()
-list(APPEND ASAN_UNITTEST_COMMON_LINK_FLAGS -g)
 
 # Use -D instead of definitions to please custom compile command.
 list(APPEND ASAN_UNITTEST_COMMON_CFLAGS
