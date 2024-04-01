@@ -95,7 +95,9 @@ function(clang_compile object_file source)
 
     # Ignore unknown warnings. CMAKE_CXX_FLAGS may contain GCC-specific options
     # which are not supported by Clang.
-    list(APPEND global_flags -Wno-unknown-warning-option)
+    if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+      list(APPEND global_flags -Wno-unknown-warning-option)
+    endif()
     set(compile_flags ${global_flags} ${SOURCE_CFLAGS})
   else()
     set(compile_flags ${SOURCE_CFLAGS})
