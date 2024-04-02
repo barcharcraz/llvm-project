@@ -594,8 +594,8 @@ static size_t GetInstructionSize(uptr address, size_t* rel_offset = nullptr) {
       return 7;
   }
 
-  switch (0x000000FF & *(u32*)address) {
-      case 0xc2:    // C2 XX XX : ret XX (needed for registering weak functions)
+  switch (0x000000FF & *(u32 *)address) {
+    case 0xc2:  // C2 XX XX : ret XX (needed for registering weak functions)
       return 3;
   }
 
