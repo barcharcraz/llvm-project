@@ -32,13 +32,16 @@
 #include "sanitizer_platform_interceptors.h"
 
 // Platform-specific options.
-#if SANITIZER_APPLE
+#if SANITIZER_MAC || (SANITIZER_WINDOWS && SANITIZER_AMD64)
 #define PLATFORM_HAS_DIFFERENT_MEMCPY_AND_MEMMOVE 0
-#elif SANITIZER_WINDOWS64
-#define PLATFORM_HAS_DIFFERENT_MEMCPY_AND_MEMMOVE 0
+#define PLATFORM_MEMCPY_MEMMOVE_CAN_BE_FOLDED 0
+#elif SANITIZER_WINDOWS && SANITIZER_I386
+#define PLATFORM_HAS_DIFFERENT_MEMCPY_AND_MEMMOVE 1
+#define PLATFORM_MEMCPY_MEMMOVE_CAN_BE_FOLDED 1
 #else
 #define PLATFORM_HAS_DIFFERENT_MEMCPY_AND_MEMMOVE 1
-#endif  // SANITIZER_APPLE
+#define PLATFORM_MEMCPY_MEMMOVE_CAN_BE_FOLDED 0
+#endif
 
 #ifndef COMMON_INTERCEPTOR_MEMSET_IMPL
 #define COMMON_INTERCEPTOR_MEMSET_IMPL(ctx, dst, v, size) \
@@ -118,16 +121,28 @@ INTERCEPTOR(void *, memcpy, void *dst, const void *src, uptr size) {
 #endif
 }
 
+#if SANITIZER_WINDOWS
+#define INIT_MEMCPY \
+  do {                                                                                \
+    if (!::__interception::OverrideFunction("memcpy",                                 \
+                                            (::__interception::uptr)WRAP(memcpy),     \
+                                            (::__interception::uptr *)&REAL(memcpy))) \
+      VReport(1, "AddressSanitizer: failed to intercept 'memcpy'\n");                 \
+    CHECK(REAL(memcpy));                                                              \
+  } while (false)
+#else
 #define INIT_MEMCPY                                  \
   do {                                               \
-    if (PLATFORM_HAS_DIFFERENT_MEMCPY_AND_MEMMOVE) { \
+    if (PLATFORM_HAS_DIFFERENT_MEMCPY_AND_MEMMOVE || \
+        (PLATFORM_MEMCPY_MEMMOVE_CAN_BE_FOLDED &&    \
+         REAL(memcpy) != REAL(memmove))) {           \
       COMMON_INTERCEPT_FUNCTION(memcpy);             \
     } else {                                         \
       ASSIGN_REAL(memcpy, memmove);                  \
     }                                                \
     CHECK(REAL(memcpy));                             \
   } while (false)
-
+#endif
 #else
 #define INIT_MEMCPY
 #endif

@@ -135,6 +135,7 @@
 #include "sanitizer_common/sanitizer_common.h"
 #include "sanitizer_common/sanitizer_win.h"
 #include "sanitizer_common/sanitizer_win_immortalize.h"
+#include "sanitizer_common/sanitizer_addrhashmap.h"
 
 namespace __interception {
 static const int kAddressLength = FIRST_32_SECOND_64(4, 8);
@@ -1023,7 +1024,7 @@ struct ZwSetInformationVirtualMemory_immortal {
   }
 
   ZwSetInformationVirtualMemory_immortal() {
-    HMODULE handle = GetModuleHandleA("NTDLL.DLL");
+    HMODULE handle = GetModuleHandleA(dll_info[NTDLL].name);
     fn = reinterpret_cast<ZwSetInformationVirtualMemory_t>(
         __interception::InternalGetProcAddress(
             handle, "ZwSetInformationVirtualMemory"));
@@ -1213,69 +1214,58 @@ bool OverrideFunctionWithTrampoline(uptr old_func, uptr new_func,
   return true;
 }
 
-bool OverrideFunction(uptr old_func, uptr new_func, uptr *orig_old_func,
-                      bool guaranteed_hotpatchable) {
-#if !SANITIZER_WINDOWS64
-  if (OverrideFunctionWithDetour(old_func, new_func, orig_old_func))
-    return true;
-#endif
-  if (OverrideFunctionWithRedirectJump(old_func, new_func, orig_old_func))
-    return true;
-  if (OverrideFunctionWithHotPatch(old_func, new_func, orig_old_func,
-                                   guaranteed_hotpatchable))
-    return true;
-  if (OverrideFunctionWithTrampoline(old_func, new_func, orig_old_func))
-    return true;
-  return false;
-}
-
-struct dll_info {
-  void *data;
-  bool guaranteed_hotpatchable;
-  const char *dll_name;
+// Track which function addresses we already attempted to intercept.
+//
+struct AddressInfo
+{
+  bool intercepted; // if interception was successful or not
+  uptr * realPointer; // for function foo, stores &REAL(foo)
 };
 
-static dll_info *InterestingDLLsAvailable() {
-  // OS DLLs are always guaranteed to have enough room to hotpatch but it can
-  // be hard to detect because they might have XFG hashes in their padding
-  // region.
-  struct dll_pair {
-    const char *dll_name;
-    bool guaranteed_hotpatchable;
-  };
+typedef __sanitizer::AddrHashMap<AddressInfo, 11> AddressInfoMap;
+AddressInfoMap addressInfo; // An entry here represents an attempt to intercept a particular function's address.
+                            // The result (success or failure) of that interception is stored.
 
-  static const dll_pair InterestingDLLs[] = {
-      {"kernel32.dll", SANITIZER_WINDOWS64},
-      {"msvcr100d.dll", false},                // VS2010
-      {"msvcr110d.dll", false},                // VS2012
-      {"msvcr120d.dll", false},                // VS2013
-      {"vcruntime140d.dll", false},            // VS2015
-      {"ucrtbased.dll", SANITIZER_WINDOWS64},  // Universal CRT
-      {"msvcr100.dll", false},                 // VS2010
-      {"msvcr110.dll", false},                 // VS2012
-      {"msvcr120.dll", false},                 // VS2013
-      {"vcruntime140.dll", false},             // VS2015
-      {"ucrtbase.dll", SANITIZER_WINDOWS64},   // Universal CRT
-      // KernelBase for GlobalAlloc and LocalAlloc (dynamic)
-      {"KERNELBASE.dll", SANITIZER_WINDOWS64},
-      // NTDLL should go last as it exports some functions that we should
-      // override in the CRT [presumably only used internally].
-      {"ntdll.dll", SANITIZER_WINDOWS64},
-#if (defined(__MINGW32__) && defined(__i386__))
-      {"libc++.dll", false},        // libc++
-      {"libunwind.dll". false},     // libunwind
-#endif
-      {nullptr, false}};
-  static dll_info result[ARRAY_SIZE(InterestingDLLs)] = {0};
+bool OverrideFunction(uptr old_func, uptr new_func, uptr *orig_old_func,
+                      bool guaranteed_hotpatchable) {
 
-  if (!result[0].data) {
-    for (size_t i = 0, j = 0; InterestingDLLs[i].dll_name; ++i) {
-      if (HMODULE h = GetModuleHandleA(InterestingDLLs[i].dll_name))
-        result[j++] = {(void *)h, InterestingDLLs[i].guaranteed_hotpatchable,
-                       InterestingDLLs[i].dll_name};
-    }
+  // Check if we have already tried intercepting this address before.
+  // If so, we will not attempt interception again, but will still update the REAL pointer. This is useful for cases
+  // of function aliasing:
+  //   if `bar` aliases `foo`, then after `foo` is intercepted, it will get an entry in addressInfo with &REAL(foo)
+  //   stored in the `realPointer`. Once `bar` is intercepted, the actual interception work will be skipped
+  //   so that we don't re-intercept an already-intercepted address, but REAL(bar) will be set to point to REAL(foo).
+  AddressInfoMap::Handle h_read(&addressInfo, old_func, false, false);
+  if (h_read.exists()) {
+    if (orig_old_func && h_read->realPointer)
+        *orig_old_func = *h_read->realPointer;
+
+    VPrintf(2, "Address 0x%llx was already intercepted with result: %d. Skipping re-interception.\n",
+            old_func, h_read->intercepted);
+    return h_read->intercepted;
   }
-  return &result[0];
+
+  bool intercepted = false;
+#if !SANITIZER_WINDOWS64
+  if (OverrideFunctionWithDetour(old_func, new_func, orig_old_func))
+    intercepted = true;
+  else // changes the next `if` into an `else if`
+#endif
+  if (OverrideFunctionWithRedirectJump(old_func, new_func, orig_old_func))
+    intercepted = true;
+  else if (OverrideFunctionWithHotPatch(old_func, new_func, orig_old_func,
+                                   guaranteed_hotpatchable))
+    intercepted = true;
+  else if (OverrideFunctionWithTrampoline(old_func, new_func, orig_old_func))
+    intercepted = true;
+
+  // Mark that we have tried intercepting this address.
+  AddressInfoMap::Handle h_write(&addressInfo, old_func, false, true);
+  CHECK(h_write.created());
+  h_write->intercepted = intercepted;
+  h_write->realPointer = orig_old_func;
+
+  return intercepted;
 }
 
 namespace {
@@ -1358,136 +1348,28 @@ uptr InternalGetProcAddress(void *module, const char *func_name) {
   return 0;
 }
 
-struct AliasPair {
-    // Function "alias" is an alias for function "alias_target"
-    const char* alias;
-    const char* alias_target;
-};
+bool OverrideFunctionForDLL(const char *func_name, uptr new_func, uptr *orig_old_func,
+                                   DLL dll, bool failIfDllNotFound) {
+    HMODULE handle = GetModuleHandleA(dll_info[dll].name);
+    if (!handle)
+        return !failIfDllNotFound;
 
-static const AliasPair potential_aliases[] =
-{
-    // These aliases are expected to exist in at least some DLLs
-    {"atoi", "atol"}
-};
-
-bool OverrideFunction(const char *func_name, uptr new_func, uptr *orig_old_func,
-                      const char *dllName, bool failIfDllNotFound) {
-
-  bool interceptedForAtLeastOneDLL = false;
-  dll_info *DLLs = InterestingDLLsAvailable();
-  for (size_t i = 0; DLLs[i].data; ++i) {
-    uptr func_addr = InternalGetProcAddress(DLLs[i].data, func_name);
-
-    // If dllName was not provided, we will attempt an interception for *all* DLLs.
-    // Otherwise, we will try to intercept for the matching DLL only, regardless of whether the interception succeeds or fails.
-    bool interceptOnlyThisDLL = (dllName && !_strcmp(DLLs[i].dll_name, dllName));
-    if (dllName && !interceptOnlyThisDLL)
-      continue;
-
+    uptr func_addr = InternalGetProcAddress(handle, func_name);
     if (!func_addr)
-    {
-        if (interceptOnlyThisDLL)
-            return false;
-        continue; // try the next DLL
-    }
+        return false;
 
-    // If function A is an alias for function B, then we *only* want to intercept B. Otherwise, the interceptions
-    // are at risk of clobbering each other.
-    for (const auto& aliasPair : potential_aliases)
-    {
-      if (!_strcmp(func_name, aliasPair.alias) &&
-           func_addr == InternalGetProcAddress(DLLs[i].data, aliasPair.alias_target))
-      {
-          // For this DLL, they are indeed aliases, so don't actually intercept the alias.
-          // Treat the interception attempt as successful though, since the alias target's interception is what matters.
-          if (interceptOnlyThisDLL)
-              return true;
-          interceptedForAtLeastOneDLL = true;
-          continue;
-      }
-    }
-
-    bool functionWasIntercepted = OverrideFunction(func_addr, new_func, orig_old_func, DLLs[i].guaranteed_hotpatchable);
-    if (interceptOnlyThisDLL)
-    {
-        return functionWasIntercepted;
-    }
-    interceptedForAtLeastOneDLL |= functionWasIntercepted;
-  }
-
-  // If we are passed a dllName, we will exit in the loop above if the DLL is found.
-  // So if a dllName was passed in and we reached this point, that means that the DLL was not found.
-  if (dllName)
-      return !failIfDllNotFound;
-
-  // Otherwise, all that matters is that at least one DLL had func_name successfully intercepted.
-  return interceptedForAtLeastOneDLL;
+    return OverrideFunction(func_addr, new_func, orig_old_func, dll_info[dll].guaranteed_hotpatchable);
 }
 
-bool OverrideImportedFunction(const char *module_to_patch,
-                              const char *imported_module,
-                              const char *function_name, uptr new_function,
-                              uptr *orig_old_func) {
-  HMODULE module = GetModuleHandleA(module_to_patch);
-  if (!module)
-    return false;
+bool OverrideFunction(const char *func_name, uptr new_func, uptr *orig_old_func) {
 
-  // Check that the module header is full and present.
-  RVAPtr<IMAGE_DOS_HEADER> dos_stub(module, 0);
-  RVAPtr<IMAGE_NT_HEADERS> headers(module, dos_stub->e_lfanew);
-  if (!module || dos_stub->e_magic != IMAGE_DOS_SIGNATURE ||  // "MZ"
-      headers->Signature != IMAGE_NT_SIGNATURE ||             // "PE\0\0"
-      headers->FileHeader.SizeOfOptionalHeader <
-          sizeof(IMAGE_OPTIONAL_HEADER)) {
-    return false;
+  bool interceptedForAtLeastOneDLL = false;
+  for (int i = 0; i < DLL_COUNT; ++i)
+  {
+      if (OverrideFunctionForDLL(func_name, new_func, orig_old_func, static_cast<DLL>(i), /* failIfDllNotFound */ false))
+        interceptedForAtLeastOneDLL = true;
   }
-
-  IMAGE_DATA_DIRECTORY *import_directory =
-      &headers->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
-
-  // Iterate the list of imported DLLs. FirstThunk will be null for the last
-  // entry.
-  RVAPtr<IMAGE_IMPORT_DESCRIPTOR> imports(module,
-                                          import_directory->VirtualAddress);
-  for (; imports->FirstThunk != 0; ++imports) {
-    RVAPtr<const char> modname(module, imports->Name);
-    if (_stricmp(&*modname, imported_module) == 0)
-      break;
-  }
-  if (imports->FirstThunk == 0)
-    return false;
-
-  // We have two parallel arrays: the import address table (IAT) and the table
-  // of names. They start out containing the same data, but the loader rewrites
-  // the IAT to hold imported addresses and leaves the name table in
-  // OriginalFirstThunk alone.
-  RVAPtr<IMAGE_THUNK_DATA> name_table(module, imports->OriginalFirstThunk);
-  RVAPtr<IMAGE_THUNK_DATA> iat(module, imports->FirstThunk);
-  for (; name_table->u1.Ordinal != 0; ++name_table, ++iat) {
-    if (!IMAGE_SNAP_BY_ORDINAL(name_table->u1.Ordinal)) {
-      RVAPtr<IMAGE_IMPORT_BY_NAME> import_by_name(
-          module, name_table->u1.ForwarderString);
-      const char *funcname = &import_by_name->Name[0];
-      if (strcmp(funcname, function_name) == 0)
-        break;
-    }
-  }
-  if (name_table->u1.Ordinal == 0)
-    return false;
-
-  // Now we have the correct IAT entry. Do the swap. We have to make the page
-  // read/write first.
-  if (orig_old_func)
-    *orig_old_func = iat->u1.AddressOfData;
-  DWORD old_prot, unused_prot;
-  if (!__sanitizer_virtual_protect(&iat->u1.AddressOfData, 4,
-                                   PAGE_EXECUTE_READWRITE, &old_prot))
-    return false;
-  iat->u1.AddressOfData = new_function;
-  if (!__sanitizer_virtual_protect(&iat->u1.AddressOfData, 4, old_prot,
-                                   &unused_prot))
-    return false;  // Not clear if this failure bothers us.
-  return true;
+  return interceptedForAtLeastOneDLL;
 }
 
 }  // namespace __interception

@@ -756,12 +756,14 @@ static bool IsDebugRuntimePresent() {
   bool found_dbgrt = false;
 
   if (atomic_load_relaxed(&debug_runtime_present) == dbgrt_status_unknown) {
-    static const char *const debug_runtimes[] = {
-        "msvcr100d.dll", "msvcr110d.dll", "msvcr120d.dll", "vcruntime140d.dll",
-        "ucrtbased.dll"};
+    static const DLL debug_runtimes[] = {MSVCR100D,
+                                         MSVCR110D,
+                                         MSVCR120D,
+                                         VCRUNTIME140D,
+                                         UCRTBASED};
 
-    for (const char *const runtime : debug_runtimes) {
-      if (GetModuleHandleA(runtime)) {
+    for (auto runtime : debug_runtimes) {
+      if (GetModuleHandleA(dll_info[runtime].name)) {
         found_dbgrt = true;
         break;
       }

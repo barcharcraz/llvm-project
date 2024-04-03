@@ -20,28 +20,32 @@
 #ifndef INTERCEPTION_WIN_H
 #define INTERCEPTION_WIN_H
 
+#include "sanitizer_common/sanitizer_common.h"
+
 namespace __interception {
-// All the functions in the OverrideFunction() family return true on success,
-// false on failure (including "couldn't find the function").
+// All the functions in the OverrideFunction() family return true on success, false on failure (including "couldn't find the function").
+// They take info about the function to intercept, including optionally its REAL address `orig_old_func`.
+//   If the REAL address is not null, then it will be updated to point to the function's new address post-interception.
+// Note: if a function's address was already intercepted it will *not* be re-intercepted, but the REAL address will still be updated as per-above. 
+//       This scenario could occur if function `bar` aliases function `foo`: if `foo` is intercepted first, `bar` won't be intercepted, 
+//       but `REAL(bar) = REAL(foo)`. In these cases, `foo` should be intercepted *first* so that `REAL(foo)` is available.
 
-// Overrides a function by its address.
-bool OverrideFunction(uptr old_func, uptr new_func, uptr *orig_old_func = 0,
-                      bool guaranteed_hotpatchable = false);
+// These overloads are for intercepting functions in a specific DLL.
+// If `failIfDllNotFound` is false, then we will return true if the DLL is not found.
+bool OverrideFunctionForDLL(const char *func_name, uptr new_func, uptr *orig_old_func,
+                            DLL dll, bool failIfDllNotFound);
 
-// Overrides a function in a system DLL or DLL CRT by its exported name.
-bool OverrideFunction(const char *name, uptr new_func, uptr *orig_old_func = 0,
-                      const char *dll = nullptr, bool failIfDllNotFound = true);
+// These overloads are for intercepting functions for *all* available DLLs.
+// If `orig_old_func` is not null, then the real address will be updated to point to the 
+// function's new address post-interception inside the *last-intercepted DLL* (VSO 1943589: this is not good, and ideally all interception
+// would use the per-DLL overload above).
+bool OverrideFunction(const char *func_name, uptr new_func, uptr *orig_old_func);
+
+// This interface does not do any DLL lookup but rather overrides a function directly by its address.
+bool OverrideFunction(uptr old_func, uptr new_func, uptr *orig_old_func, bool guaranteed_hotpatchable = false);
 
 // Windows-only replacement for GetProcAddress. Useful for some sanitizers.
 uptr InternalGetProcAddress(void *module, const char *func_name);
-
-// Overrides a function only when it is called from a specific DLL. For example,
-// this is used to override calls to HeapAlloc/HeapFree from ucrtbase without
-// affecting other third party libraries.
-bool OverrideImportedFunction(const char *module_to_patch,
-                              const char *imported_module,
-                              const char *function_name, uptr new_function,
-                              uptr *orig_old_func);
 
 // Sets a callback to be used for reporting errors by interception_win. The
 // callback will be called with printf-like arguments. Intended to be used with
@@ -74,11 +78,6 @@ void TestOnlyReleaseTrampolineRegions();
 
 #define INTERCEPT_FUNCTION_VER_WIN(func, symver) \
       INTERCEPT_FUNCTION_WIN(func)
-
-#define INTERCEPT_FUNCTION_DLLIMPORT(user_dll, provider_dll, func)       \
-      ::__interception::OverrideImportedFunction(                            \
-          user_dll, provider_dll, #func, (::__interception::uptr)WRAP(func), \
-          (::__interception::uptr *)&REAL(func))
 
 #endif  // INTERCEPTION_WIN_H
 #endif    // SANITIZER_WINDOWS

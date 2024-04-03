@@ -2029,7 +2029,7 @@ AllocationOwnershipStatus CheckGlobalLocalHeapOwnership(
    */
 
   // Check whether this pointer belongs to the memory manager first.
-  if (__asan_win_moveable::IsOwned(hMem) || hMem == nullptr) {
+  if (hMem == nullptr || __asan_win_moveable::IsOwned(hMem)) {
     return AllocationOwnershipStatus::OWNED_BY_ASAN;
   }
 
@@ -2322,7 +2322,7 @@ HANDLE GlobalLocalGenericFree(HANDLE hMem,
   // avoid tracking which fixed allocations were already freed since RtlFreeHeap
   // will handle double-free detection.
   auto globalLocalFunctions = GlobalLocalFunctions<Caller>{};
-  if (__asan_win_moveable::IsOwned(hMem) || hMem == nullptr) {
+  if (hMem == nullptr || __asan_win_moveable::IsOwned(hMem)) {
     return __asan_win_moveable::Free(hMem, stack);
   }
 
@@ -2388,7 +2388,7 @@ namespace __asan {
 static void TryToOverrideFunction(const char *fname, uptr new_func) {
   // Failure here is not fatal. The CRT may not be present, and different CRT
   // versions use different symbols.
-  if (!__interception::OverrideFunction(fname, new_func))
+  if (!__interception::OverrideFunction(fname, new_func, /* orig_old_func */ nullptr))
     VPrintf(2, "Failed to override function %s\n", fname);
 }
 

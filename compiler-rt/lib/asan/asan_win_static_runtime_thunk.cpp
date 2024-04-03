@@ -21,6 +21,7 @@
 #include "sanitizer_common/sanitizer_platform_interceptors.h"
 #include "sanitizer_common/sanitizer_win_defs.h"
 #include "sanitizer_common/sanitizer_win_thunk_interception.h"
+#include "sanitizer_common/sanitizer_common.h"
 
 #if defined(_MSC_VER) && !defined(__clang__)
 // Disable warnings such as: 'void memchr(void)': incorrect number of arguments
@@ -30,31 +31,24 @@
 #endif
 
 
-////
-// Note: If a function has a dedicated static interceptor, it will get the `_static` suffix.
-
 #define INTERCEPT_LIBRARY_FUNCTION_ASAN(X) \
   INTERCEPT_LIBRARY_FUNCTION(X, "__asan_wrap_" #X)
+// If a function has a unique interceptor for its static export, it has the `_static` suffix.
 #define INTERCEPT_LIBRARY_FUNCTION_ASAN_STATIC_INTERCEPTOR(X) \
   INTERCEPT_LIBRARY_FUNCTION(X, "__asan_wrap_" #X "_static")
 
-// Intercept `alias`, accounting for the fact that it could potentially be an alias for `alias_target`
-#define INTERCEPT_ALIASING_LIBRARY_FUNCTION_ASAN_STATIC_INTERCEPTOR(alias, alias_target) \
-  INTERCEPT_ALIASING_LIBRARY_FUNCTION(alias, alias_target, "__asan_wrap_" #alias "_static")
-
-INTERCEPT_ALIASING_LIBRARY_FUNCTION_ASAN_STATIC_INTERCEPTOR(atoi, atol);
 INTERCEPT_LIBRARY_FUNCTION_ASAN_STATIC_INTERCEPTOR(atol);
+// note: atoi may be an alias for atol for some DLLs / platforms, so it should go after atol
+INTERCEPT_LIBRARY_FUNCTION_ASAN_STATIC_INTERCEPTOR(atoi); 
 INTERCEPT_LIBRARY_FUNCTION_ASAN(frexp);
 INTERCEPT_LIBRARY_FUNCTION_ASAN(longjmp);
 #if SANITIZER_INTERCEPT_MEMCHR
 INTERCEPT_LIBRARY_FUNCTION_ASAN(memchr);
 #endif
 INTERCEPT_LIBRARY_FUNCTION_ASAN(memcmp);
-INTERCEPT_LIBRARY_FUNCTION_ASAN(memcpy);
-#ifndef _WIN64
-// memmove and memcpy share an implementation on amd64
 INTERCEPT_LIBRARY_FUNCTION_ASAN(memmove);
-#endif
+// note: memcpy may be an alias for memmove for some DLLs / platforms, so it should go after memmove
+INTERCEPT_LIBRARY_FUNCTION_ASAN(memcpy);
 INTERCEPT_LIBRARY_FUNCTION_ASAN(memset);
 INTERCEPT_LIBRARY_FUNCTION_ASAN(strcat);
 INTERCEPT_LIBRARY_FUNCTION_ASAN(strchr);

@@ -28,6 +28,50 @@ extern "C" void _ReadWriteBarrier();
 
 namespace __sanitizer {
 
+#ifdef SANITIZER_WINDOWS
+enum DLL {
+  // Note: Interception follows this order
+  KERNEL32,               // VS2010
+  MSVCR100D,              // VS2012
+  MSVCR110D,              // VS2013
+  MSVCR120D,              // VS2015
+  VCRUNTIME140D,          // Universal CRT
+  UCRTBASED,              // VS2010
+  MSVCR100,               // VS2012
+  MSVCR110,               // VS2013
+  MSVCR120,               // VS2015
+  VCRUNTIME140,           // Universal CRT
+  UCRTBASE,
+  // KernelBase for GlobalAlloc and LocalAlloc (dynamic)
+  KERNELBASE,
+  // NTDLL should go last as it exports some functions that we should
+  // override in the CRT [presumably only used internally].
+  NTDLL,
+  DLL_COUNT
+};
+
+// IMPORTANT: keep this array ordered as per the DLL enum above.
+inline constexpr struct { const char* name; bool guaranteed_hotpatchable; } dll_info[] = {
+  {"kernel32.dll", SANITIZER_WINDOWS64},
+  {"msvcr100d.dll", false},                // VS2010
+  {"msvcr110d.dll", false},                // VS2012
+  {"msvcr120d.dll", false},                // VS2013
+  {"vcruntime140d.dll", false},            // VS2015
+  {"ucrtbased.dll", SANITIZER_WINDOWS64},  // Universal CRT
+  {"msvcr100.dll", false},                 // VS2010
+  {"msvcr110.dll", false},                 // VS2012
+  {"msvcr120.dll", false},                 // VS2013
+  {"vcruntime140.dll", false},             // VS2015
+  {"ucrtbase.dll", SANITIZER_WINDOWS64},   // Universal CRT
+  // KernelBase for GlobalAlloc and LocalAlloc (dynamic)
+  {"KERNELBASE.dll", SANITIZER_WINDOWS64},
+  // NTDLL should go last as it exports some functions that we should
+  // override in the CRT [presumably only used internally].
+  {"ntdll.dll", SANITIZER_WINDOWS64}};
+
+static_assert(ARRAY_SIZE(dll_info) == DLL_COUNT);
+#endif
+
 struct AddressInfo;
 struct BufferedStackTrace;
 struct SignalContext;
