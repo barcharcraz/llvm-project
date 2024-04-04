@@ -15,11 +15,11 @@
 // badGlobal is accessed improperly, but we ignorelisted it. Align
 // it to make sure memory past the end of badGlobal will be in
 // the same page.
-// XFAIL: msvc-host
 
+// XFAIL: MSVC
 #include "defines.h"
-
-ATTRIBUTE_ALIGNED(16) int badGlobal;int readBadGlobal() {
+ATTRIBUTE_ALIGNED(16) int badGlobal;
+int readBadGlobal() {
   return (&badGlobal)[1];
 }
 

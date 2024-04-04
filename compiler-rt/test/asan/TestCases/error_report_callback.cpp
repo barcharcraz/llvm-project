@@ -1,6 +1,7 @@
 // RUN: %clangxx_asan -O0 %s -o %t
 // RUN: not %run %t 0 2>&1 | FileCheck %s
 
+#include "defines.h"
 #include <sanitizer/asan_interface.h>
 #include <stdio.h>
 #include "defines.h"

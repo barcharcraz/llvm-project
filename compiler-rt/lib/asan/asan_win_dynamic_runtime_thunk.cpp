@@ -14,11 +14,11 @@
 //===----------------------------------------------------------------------===//
 
 #ifdef SANITIZER_DYNAMIC_RUNTIME_THUNK
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
+#  define WIN32_LEAN_AND_MEAN
+#  include <windows.h>
 
-#include "asan_win_common_runtime_thunk.h"
-#include "sanitizer_common/sanitizer_win_defs.h"
+#  include "asan_win_common_runtime_thunk.h"
+#  include "sanitizer_common/sanitizer_win_defs.h"
 
 ////////////////////////////////////////////////////////////////////////////////
 // For some reason, the MD CRT doesn't call the C/C++ terminators during on DLL
@@ -49,6 +49,6 @@ int ScheduleUnregisterGlobals() { return atexit(UnregisterGlobals); }
 // dtors for C++ globals.
 extern "C" __declspec(allocate(".CRT$XID")) int (
     *__asan_schedule_unregister_globals)() = ScheduleUnregisterGlobals;
-WIN_FORCE_LINK(__asan_schedule_unregister_globals);
+WIN_FORCE_LINK(__asan_schedule_unregister_globals)
 
 #endif  // SANITIZER_DYNAMIC_RUNTIME_THUNK

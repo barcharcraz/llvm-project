@@ -1,4 +1,5 @@
-// RUN: %clangxx_asan -O %s -o %t && %run %t
+// RUN: %clangxx_asan -fsanitize-address-use-after-return=never -O %s -o %t && %run %t
+
 #include "defines.h"
 #include <assert.h>
 #include <sanitizer/asan_interface.h>

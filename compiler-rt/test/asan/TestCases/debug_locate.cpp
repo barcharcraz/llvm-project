@@ -1,5 +1,4 @@
-// UNSUPPORTED: msvc-host
-// Tracked by vso1226261, ( GeneralTestSuite_amd64chk_MD.txt GeneralTestSuite_amd64chk_MT.txt GeneralTestSuite_x86chk_MD.txt GeneralTestSuite_x86chk_MT.txt )
+// UNSUPPORTED: MSVC
 // Checks the ASan memory address type debugging API, makes sure it returns
 // the correct memory type for heap, stack, global and shadow addresses and
 // that it correctly finds out which region (and name and size) the address

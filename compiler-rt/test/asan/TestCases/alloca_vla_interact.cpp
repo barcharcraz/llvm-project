@@ -4,9 +4,8 @@
 // REQUIRES: stable-runtime
 
 // This testcase checks correct interaction between VLAs and allocas.
-// UNSUPPORTED: msvc-host
-#include "defines.h"
-#include "sanitizer/asan_interface.h"
+// UNSUPPORTED: MSVC
+
 #include <assert.h>
 #include <stdint.h>
 #include <stdlib.h>

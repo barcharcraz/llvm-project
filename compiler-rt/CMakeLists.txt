@@ -376,8 +376,12 @@ if("${COMPILER_RT_DEFAULT_TARGET_ARCH}" MATCHES "s390x")
 endif()
 
 if(MSVC)
-  # FIXME: In fact, sanitizers should support both /MT and /MD, see PR20214.
-  set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreaded)
+
+  # asan on windows only supports the release dll version of the runtimes, in the interest of
+  # only having one asan dll to support/test. Having asan statically linked
+  # with the runtime might be possible, but it multiplies the number of scenerios to test.
+  # the program USING sanitizers can use whatever version of the runtime it wants to.
+  set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreadedDLL)
 
   # Remove any /M[DT][d] flags, and strip any definitions of _DEBUG.
   # Since we're using CMAKE_MSVC_RUNTIME_LIBRARY (CMP0091 set to NEW),
@@ -708,7 +712,10 @@ if(MSVC OR (LINUX AND DEFINED USING_GCC_TOOLSET_12 AND
   # deprecated declarations in gcc-toolset-12 used in Google Tests have been
   # observed to be _GLIBCXX17_DEPRECATED and should go away once
   # CMAKE_CXX_STANDARD is greater than 17.
-  list(APPEND COMPILER_RT_GTEST_CFLAGS -Wno-deprecated-declarations)
+  if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    # above excludes "real" msvc, but not clang-cl
+    list(APPEND COMPILER_RT_GTEST_CFLAGS -Wno-deprecated-declarations)
+  endif()
 endif()
 
 # Warnings to turn off for all libraries, not just sanitizers.

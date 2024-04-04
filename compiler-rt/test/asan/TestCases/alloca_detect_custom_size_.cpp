@@ -7,6 +7,9 @@
 #include "defines.h"
 #include <assert.h>
 #include <stdint.h>
+#if defined(_MSC_VER) && !defined(__clang__)
+#include <malloc.h>
+#endif
 
 struct A {
   char a[3];
@@ -14,11 +17,10 @@ struct A {
 };
 
 ATTRIBUTE_NOINLINE void foo(int index, int len) {
-  ATTRIBUTE_ALIGNED(32)
-#ifdef MSVC
-  volatile struct A *str = (volatile struct A *)_alloca(len * sizeof(struct A));
+#if !defined(_MSC_VER) || defined(__clang__)
+  volatile struct A str[len] ATTRIBUTE_ALIGNED(32);
 #else
-  volatile struct A str[len] __attribute__((aligned(32)));
+  volatile struct A *str = (volatile struct A*)_alloca(len * sizeof(struct A));
 #endif
   assert(!(reinterpret_cast<uintptr_t>(str) & 31L));
   str[index].a[0] = '1'; // BOOM

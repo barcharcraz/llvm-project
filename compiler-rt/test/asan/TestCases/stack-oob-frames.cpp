@@ -3,9 +3,7 @@
 // RUN: not %run %t 1 2>&1 | FileCheck %s --check-prefix=CHECK1
 // RUN: not %run %t 2 2>&1 | FileCheck %s --check-prefix=CHECK2
 // RUN: not %run %t 3 2>&1 | FileCheck %s --check-prefix=CHECK3
-// UNSUPPORTED: msvc-host
-// this test assumes some things about how optimizations are applied that don't translate to msvc
-#include "defines.h"
+// UNSUPPORTED: MSVC
 
 inline void break_optimization(void *arg) {
   ASM_CAUSE_SIDE_EFFECT(arg);

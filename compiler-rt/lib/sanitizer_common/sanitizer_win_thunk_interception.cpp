@@ -19,7 +19,7 @@
 
 #if defined(SANITIZER_STATIC_RUNTIME_THUNK) || \
     defined(SANITIZER_DYNAMIC_RUNTIME_THUNK)
-#include "sanitizer_win_thunk_interception.h"
+#  include "sanitizer_win_thunk_interception.h"
 
 extern "C" void abort();
 
@@ -51,24 +51,24 @@ void initialize_thunks(const sanitizer_thunk *first,
 }
 }  // namespace __sanitizer
 
-#define INTERFACE_FUNCTION(Name)
-#define INTERFACE_WEAK_FUNCTION(Name) REGISTER_WEAK_FUNCTION(Name)
-#include "sanitizer_common_interface.inc"
+#  define INTERFACE_FUNCTION(Name)
+#  define INTERFACE_WEAK_FUNCTION(Name) REGISTER_WEAK_FUNCTION(Name)
+#  include "sanitizer_common_interface.inc"
 
-#pragma section(".INTR$A", read)  // intercept begin
-#pragma section(".INTR$Z", read)  // intercept end
-#pragma section(".WEAK$A", read)  // weak begin
-#pragma section(".WEAK$Z", read)  // weak end
+#  pragma section(".INTR$A", read)  // intercept begin
+#  pragma section(".INTR$Z", read)  // intercept end
+#  pragma section(".WEAK$A", read)  // weak begin
+#  pragma section(".WEAK$Z", read)  // weak end
 
 extern "C" {
-__declspec(allocate(".INTR$A"))
-    sanitizer_thunk __sanitizer_intercept_thunk_begin;
+__declspec(allocate(
+    ".INTR$A")) sanitizer_thunk __sanitizer_intercept_thunk_begin;
 __declspec(allocate(".INTR$Z")) sanitizer_thunk __sanitizer_intercept_thunk_end;
 
-__declspec(allocate(".WEAK$A"))
-    sanitizer_thunk __sanitizer_register_weak_thunk_begin;
-__declspec(allocate(".WEAK$Z"))
-    sanitizer_thunk __sanitizer_register_weak_thunk_end;
+__declspec(allocate(
+    ".WEAK$A")) sanitizer_thunk __sanitizer_register_weak_thunk_begin;
+__declspec(allocate(
+    ".WEAK$Z")) sanitizer_thunk __sanitizer_register_weak_thunk_end;
 }
 
 extern "C" int __sanitizer_thunk_init() {
@@ -91,7 +91,7 @@ extern "C" int __sanitizer_thunk_init() {
 
 // We want to call dll_thunk_init before C/C++ initializers / constructors are
 // executed, otherwise functions like memset might be invoked.
-#pragma section(".CRT$XIB", long, read)
+#  pragma section(".CRT$XIB", long, read)
 __declspec(allocate(".CRT$XIB")) int (*__sanitizer_thunk_init_ptr)() =
     __sanitizer_thunk_init;
 
@@ -101,7 +101,7 @@ static void WINAPI sanitizer_thunk_thread_init(void *mod, unsigned long reason,
     __sanitizer_thunk_init();
 }
 
-#pragma section(".CRT$XLAB", long, read)
+#  pragma section(".CRT$XLAB", long, read)
 __declspec(allocate(".CRT$XLAB")) void(
     WINAPI *__sanitizer_thunk_thread_init_ptr)(void *, unsigned long, void *) =
     sanitizer_thunk_thread_init;

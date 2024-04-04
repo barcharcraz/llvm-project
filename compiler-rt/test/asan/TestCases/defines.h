@@ -1,6 +1,6 @@
 #pragma once
 
-#if defined(MSVC)
+#if defined(_MSC_VER) && !defined(__clang__)
 #include <intrin.h>
 
 #define ATTRIBUTE_NOINLINE __declspec(noinline)

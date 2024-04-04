@@ -2,6 +2,8 @@
 // RUN: not %run %t 2>&1 | FileCheck %s
 // UNSUPPORTED: msvc-host
 // REQUIRES: stable-runtime
+// UNSUPPORTED: MSVC
+
 #include "defines.h"
 #include <assert.h>
 #include <stdint.h>

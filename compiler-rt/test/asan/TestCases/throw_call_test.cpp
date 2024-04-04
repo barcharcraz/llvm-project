@@ -2,10 +2,9 @@
 // RUN: %clangxx_asan %s -o %t && %run %t
 // http://code.google.com/p/address-sanitizer/issues/detail?id=147 (not fixed).
 // BROKEN: %clangxx_asan %s -o %t -static-libstdc++ && %run %t
-// REQUIRES: !(msvc-host && asan-64-bits)
+// UNSUPPORTED: MSVC
 
 #include "defines.h"
-
 #include <stdio.h>
 static volatile int zero = 0;
 inline void pretend_to_do_something(void *x) {

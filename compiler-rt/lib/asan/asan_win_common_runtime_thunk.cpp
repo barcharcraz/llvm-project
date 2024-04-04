@@ -22,19 +22,19 @@
 
 #if defined(SANITIZER_DYNAMIC_RUNTIME_THUNK) || \
     defined(SANITIZER_STATIC_RUNTIME_THUNK)
-#define SANITIZER_IMPORT_INTERFACE 1
-#define WIN32_LEAN_AND_MEAN
-#include "asan_win_common_runtime_thunk.h"
+#  define SANITIZER_IMPORT_INTERFACE 1
+#  define WIN32_LEAN_AND_MEAN
+#  include "asan_win_common_runtime_thunk.h"
 
-#include <windows.h>
+#  include <windows.h>
 
-#include "sanitizer_common/sanitizer_win_defs.h"
-#include "sanitizer_common/sanitizer_win_thunk_interception.h"
+#  include "sanitizer_common/sanitizer_win_defs.h"
+#  include "sanitizer_common/sanitizer_win_thunk_interception.h"
 
 // Define weak alias for all weak functions imported from asan dll.
-#define INTERFACE_FUNCTION(Name)
-#define INTERFACE_WEAK_FUNCTION(Name) REGISTER_WEAK_FUNCTION(Name)
-#include "asan_interface.inc"
+#  define INTERFACE_FUNCTION(Name)
+#  define INTERFACE_WEAK_FUNCTION(Name) REGISTER_WEAK_FUNCTION(Name)
+#  include "asan_interface.inc"
 
 ////////////////////////////////////////////////////////////////////////////////
 // Define a copy of __asan_option_detect_stack_use_after_return that should be
@@ -66,9 +66,9 @@ static void __asan_initialize_cloned_variables() {
 static int asan_thunk_init() {
   __asan_initialize_cloned_variables();
 
-#ifdef SANITIZER_STATIC_RUNTIME_THUNK
+#  ifdef SANITIZER_STATIC_RUNTIME_THUNK
   __asan_initialize_static_thunk();
-#endif
+#  endif
 
   return 0;
 }

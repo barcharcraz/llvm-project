@@ -6,6 +6,7 @@
 // REQUIRES: stable-runtime
 
 // This testcase checks that allocas and VLAs inside loop are correctly unpoisoned.
+// UNSUPPORTED: MSVC
 
 #include "defines.h"
 #include "sanitizer/asan_interface.h"

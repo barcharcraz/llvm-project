@@ -4,7 +4,7 @@
 // RUN: %env_asan_opts=coverage=1 %run ./test.exe
 //
 // RUN: %sancov print *.sancov | FileCheck %s
-// XFAIL: msvc-host
+// XFAIL: MSVC
 
 #include <stdio.h>
 

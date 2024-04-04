@@ -15,13 +15,15 @@
 
 #include "sanitizer_platform.h"
 #if SANITIZER_WINDOWS
-#include "interception/interception.h"
-#include "sanitizer_addrhashmap.h"
-#include "sanitizer_common.h"
-#include "sanitizer_internal_defs.h"
-#include "sanitizer_placement_new.h"
-#include "sanitizer_win_immortalize.h"
-#include "sanitizer_win_interception.h"
+#  include <stddef.h>
+
+#  include "interception/interception.h"
+#  include "sanitizer_addrhashmap.h"
+#  include "sanitizer_common.h"
+#  include "sanitizer_internal_defs.h"
+#  include "sanitizer_placement_new.h"
+#  include "sanitizer_win_immortalize.h"
+#  include "sanitizer_win_interception.h"
 
 using namespace __sanitizer;
 
@@ -78,7 +80,7 @@ static void RunWeakFunctionCallbacks(uptr export_address) {
   WeakCallbackList *list = *h_find;
   do {
     list->callback();
-  } while (list = list->next);
+  } while ((list = list->next));
 }
 
 }  // namespace __sanitizer
@@ -146,9 +148,10 @@ extern "C" __declspec(dllexport) bool __cdecl __sanitizer_override_function(
   return function_overridden;
 }
 
-extern "C" __declspec(dllexport) bool __cdecl __sanitizer_override_function_by_addr(
-    const uptr source_function, const uptr target_function,
-    uptr *const old_target_function) {
+extern "C"
+    __declspec(dllexport) bool __cdecl __sanitizer_override_function_by_addr(
+        const uptr source_function, const uptr target_function,
+        uptr *const old_target_function) {
   CHECK(source_function);
   CHECK(target_function);
 
@@ -165,9 +168,10 @@ extern "C" __declspec(dllexport) bool __cdecl __sanitizer_override_function_by_a
   return function_overridden;
 }
 
-extern "C" __declspec(dllexport) bool __cdecl __sanitizer_register_weak_function(
-    const char *export_name, const uptr user_function,
-    uptr *const old_user_function) {
+extern "C"
+    __declspec(dllexport) bool __cdecl __sanitizer_register_weak_function(
+        const char *export_name, const uptr user_function,
+        uptr *const old_user_function) {
   CHECK(export_name);
   CHECK(user_function);
 

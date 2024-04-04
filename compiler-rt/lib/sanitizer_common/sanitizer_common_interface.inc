@@ -55,3 +55,9 @@ INTERFACE_FUNCTION(__sanitizer_register_weak_function)
 INTERFACE_FUNCTION(__sanitizer_internal_memcpy)
 INTERFACE_FUNCTION(__sanitizer_internal_memmove)
 INTERFACE_FUNCTION(__sanitizer_internal_memset)
+
+#if SANITIZER_WINDOWS
+INTERFACE_FUNCTION(__sanitizer_override_function)
+INTERFACE_FUNCTION(__sanitizer_override_function_by_addr)
+INTERFACE_FUNCTION(__sanitizer_register_weak_function)
+#endif

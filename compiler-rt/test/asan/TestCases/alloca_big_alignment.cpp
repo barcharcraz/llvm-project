@@ -1,7 +1,9 @@
 // RUN: %clangxx_asan -O0 -mllvm -asan-instrument-dynamic-allocas %s -o %t
 // RUN: not %run %t 2>&1 | FileCheck %s
 //
-// XFAIL: msvc-host
+// XFAIL: MSVC
+
+#include "defines.h"
 #include <assert.h>
 #include <stdint.h>
 #include "defines.h"

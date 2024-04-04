@@ -1,4 +1,7 @@
-// RUN: %clangxx_asan -O1 %s -o %t && not %run %t 2>&1 | FileCheck %s
+// RUN: %clangxx_asan %if MSVC %{ /Od %} %else %{ -O1 %} \
+// RUN:     %s -o %t && not %run %t 2>&1 | FileCheck %s
+
+#include "defines.h"
 
 #include "defines.h"
 struct IntHolder {

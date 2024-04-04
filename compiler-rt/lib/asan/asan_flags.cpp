@@ -226,55 +226,50 @@ void InitializeFlags() {
   // __asan_default_options, so we add a callback to be run
   // when it is registered with the runtime.
 
-  // There is theoretically time between the initial ProcessFlags and registering the
-  // weak callback where a weak function could be added and we would miss it, but
-  // in practice, InitializeFlags will always happen under the loader lock (if built as a DLL)
-  // and so will any calls to __sanitizer_register_weak_function.
+  // There is theoretically time between the initial ProcessFlags and
+  // registering the weak callback where a weak function could be added and we
+  // would miss it, but in practice, InitializeFlags will always happen under
+  // the loader lock (if built as a DLL) and so will any calls to
+  // __sanitizer_register_weak_function.
   AddRegisterWeakFunctionCallback(
-    reinterpret_cast<uptr>(__asan_default_options), []() {
-      FlagParser asan_parser;
+      reinterpret_cast<uptr>(__asan_default_options), []() {
+        FlagParser asan_parser;
 
-      RegisterAsanFlags(&asan_parser, flags());
-      RegisterCommonFlags(&asan_parser);
-      asan_parser.ParseString(__asan_default_options());
+        RegisterAsanFlags(&asan_parser, flags());
+        RegisterCommonFlags(&asan_parser);
+        asan_parser.ParseString(__asan_default_options());
 
-      DisplayHelpMessages(&asan_parser);
-      ProcessFlags();
+        DisplayHelpMessages(&asan_parser);
+        ProcessFlags();
+      });
 
-      // TODO: update other globals and data structures that may change after
-      // initialization due to these flags potentially changing
-      if (flags()->continue_on_error) {
-        __asan::InitializeCOE();
-      }
-    });
-
-#if CAN_SANITIZE_UB
+#  if CAN_SANITIZE_UB
   AddRegisterWeakFunctionCallback(
-    reinterpret_cast<uptr>(__ubsan_default_options), []() {
-      FlagParser ubsan_parser;
+      reinterpret_cast<uptr>(__ubsan_default_options), []() {
+        FlagParser ubsan_parser;
 
-      __ubsan::RegisterUbsanFlags(&ubsan_parser, __ubsan::flags());
-      RegisterCommonFlags(&ubsan_parser);
-      ubsan_parser.ParseString(__ubsan_default_options());
+        __ubsan::RegisterUbsanFlags(&ubsan_parser, __ubsan::flags());
+        RegisterCommonFlags(&ubsan_parser);
+        ubsan_parser.ParseString(__ubsan_default_options());
 
-      // To match normal behavior, do not print UBSan help.
-      ProcessFlags();
-    });
-#endif
+        // To match normal behavior, do not print UBSan help.
+        ProcessFlags();
+      });
+#  endif
 
-#if CAN_SANITIZE_LEAKS
+#  if CAN_SANITIZE_LEAKS
   AddRegisterWeakFunctionCallback(
-    reinterpret_cast<uptr>(__lsan_default_options), []() {
-      FlagParser lsan_parser;
+      reinterpret_cast<uptr>(__lsan_default_options), []() {
+        FlagParser lsan_parser;
 
-      __lsan::RegisterLsanFlags(&lsan_parser, __lsan::flags());
-      RegisterCommonFlags(&lsan_parser);
-      lsan_parser.ParseString(__lsan_default_options());
+        __lsan::RegisterLsanFlags(&lsan_parser, __lsan::flags());
+        RegisterCommonFlags(&lsan_parser);
+        lsan_parser.ParseString(__lsan_default_options());
 
-      // To match normal behavior, do not print LSan help.
-      ProcessFlags();
-    });
-#endif
+        // To match normal behavior, do not print LSan help.
+        ProcessFlags();
+      });
+#  endif
 
 #endif
 }

@@ -4,7 +4,7 @@
 // RUN: %clangxx_asan %s -o %t %linux_static_libstdcplusplus && %run %t
 #include "defines.h"
 // Investigate why it fails with NDK 21.
-// UNSUPPORTED: android
+// UNSUPPORTED: android, MSVC
 
 #include <stdio.h>
 static volatile int zero = 0;

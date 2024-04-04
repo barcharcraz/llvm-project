@@ -8,7 +8,8 @@
 // RUN:   %if target={{.*-windows-gnu}} %{ -Wl,--out-implib,%t2.lib %}
 // RUN: %clang_cl_asan %Od -DEXE %s %t1.lib %t2.lib %Fe%t
 // RUN: not %run %t 2>&1 | FileCheck %s
-#include "defines.h"
+
+#include "../defines.h"
 #include <malloc.h>
 #include <string.h>
 

@@ -12,28 +12,23 @@
 // infrastructure to create an object whose destructor is never called.
 //===----------------------------------------------------------------------===//
 #if SANITIZER_WINDOWS
-#pragma once
-// Requires including sanitizer_placement_new.h (which is not allowed to be included in headers).
+#  pragma once
+// Requires including sanitizer_placement_new.h (which is not allowed to be
+// included in headers).
 
-#include "sanitizer_win_defs.h"
+#  include "sanitizer_win_defs.h"
 // These types are required to satisfy XFG which requires that the names of the
 // types for indirect calls to be correct as well as the name of the original
 // type for any typedefs.
 
 // TODO: There must be a better way to do this
-#ifndef _WINDOWS_
+#  ifndef _WINDOWS_
 typedef void* PVOID;
 typedef int BOOL;
-typedef union _RTL_RUN_ONCE {
-  PVOID ptr;
-} INIT_ONCE, *PINIT_ONCE;
-
-extern "C" {
-__declspec(dllimport) int WINAPI
-    InitOnceExecuteOnce(PINIT_ONCE, BOOL(WINAPI*)(PINIT_ONCE, PVOID, PVOID*),
-                        void*, void*);
+__declspec(dllimport) int WINAPI InitOnceExecuteOnce(
+    PINIT_ONCE, BOOL(WINAPI*)(PINIT_ONCE, PVOID, PVOID*), void*, void*);
 }
-#endif
+#  endif
 
 namespace __sanitizer {
 template <class Ty>
