@@ -26,7 +26,7 @@ void empty_implementation() {
 void check_interception(const char *export_name) {
     // Specifically not checking this works when saving the function, since
     // that is not what happens during weak function registration.
-    if (!__sanitizer_register_weak_function(export_name, &empty_implementation)) {
+    if (!__sanitizer_register_weak_function(export_name, (void*)&empty_implementation)) {
         fprintf(stderr, "Unable to register weak function for '%s'\n", export_name);
         exit(1);
     }
