@@ -485,6 +485,9 @@ if (SANITIZER_NO_UNDEFINED_SYMBOLS)
   list(APPEND SANITIZER_COMMON_LINK_FLAGS -Wl,-z,defs)
 endif()
 
+# Imbue all binaries with ehcont
+append_list_if(MSVC /guard:ehcont SANITIZER_COMMON_CFLAGS)
+
 # TODO: COMPILER_RT_COMMON_CFLAGS and COMPILER_RT_COMMON_LINK_FLAGS are
 # intended for use in non-sanitizer runtimes such as libFuzzer, profile or XRay,
 # move these higher to include common flags, then derive SANITIZER_COMMON_CFLAGS
@@ -601,9 +604,6 @@ if (CMAKE_LINKER MATCHES "link.exe$")
   # the whole compiler-rt project.
   set(CMAKE_STATIC_LINKER_FLAGS "${CMAKE_STATIC_LINKER_FLAGS} /IGNORE:4221")
 endif()
-
-# Imbue all sanitizer binaries with ehcont
-append_list_if(MSVC /guard:ehcont SANITIZER_COMMON_CFLAGS)
 
 if (WIN32)
   if(MSVC)
