@@ -7,7 +7,8 @@
 // RUN: %clangxx_asan -O3 -xc %s -o %t && not %run %t 2>&1 | FileCheck %s
 
 // Unwind problem on arm: "main" is missing from the allocation stack trace.
-// REQUIRES: (arm-target-arch || armhf-target-arch), fast-unwinder-works
+// UNSUPPORTED: arm-target-arch, armhf-target-arch
+// REQUIRES: fast-unwinder-works
 
 #include <string.h>
 
