@@ -1,20 +1,20 @@
 // RUN: %clang_cl_asan /std:c++17 /EHsc -Od %s -Fe%t /link imagehlp.lib && not %run %t test1 2>&1 | FileCheck %s --check-prefix=CHECK1
 // RUN: %clang_cl_asan /std:c++17 /EHsc -Od %s -Fe%t /link imagehlp.lib && not %run %t test2 2>&1 | FileCheck %s --check-prefix=CHECK2
 // RUN: %clang_cl_asan /std:c++17 /EHsc -Od %s -Fe%t /link imagehlp.lib && not %run %t test3 2>&1 | FileCheck %s --check-prefix=CHECK3
-// RUN: %clang_cl_asan /std:c++17 /EHsc -Od %s -Fe%t /link imagehlp.lib && %env_asan_opts=iat_overwrite=ignore %run %t test1 2>&1 | FileCheck %s --check-prefix=CHECK4  --allow-empty
-// RUN: %clang_cl_asan /std:c++17 /EHsc -Od %s -Fe%t /link imagehlp.lib && %env_asan_opts=iat_overwrite=ignore %run %t test2 2>&1 | FileCheck %s --check-prefix=CHECK5
-// RUN: %clang_cl_asan /std:c++17 /EHsc -Od %s -Fe%t /link imagehlp.lib && %env_asan_opts=iat_overwrite=ignore %run %t test3 2>&1 | FileCheck %s --check-prefix=CHECK6
+// RUN: %clang_cl_asan /std:c++17 /EHsc -Od %s -Fe%t /link imagehlp.lib && %env_asan_opts=iat_overwrite=ignore not %run %t test1 2>&1 | FileCheck %s --check-prefix=CHECK4  --allow-empty
+// RUN: %clang_cl_asan /std:c++17 /EHsc -Od %s -Fe%t /link imagehlp.lib && %env_asan_opts=iat_overwrite=ignore not %run %t test2 2>&1 | FileCheck %s --check-prefix=CHECK5
+// RUN: %clang_cl_asan /std:c++17 /EHsc -Od %s -Fe%t /link imagehlp.lib && %env_asan_opts=iat_overwrite=ignore not %run %t test3 2>&1 | FileCheck %s --check-prefix=CHECK6
 // RUN: %clang_cl_asan /std:c++17 /EHsc -Od %s -Fe%t /link imagehlp.lib && %env_asan_opts=iat_overwrite=protect %run %t test1 2>&1 | FileCheck %s --check-prefix=CHECK7
 // RUN: %clang_cl_asan /std:c++17 /EHsc -Od %s -Fe%t /link imagehlp.lib && %env_asan_opts=iat_overwrite=protect %run %t test2 2>&1 | FileCheck %s --check-prefix=CHECK7
 // RUN: %clang_cl_asan /std:c++17 /EHsc -Od %s -Fe%t /link imagehlp.lib && %env_asan_opts=iat_overwrite=protect %run %t test3 2>&1 | FileCheck %s --check-prefix=CHECK7
 
 // Execute all tests when kernel32 isn't present
-// RUN: %clang_cl_asan /std:c++17 /DAPISET /EHsc -Od %s -Fe%t /link imagehlp.lib /NODEFAULTLIB:kernel32 /DEFAULTLIB:onecore_apiset.lib && %run %t test1 2>&1 | FileCheck %s --check-prefix=CHECK1
-// RUN: %clang_cl_asan /std:c++17 /DAPISET /EHsc -Od %s -Fe%t /link imagehlp.lib /NODEFAULTLIB:kernel32 /DEFAULTLIB:onecore_apiset.lib && %run %t test2 2>&1 | FileCheck %s --check-prefix=CHECK2
-// RUN: %clang_cl_asan /std:c++17 /DAPISET /EHsc -Od %s -Fe%t /link imagehlp.lib /NODEFAULTLIB:kernel32 /DEFAULTLIB:onecore_apiset.lib && %run %t test3 2>&1 | FileCheck %s --check-prefix=CHECK3
-// RUN: %clang_cl_asan /std:c++17 /DAPISET /EHsc -Od %s -Fe%t /link imagehlp.lib /NODEFAULTLIB:kernel32 /DEFAULTLIB:onecore_apiset.lib && %env_asan_opts=iat_overwrite=ignore %run %t test1 2>&1 | FileCheck %s --check-prefix=CHECK4  --allow-empty
-// RUN: %clang_cl_asan /std:c++17 /DAPISET /EHsc -Od %s -Fe%t /link imagehlp.lib /NODEFAULTLIB:kernel32 /DEFAULTLIB:onecore_apiset.lib && %env_asan_opts=iat_overwrite=ignore %run %t test2 2>&1 | FileCheck %s --check-prefix=CHECK5
-// RUN: %clang_cl_asan /std:c++17 /DAPISET /EHsc -Od %s -Fe%t /link imagehlp.lib /NODEFAULTLIB:kernel32 /DEFAULTLIB:onecore_apiset.lib && %env_asan_opts=iat_overwrite=ignore %run %t test3 2>&1 | FileCheck %s --check-prefix=CHECK6
+// RUN: %clang_cl_asan /std:c++17 /DAPISET /EHsc -Od %s -Fe%t /link imagehlp.lib /NODEFAULTLIB:kernel32 /DEFAULTLIB:onecore_apiset.lib && not %run %t test1 2>&1 | FileCheck %s --check-prefix=CHECK1
+// RUN: %clang_cl_asan /std:c++17 /DAPISET /EHsc -Od %s -Fe%t /link imagehlp.lib /NODEFAULTLIB:kernel32 /DEFAULTLIB:onecore_apiset.lib && not %run %t test2 2>&1 | FileCheck %s --check-prefix=CHECK2
+// RUN: %clang_cl_asan /std:c++17 /DAPISET /EHsc -Od %s -Fe%t /link imagehlp.lib /NODEFAULTLIB:kernel32 /DEFAULTLIB:onecore_apiset.lib && not %run %t test3 2>&1 | FileCheck %s --check-prefix=CHECK3
+// RUN: %clang_cl_asan /std:c++17 /DAPISET /EHsc -Od %s -Fe%t /link imagehlp.lib /NODEFAULTLIB:kernel32 /DEFAULTLIB:onecore_apiset.lib && not %env_asan_opts=iat_overwrite=ignore %run %t test1 2>&1 | FileCheck %s --check-prefix=CHECK4  --allow-empty
+// RUN: %clang_cl_asan /std:c++17 /DAPISET /EHsc -Od %s -Fe%t /link imagehlp.lib /NODEFAULTLIB:kernel32 /DEFAULTLIB:onecore_apiset.lib && not %env_asan_opts=iat_overwrite=ignore %run %t test2 2>&1 | FileCheck %s --check-prefix=CHECK5
+// RUN: %clang_cl_asan /std:c++17 /DAPISET /EHsc -Od %s -Fe%t /link imagehlp.lib /NODEFAULTLIB:kernel32 /DEFAULTLIB:onecore_apiset.lib && not %env_asan_opts=iat_overwrite=ignore %run %t test3 2>&1 | FileCheck %s --check-prefix=CHECK6
 // RUN: %clang_cl_asan /std:c++17 /DAPISET /EHsc -Od %s -Fe%t /link imagehlp.lib /NODEFAULTLIB:kernel32 /DEFAULTLIB:onecore_apiset.lib && %env_asan_opts=iat_overwrite=protect %run %t test1 2>&1 | FileCheck %s --check-prefix=CHECK7
 // RUN: %clang_cl_asan /std:c++17 /DAPISET /EHsc -Od %s -Fe%t /link imagehlp.lib /NODEFAULTLIB:kernel32 /DEFAULTLIB:onecore_apiset.lib && %env_asan_opts=iat_overwrite=protect %run %t test2 2>&1 | FileCheck %s --check-prefix=CHECK7
 // RUN: %clang_cl_asan /std:c++17 /DAPISET /EHsc -Od %s -Fe%t /link imagehlp.lib /NODEFAULTLIB:kernel32 /DEFAULTLIB:onecore_apiset.lib && %env_asan_opts=iat_overwrite=protect %run %t test3 2>&1 | FileCheck %s --check-prefix=CHECK7

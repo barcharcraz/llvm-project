@@ -23,8 +23,9 @@ int main(int argc, char **argv) {
   // CHECK: ERROR: AddressSanitizer: attempting double-free on [[ADDR:0x[0-9a-f]+]] in thread T0:
   // CHECK: [[ADDR]] is located {{[0-9]+}} bytes inside of {{[0-9]+}}-byte region [{{0x[0-9a-f]+}},{{0x[0-9a-f]+}})
   // CHECK: freed by thread T0 here:
+  // CHECK-NEXT: #0 {{.*}} in free
   // CHECK: previously allocated by thread T0 here:
-  // CHECK: SUMMARY: AddressSanitizer: double-free {{.*}} in free
+  // CHECK: SUMMARY: AddressSanitizer: double-free {{.*}} in main
   return res;
 }
 

@@ -6,11 +6,11 @@
 //
 // RUN: %clang_cl_asan -GS- -LD -Od %s -Fe%t.dll
 // RUN: %run %t %t.dll
-// XFAIL: msvc-host && asan-dynamic-runtime && asan-32-bits
+// XFAIL: MSVC && asan-dynamic-runtime && asan-32-bits
 #include <windows.h>
 #include <assert.h>
 #include <stdio.h>
-#include "../defines.h"
+#include "../../defines.h"
 
 // Should just "#include <sanitizer/asan_interface.h>" when C++ exceptions are
 // supported and we don't need to use CL.

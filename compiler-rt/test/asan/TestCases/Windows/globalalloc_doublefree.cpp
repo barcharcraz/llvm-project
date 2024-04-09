@@ -26,6 +26,6 @@ int main(){
 
 // CHECK: AddressSanitizer: attempting double-free on [[addr]] in thread T0:
 // CHECK: freed by thread T0 here
-// CHECK: __asan_wrap_[[TYPE]]Free
+// CHECK: [[TYPE]]Free
 // CHECK: previously allocated by thread T0 here
-// CHECK: __asan_wrap_[[TYPE]]Alloc
+// CHECK: [[TYPE]]Alloc

@@ -1,4 +1,4 @@
-// RUN: %ml /c /Fo%t_asm.obj %p/interception_failed_msg.asm
+// RUN: %clang-cl /c /Fo%t_asm.obj %p/interception_failed_msg.asm
 // RUN: %clang_cl -Od %s %t_asm.obj -Fe%t /link /INFERASANLIBS
 // RUN: not %run %t 2>&1 | FileCheck %s --check-prefix=CHECK-1
 // RUN: %clang_cl -Od %s %t_asm.obj -Fe%t /link /INFERASANLIBS:DEBUG

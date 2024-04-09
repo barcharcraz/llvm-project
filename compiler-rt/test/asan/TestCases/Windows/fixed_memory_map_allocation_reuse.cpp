@@ -1,5 +1,5 @@
 // RUN: %clang_cl_asan /Od %s -Fe%t
-// RUN: not %run %t 2>&1 | FileCheck %s
+// RUN: %run %t 2>&1 | FileCheck %s
 
 // CHECK: Success.
 #include <Windows.h>

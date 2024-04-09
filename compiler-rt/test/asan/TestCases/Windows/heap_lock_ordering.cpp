@@ -1,4 +1,5 @@
-// MSVC-DISABLED:*, Flaky due to timing and unable to stop test on CI
+// Flaky due to timing and unable to stop test on CI
+// UNSUPPORTED: MSVC
 
 // RUN: %clang_cl_asan -Od %s -Fe%t
 // RUN: %run %t
@@ -15,12 +16,12 @@
 //
 //               locked_thread +                + active_thread
 //                             |                |
-//                             |                | __asan_wrap_RtlAllocateHeap
+//                             |                | RtlAllocateHeap
 //                             |                |
 //                             | switch threads | RecursiveScopedLock
 //                             <----------------+ (AsanLock)
 //                    HeapLock |                |
-// __asan_wrap_RtlAllocateHeap |                |
+// RtlAllocateHeap |                |
 //                             | locked_thread  |
 //         RecursiveScopedLock | can't progress |
 //                 (ASAN lock) +----------------> HeapLock

@@ -1,7 +1,7 @@
-// RUN: %clang_cl_asan %s -Fe%t.icf.ref /link /OPT:ICF /OPT:REF -Xclang -fno-builtin-memcpy
-// RUN: %clang_cl_asan %s -Fe%t.noicf.ref /link /OPT:NOICF /OPT:REF -Xclang -fno-builtin-memcpy
-// RUN: %clang_cl_asan %s -Fe%t.icf.noref /link /OPT:ICF /OPT:NOREF -Xclang -fno-builtin-memcpy
-// RUN: %clang_cl_asan %s -Fe%t.noicf.noref /link /OPT:NOICF /OPT:NOREF -Xclang -fno-builtin-memcpy
+// RUN: %clang_cl_asan %s -Fe%t.icf.ref -Xclang -fno-builtin-memcpy /link /OPT:ICF /OPT:REF 
+// RUN: %clang_cl_asan %s -Fe%t.noicf.ref -Xclang -fno-builtin-memcpy /link /OPT:NOICF /OPT:REF 
+// RUN: %clang_cl_asan %s -Fe%t.icf.noref -Xclang -fno-builtin-memcpy /link /OPT:ICF /OPT:NOREF 
+// RUN: %clang_cl_asan %s -Fe%t.noicf.noref -Xclang -fno-builtin-memcpy /link /OPT:NOICF /OPT:NOREF 
 // RUN: not %run %t.icf.ref 2>&1 | FileCheck %s
 // RUN: not %run %t.noicf.ref 2>&1 | FileCheck %s
 // RUN: not %run %t.icf.noref 2>&1 | FileCheck %s

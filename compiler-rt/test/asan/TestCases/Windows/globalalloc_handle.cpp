@@ -1,7 +1,7 @@
 // RUN: %clang_cl_asan /Od -o %t %s -DTEST_GLOBAL
-// RUN: %run %t 2>&1 | FileCheck %s
+// RUN: not %run %t 2>&1 | FileCheck %s
 // RUN: %clang_cl_asan /Od -o %t %s -DTEST_LOCAL
-// RUN: %run %t 2>&1 | FileCheck %s
+// RUN: not %run %t 2>&1 | FileCheck %s
 
 #include "../defines.h"
 #include "globallocal_shared.h"
@@ -24,9 +24,9 @@ int main() {
 
   // CHECK: heap-use-after-free on address [[PTR]]
   // CHECK: freed by thread T0 here
-  // CHECK: __asan_wrap_[[TYPE]]Free
+  // CHECK: [[TYPE]]Free
   // CHECK: previously allocated by thread T0 here
-  // CHECK: __asan_wrap_[[TYPE]]Alloc
+  // CHECK: [[TYPE]]Alloc
   CHECK(HANDLE_FUNC(ptr) == nullptr);
   CHECK(GetLastError() == ERROR_INVALID_HANDLE);
 }

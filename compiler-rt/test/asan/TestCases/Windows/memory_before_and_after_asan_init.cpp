@@ -1,21 +1,21 @@
 // RUN: %clang_cl_asan /EHsc /std:c++17 -LD -Od %p/memory_with_asan_dll.cpp -Fe%t.dll
 // RUN: %clang /EHsc /std:c++17 -Od /DTEST_NORMAL_MEMORY %s -Fe%t
-// RUN: not %run %t %t.dll 2>&1 | FileCheck %s
+// RUN: %run %t %t.dll 2>&1 | FileCheck %s
 // RUN: %clang /EHsc /std:c++17 -Od /DTEST_GLOBAL_FIXED %s -Fe%t
-// RUN: not %run %t %t.dll 2>&1 | FileCheck %s
+// RUN: %run %t %t.dll 2>&1 | FileCheck %s
 // RUN: %clang /EHsc /std:c++17 -Od /DTEST_GLOBAL_MOVEABLE %s -Fe%t
-// RUN: not %run %t %t.dll 2>&1 | FileCheck %s
+// RUN: %run %t %t.dll 2>&1 | FileCheck %s
 // RUN: %clang /EHsc /std:c++17 -Od /DTEST_LOCAL_FIXED %s -Fe%t
-// RUN: not %run %t %t.dll 2>&1 | FileCheck %s
+// RUN: %run %t %t.dll 2>&1 | FileCheck %s
 // RUN: %clang /EHsc /std:c++17 -Od /DTEST_LOCAL_MOVEABLE %s -Fe%t
-// RUN: not %run %t %t.dll 2>&1 | FileCheck %s
+// RUN: %run %t %t.dll 2>&1 | FileCheck %s
 // RUN: %clang /EHsc /std:c++17 -Od /DTEST_HEAP_MEMORY %s -Fe%t
-// RUN: not %run %t %t.dll 2>&1 | FileCheck %s
+// RUN: %run %t %t.dll 2>&1 | FileCheck %s
 // RUN: %clang /EHsc /std:c++17 -Od /DTEST_ALIGNED_MEMORY %s -Fe%t
-// RUN: not %run %t %t.dll 2>&1 | FileCheck %s
+// RUN: %run %t %t.dll 2>&1 | FileCheck %s
 // RUN: %clang /EHsc /std:c++17 -Od /DTEST_ALIGNED_OFFSET_MEMORY %s -Fe%t
-// RUN: not %run %t %t.dll 2>&1 | FileCheck %s
-// UNSUPPORTED: clang-static-runtime
+// RUN: %run %t %t.dll 2>&1 | FileCheck %s
+// UNSUPPORTED: asan-static-runtime
 
 #include "memory_operations_after_asan_init.h"
 

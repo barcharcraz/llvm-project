@@ -1,7 +1,7 @@
 // RUN: %clang_cl_asan /Od -o %t %s -DTEST_GLOBAL
-// RUN: %run %t 2>&1 | FileCheck %s
+// RUN: not %run %t 2>&1 | FileCheck %s
 // RUN: %clang_cl_asan /Od -o %t %s -DTEST_LOCAL
-// RUN: %run %t 2>&1 | FileCheck %s
+// RUN: not %run %t 2>&1 | FileCheck %s
 
 #include "../defines.h"
 #include "globallocal_shared.h"
@@ -25,8 +25,8 @@ int main() {
 
   // CHECK: attempting to call malloc_usable_size() for pointer which is not owned: [[PTR]]
   // CHECK: freed by thread T0 here
-  // CHECK: __asan_wrap_[[TYPE]]Free
+  // CHECK: [[TYPE]]Free
   // CHECK: previously allocated by thread T0 here
-  // CHECK: __asan_wrap_[[TYPE]]Alloc
+  // CHECK: [[TYPE]]Alloc
   CHECK(SIZE(ptr) == 0);
 }

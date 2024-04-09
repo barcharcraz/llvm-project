@@ -1,7 +1,7 @@
 // RUN: %clang_cl_asan %Od %s %Fe%t
 // RUN: %env_asan_opts=handle_sigfpe=1 not %run %t 2>&1 | FileCheck %s
 // TODO: Should this be supported in MSVC?
-// XFAIL: msvc-host
+// XFAIL: MSVC
 
 // FIXME: On MinGW frame #0 does not include the line number?
 // XFAIL: target={{.*-windows-gnu}}

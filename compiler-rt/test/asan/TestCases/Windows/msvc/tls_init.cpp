@@ -14,7 +14,7 @@ static bool ran_before_main = false;
 
 extern "C" void __asan_init(void);
 static void 
-#ifdef MSVC
+#if defined(_MSC_VER) && !defined(__clang__)
 _declspec(no_sanitize_address) NTAPI 
 #else
 NTAPI __attribute__((no_sanitize_address))

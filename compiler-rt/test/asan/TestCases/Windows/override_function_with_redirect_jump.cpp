@@ -1,5 +1,5 @@
 // RUN: %clang_cl -Od %s -Fe%t /link dbghelp.lib /INFERASANLIBS
-// RUN: not %run %t 2>&1 | FileCheck %s
+// RUN: %run %t 2>&1 | FileCheck %s
 
 // Regression test for OverrideFunctionWithJump for scenarios.
 // Main concern is when the jump instruction is at an address lower

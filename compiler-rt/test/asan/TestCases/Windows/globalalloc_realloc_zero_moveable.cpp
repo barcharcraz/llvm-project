@@ -33,8 +33,8 @@ int main() {
   FREE(handle1);
   // CHECK: AddressSanitizer: attempting double-free on [[ptr2]] in thread T0:
   // CHECK: freed by thread T0 here
-  // CHECK: __asan_wrap_[[TYPE]]ReAlloc
+  // CHECK: [[TYPE]]ReAlloc
   // CHECK: previously allocated by thread T0 here
-  // CHECK: __asan_wrap_[[TYPE]]ReAlloc
+  // CHECK: [[TYPE]]ReAlloc
 }
 

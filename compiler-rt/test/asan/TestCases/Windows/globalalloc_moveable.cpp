@@ -24,5 +24,5 @@ int main() {
 // CHECK: AddressSanitizer: heap-buffer-overflow on address [[ADDR]]
 // CHECK: WRITE of size 1 at [[ADDR]] thread T0
 // CHECK: allocated by thread T0 here:
-// CHECK: __asan_wrap_[[TYPE]]Alloc
+// CHECK: [[TYPE]]Alloc
 }

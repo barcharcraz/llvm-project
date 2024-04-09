@@ -1,7 +1,7 @@
 // RUN: %clang_cl_asan /Od -o %t %s -DTEST_GLOBAL
-// RUN: %run %t 2>&1 | FileCheck %s --check-prefixes CHECK,CHECK-GLOBAL
+// RUN: not %run %t 2>&1 | FileCheck %s --check-prefixes CHECK,CHECK-GLOBAL
 // RUN: %clang_cl_asan /Od -o %t %s -DTEST_LOCAL
-// RUN: %run %t 2>&1 | FileCheck %s --check-prefixes CHECK,CHECK-LOCAL
+// RUN: not %run %t 2>&1 | FileCheck %s --check-prefixes CHECK,CHECK-LOCAL
 
 #include "../defines.h"
 #include "globallocal_shared.h"
@@ -42,10 +42,10 @@ int main() {
     // CHECK: AddressSanitizer: heap-use-after-free on address [[PTR]]
     // CHECK: WRITE of size 1 at [[PTR]] thread T0
     // CHECK: freed by thread T0 here
-    // CHECK-GLOBAL: __asan_wrap_GlobalReAlloc
-    // CHECK-LOCAL: __asan_wrap_LocalFree
+    // CHECK-GLOBAL: GlobalReAlloc
+    // CHECK-LOCAL: LocalFree
     // CHECK: previously allocated by thread T0 here
-    // CHECK: __asan_wrap_[[TYPE]]Alloc
+    // CHECK: [[TYPE]]Alloc
 
     return 0;
 }
