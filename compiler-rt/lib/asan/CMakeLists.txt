@@ -324,6 +324,13 @@ else()
       DEFS ${ASAN_DYNAMIC_DEFINITIONS}
       PARENT_TARGET asan)
 
+    if(MSVC)
+      set_target_properties(clang_rt.asan-dynamic-${arch}
+        PROPERTIES 
+          ARCHIVE_OUTPUT_NAME clang_rt.asan$<$<CONFIG:DEBUG>:_dbg>_dynamic-${arch}
+          OUTPUT_NAME clang_rt.asan$<$<CONFIG:DEBUG>:_dbg>_dynamic-${arch})
+    endif()
+
     if (SANITIZER_USE_SYMBOLS AND NOT ${arch} STREQUAL "i386")
       add_sanitizer_rt_symbols(clang_rt.asan_cxx
         ARCHS ${arch})
