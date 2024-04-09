@@ -320,7 +320,8 @@ public:
 
 /// Returns true if the given container only contains a single element.
 template <typename ContainerTy> bool hasSingleElement(ContainerTy &&C) {
-  auto B = std::begin(C), E = std::end(C);
+  auto B = adl_begin(C);
+  auto E = adl_end(C);
   return B != E && std::next(B) == E;
 }
 
@@ -375,8 +376,7 @@ inline mapped_iterator<ItTy, FuncTy> map_iterator(ItTy I, FuncTy F) {
 
 template <class ContainerTy, class FuncTy>
 auto map_range(ContainerTy &&C, FuncTy F) {
-  return make_range(map_iterator(std::begin(C), F),
-                    map_iterator(std::end(C), F));
+  return make_range(map_iterator(adl_begin(C), F), map_iterator(adl_end(C), F));
 }
 
 /// A base type of mapped iterator, that is useful for building derived
@@ -405,32 +405,23 @@ public:
   }
 };
 
-/// Helper to determine if type T has a member called rbegin().
-template <typename Ty> class has_rbegin_impl {
-  using yes = char[1];
-  using no = char[2];
+namespace detail {
+template <typename Range>
+using check_has_free_function_rbegin =
+    decltype(adl_rbegin(std::declval<Range &>()));
 
-  template <typename Inner>
-  static yes& test(Inner *I, decltype(I->rbegin()) * = nullptr);
-
-  template <typename>
-  static no& test(...);
-
-public:
-  static const bool value = sizeof(test<Ty>(nullptr)) == sizeof(yes);
-};
-
-/// Metafunction to determine if T& or T has a member called rbegin().
-template <typename Ty>
-struct has_rbegin : has_rbegin_impl<std::remove_reference_t<Ty>> {};
+template <typename Range>
+static constexpr bool HasFreeFunctionRBegin =
+    is_detected<check_has_free_function_rbegin, Range>::value;
+} // namespace detail
 
 // Returns an iterator_range over the given container which iterates in reverse.
 template <typename ContainerTy> auto reverse(ContainerTy &&C) {
-  if constexpr (has_rbegin<ContainerTy>::value)
-    return make_range(C.rbegin(), C.rend());
+  if constexpr (detail::HasFreeFunctionRBegin<ContainerTy>)
+    return make_range(adl_rbegin(C), adl_rend(C));
   else
-    return make_range(std::make_reverse_iterator(std::end(C)),
-                      std::make_reverse_iterator(std::begin(C)));
+    return make_range(std::make_reverse_iterator(adl_end(C)),
+                      std::make_reverse_iterator(adl_begin(C)));
 }
 
 /// An iterator adaptor that filters the elements of given inner iterators.
@@ -581,11 +572,11 @@ iterator_range<filter_iterator<detail::IterOfRange<RangeT>, PredicateT>>
 make_filter_range(RangeT &&Range, PredicateT Pred) {
   using FilterIteratorT =
       filter_iterator<detail::IterOfRange<RangeT>, PredicateT>;
-  return make_range(
-      FilterIteratorT(std::begin(std::forward<RangeT>(Range)),
-                      std::end(std::forward<RangeT>(Range)), Pred),
-      FilterIteratorT(std::end(std::forward<RangeT>(Range)),
-                      std::end(std::forward<RangeT>(Range)), Pred));
+  return make_range(FilterIteratorT(adl_begin(std::forward<RangeT>(Range)),
+                                    adl_end(std::forward<RangeT>(Range)), Pred),
+                    FilterIteratorT(adl_end(std::forward<RangeT>(Range)),
+                                    adl_end(std::forward<RangeT>(Range)),
+                                    Pred));
 }
 
 /// A pseudo-iterator adaptor that is designed to implement "early increment"
@@ -665,8 +656,8 @@ iterator_range<early_inc_iterator_impl<detail::IterOfRange<RangeT>>>
 make_early_inc_range(RangeT &&Range) {
   using EarlyIncIteratorT =
       early_inc_iterator_impl<detail::IterOfRange<RangeT>>;
-  return make_range(EarlyIncIteratorT(std::begin(std::forward<RangeT>(Range))),
-                    EarlyIncIteratorT(std::end(std::forward<RangeT>(Range))));
+  return make_range(EarlyIncIteratorT(adl_begin(std::forward<RangeT>(Range))),
+                    EarlyIncIteratorT(adl_end(std::forward<RangeT>(Range))));
 }
 
 // Forward declarations required by zip_shortest/zip_equal/zip_first/zip_longest
@@ -1106,8 +1097,8 @@ public:
   /// We need the full range to know how to switch between each of the
   /// iterators.
   template <typename... RangeTs>
-  explicit concat_iterator(RangeTs &&... Ranges)
-      : Begins(std::begin(Ranges)...), Ends(std::end(Ranges)...) {}
+  explicit concat_iterator(RangeTs &&...Ranges)
+      : Begins(adl_begin(Ranges)...), Ends(adl_end(Ranges)...) {}
 
   using BaseT::operator++;
 
@@ -1136,13 +1127,12 @@ template <typename ValueT, typename... RangeTs> class concat_range {
 public:
   using iterator =
       concat_iterator<ValueT,
-                      decltype(std::begin(std::declval<RangeTs &>()))...>;
+                      decltype(adl_begin(std::declval<RangeTs &>()))...>;
 
 private:
   std::tuple<RangeTs...> Ranges;
 
-  template <size_t... Ns>
-  iterator begin_impl(std::index_sequence<Ns...>) {
+  template <size_t... Ns> iterator begin_impl(std::index_sequence<Ns...>) {
     return iterator(std::get<Ns>(Ranges)...);
   }
   template <size_t... Ns>
@@ -1150,12 +1140,12 @@ private:
     return iterator(std::get<Ns>(Ranges)...);
   }
   template <size_t... Ns> iterator end_impl(std::index_sequence<Ns...>) {
-    return iterator(make_range(std::end(std::get<Ns>(Ranges)),
-                               std::end(std::get<Ns>(Ranges)))...);
+    return iterator(make_range(adl_end(std::get<Ns>(Ranges)),
+                               adl_end(std::get<Ns>(Ranges)))...);
   }
   template <size_t... Ns> iterator end_impl(std::index_sequence<Ns...>) const {
-    return iterator(make_range(std::end(std::get<Ns>(Ranges)),
-                               std::end(std::get<Ns>(Ranges)))...);
+    return iterator(make_range(adl_end(std::get<Ns>(Ranges)),
+                               adl_end(std::get<Ns>(Ranges)))...);
   }
 
 public:
@@ -1429,7 +1419,7 @@ public:
 
 /// Given a container of pairs, return a range over the first elements.
 template <typename ContainerTy> auto make_first_range(ContainerTy &&c) {
-  using EltTy = decltype((*std::begin(c)));
+  using EltTy = decltype((*adl_begin(c)));
   return llvm::map_range(std::forward<ContainerTy>(c),
                          [](EltTy elt) -> typename detail::first_or_second_type<
                                            EltTy, decltype((elt.first))>::type {
@@ -1439,7 +1429,7 @@ template <typename ContainerTy> auto make_first_range(ContainerTy &&c) {
 
 /// Given a container of pairs, return a range over the second elements.
 template <typename ContainerTy> auto make_second_range(ContainerTy &&c) {
-  using EltTy = decltype((*std::begin(c)));
+  using EltTy = decltype((*adl_begin(c)));
   return llvm::map_range(
       std::forward<ContainerTy>(c),
       [](EltTy elt) ->
@@ -2115,7 +2105,7 @@ template<typename Container, typename Range = std::initializer_list<
                                  typename Container::value_type>>
 void replace(Container &Cont, typename Container::iterator ContIt,
              typename Container::iterator ContEnd, Range R) {
-  replace(Cont, ContIt, ContEnd, R.begin(), R.end());
+  replace(Cont, ContIt, ContEnd, adl_begin(R), adl_begin(R));
 }
 
 /// An STL-style algorithm similar to std::for_each that applies a second
@@ -2151,7 +2141,7 @@ template <typename Container, typename UnaryFunctor, typename NullaryFunctor,
               !std::is_constructible<StringRef, NullaryFunctor>::value>>
 inline void interleave(const Container &c, UnaryFunctor each_fn,
                        NullaryFunctor between_fn) {
-  interleave(c.begin(), c.end(), each_fn, between_fn);
+  interleave(adl_begin(c), adl_end(c), each_fn, between_fn);
 }
 
 /// Overload of interleave for the common case of string separator.
@@ -2159,7 +2149,7 @@ template <typename Container, typename UnaryFunctor, typename StreamT,
           typename T = detail::ValueOfRange<Container>>
 inline void interleave(const Container &c, StreamT &os, UnaryFunctor each_fn,
                        const StringRef &separator) {
-  interleave(c.begin(), c.end(), each_fn, [&] { os << separator; });
+  interleave(adl_begin(c), adl_end(c), each_fn, [&] { os << separator; });
 }
 template <typename Container, typename StreamT,
           typename T = detail::ValueOfRange<Container>>
@@ -2528,19 +2518,19 @@ bool hasNItemsOrLess(
 
 /// Returns true if the given container has exactly N items
 template <typename ContainerTy> bool hasNItems(ContainerTy &&C, unsigned N) {
-  return hasNItems(std::begin(C), std::end(C), N);
+  return hasNItems(adl_begin(C), adl_end(C), N);
 }
 
 /// Returns true if the given container has N or more items
 template <typename ContainerTy>
 bool hasNItemsOrMore(ContainerTy &&C, unsigned N) {
-  return hasNItemsOrMore(std::begin(C), std::end(C), N);
+  return hasNItemsOrMore(adl_begin(C), adl_end(C), N);
 }
 
 /// Returns true if the given container has N or less items
 template <typename ContainerTy>
 bool hasNItemsOrLess(ContainerTy &&C, unsigned N) {
-  return hasNItemsOrLess(std::begin(C), std::end(C), N);
+  return hasNItemsOrLess(adl_begin(C), adl_end(C), N);
 }
 
 /// Returns a raw pointer that represents the same address as the argument.
