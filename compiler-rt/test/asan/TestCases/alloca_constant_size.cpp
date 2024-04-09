@@ -35,7 +35,7 @@ void f1_alloca() {
 static const int kDynamicArraySize = 200;
 
 void f1_vla() {
-#ifdef MSVC
+#if defined(_MSC_VER) && !defined(__clang__)
   char *dynamic_buffer = (char *)alloca(kDynamicArraySize);
 #else
   char dynamic_buffer[kDynamicArraySize];

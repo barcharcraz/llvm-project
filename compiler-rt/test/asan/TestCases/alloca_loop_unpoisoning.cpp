@@ -1,4 +1,4 @@
-// UNSUPPORTED: msvc-host
+// UNSUPPORTED: MSVC
 // Tracked by vso1226261, ( GeneralTestSuite_amd64chk_MT.txt )
 // RUN: %clangxx_asan -O0 -mllvm -asan-instrument-dynamic-allocas %s -o %t
 // RUN: %env_asan_opts=detect_stack_use_after_return=0 %run %t 2>&1
@@ -30,7 +30,7 @@ ATTRIBUTE_NOINLINE void foo(int len) {
   top = &x;
 
   ATTRIBUTE_ALIGNED(32)
-#ifdef MSVC
+#if defined(_MSC_VER) && !defined(__clang__)
   volatile char *array = (char *)alloca(len);
 #else
   volatile char array[len];
@@ -41,7 +41,7 @@ ATTRIBUTE_NOINLINE void foo(int len) {
   alloca(len);
   for (int i = 0; i < 32; ++i) {
     ATTRIBUTE_ALIGNED(32)
-#ifdef MSVC
+#if defined(_MSC_VER) && !defined(__clang__)
     volatile char *array = (char *)alloca(i);
 #else
     volatile char array[i]; // NOLINT

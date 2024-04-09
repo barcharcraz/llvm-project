@@ -1,4 +1,4 @@
-// UNSUPPORTED: msvc-host
+// UNSUPPORTED: MSVC
 // Tracked by vso1226261, ( GeneralTestSuite_amd64chk_MD.txt GeneralTestSuite_amd64chk_MT.txt )
 // RUN: %clangxx_asan -O0 -mllvm -asan-instrument-dynamic-allocas %s -o %t
 // RUN: not %run %t 2>&1 | FileCheck %s
@@ -10,7 +10,7 @@
 #include <stdint.h>
 ATTRIBUTE_NOINLINE void foo(int index, int len) {
 ATTRIBUTE_ALIGNED(32)
-#ifdef MSVC
+#if defined(_MSC_VER) && !defined(__clang__)
   volatile char *str = (volatile char *)_alloca(len);
 #else
   volatile char str[len];
