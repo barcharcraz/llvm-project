@@ -302,7 +302,6 @@ else()
       set(VERSION_SCRIPT_FLAG)
     endif()
 
-    set(ASAN_DYNAMIC_WEAK_INTERCEPTION)
     add_compiler_rt_runtime(clang_rt.asan
       SHARED
       ARCHS ${arch}
@@ -316,7 +315,6 @@ else()
               # generates an order-only dependency in ninja.
               RTAsan_dynamic_version_script_dummy
               RTUbsan_cxx
-              ${ASAN_DYNAMIC_WEAK_INTERCEPTION}
       CFLAGS ${ASAN_DYNAMIC_CFLAGS}
       LINK_FLAGS ${ASAN_DYNAMIC_LINK_FLAGS}
                 ${VERSION_SCRIPT_FLAG}
