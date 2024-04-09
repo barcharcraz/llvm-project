@@ -906,6 +906,7 @@ struct DebugChecks {
 #endif
 };
 
+#define EXCEPTION_EXECUTE_HANDLER      1
 struct AsanHeap {
   struct HEAP {
     // This data structure is undocumented and is subject to change.
@@ -936,32 +937,36 @@ struct AsanHeap {
     constexpr unsigned long HEAP_SUPPORTED_CLASSES[] = {HEAP_PROCESS_CLASS,
                                                         HEAP_PRIVATE_CLASS};
 
-    const unsigned long heapClass =
-        (heap.flags | heap.forceFlags) & HEAP_CLASS_MASK;
+    __try {
+      const unsigned long heapClass =
+          (heap.flags | heap.forceFlags) & HEAP_CLASS_MASK;
 
-    bool heapClassSupported = false;
-    for (const auto &heapClassType : HEAP_SUPPORTED_CLASSES) {
-      if (heapClass == heapClassType) {
-        heapClassSupported = true;
-        break;
+      bool heapClassSupported = false;
+      for (const auto &heapClassType : HEAP_SUPPORTED_CLASSES) {
+        if (heapClass == heapClassType) {
+          heapClassSupported = true;
+          break;
+        }
       }
-    }
 
-    if (!heapClassSupported) {
+      if (!heapClassSupported) {
+        is_supported = false;
+        return;
+      }
+
+      constexpr unsigned long HEAP_UNSUPPORTED_FLAGS =
+          (HEAP_GENERATE_EXCEPTIONS | HEAP_REALLOC_IN_PLACE_ONLY |
+           HEAP_CREATE_ENABLE_EXECUTE);
+
+      if ((heap.flags | heap.forceFlags) & HEAP_UNSUPPORTED_FLAGS) {
+        is_supported = false;
+        return;
+      }
+
+      is_supported = true;
+    } __except(EXCEPTION_EXECUTE_HANDLER) {
       is_supported = false;
-      return;
     }
-
-    constexpr unsigned long HEAP_UNSUPPORTED_FLAGS =
-        (HEAP_GENERATE_EXCEPTIONS | HEAP_REALLOC_IN_PLACE_ONLY |
-         HEAP_CREATE_ENABLE_EXECUTE);
-
-    if ((heap.flags | heap.forceFlags) & HEAP_UNSUPPORTED_FLAGS) {
-      is_supported = false;
-      return;
-    }
-
-    is_supported = true;
   }
 
   ~AsanHeap() {
