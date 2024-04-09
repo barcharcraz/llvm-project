@@ -653,8 +653,8 @@ static ALWAYS_INLINE auto StrtolImpl(void *ctx, Fn real, const char *nptr,
 
 #  if !SANITIZER_WINDOWS
 INTERCEPTOR_STRTO_BASE(long, strtol)
-INTERCEPTOR_STRTO_BASE(long long, strtoll)
 #  endif
+INTERCEPTOR_STRTO_BASE(long long, strtoll)
 
 #  if SANITIZER_GLIBC
 INTERCEPTOR_STRTO_BASE(long, __isoc23_strtol)
@@ -818,22 +818,6 @@ INTERCEPTOR(long, atol, const char *nptr) {
 #endif
 //////////////// end ATOL ///////////////////
 
-// strtoll and atoll don't get per-DLL interceptors since we don't intercept them on Windows:
-
-#if ASAN_INTERCEPT_ATOLL_AND_STRTOLL
-INTERCEPTOR(long long, strtoll, const char *nptr, char **endptr, int base) {
-  void *ctx;
-  ASAN_INTERCEPTOR_ENTER(ctx, strtoll);
-  AsanInitFromRtl();
-  if (!flags()->replace_str) {
-    return REAL(strtoll)(nptr, endptr, base);
-  }
-  char *real_endptr;
-  long long result = REAL(strtoll)(nptr, &real_endptr, base);
-  StrtolFixAndCheck(ctx, nptr, endptr, real_endptr, base);
-  return result;
-}
-
 INTERCEPTOR(long long, atoll, const char *nptr) {
   void *ctx;
   ASAN_INTERCEPTOR_ENTER(ctx, atoll);
@@ -847,8 +831,6 @@ INTERCEPTOR(long long, atoll, const char *nptr) {
   ASAN_READ_STRING(ctx, nptr, (real_endptr - nptr) + 1);
   return result;
 }
-
-#endif
 
 #if ASAN_INTERCEPT___CXA_ATEXIT || ASAN_INTERCEPT_ATEXIT
 static void AtCxaAtexit(void *unused) {
@@ -940,10 +922,8 @@ void InitializeAsanInterceptors() {
   ASAN_INTERCEPT_FUNC(atoi);
   ASAN_INTERCEPT_FUNC(atol);
 #endif
-#if ASAN_INTERCEPT_ATOLL_AND_STRTOLL
   ASAN_INTERCEPT_FUNC(atoll);
   ASAN_INTERCEPT_FUNC(strtoll);
-#endif
 #  if SANITIZER_GLIBC
   ASAN_INTERCEPT_FUNC(__isoc23_strtol);
   ASAN_INTERCEPT_FUNC(__isoc23_strtoll);

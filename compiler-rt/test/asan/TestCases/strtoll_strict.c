@@ -24,7 +24,6 @@
 
 // FIXME: Enable strtoll interceptor.
 // REQUIRES: shadow-scale-3
-// XFAIL: target={{.*windows-msvc.*}}
 
 #include <assert.h>
 #include <stdlib.h>
@@ -86,7 +85,14 @@ void test7(char *array, char *endptr) {
   assert(r == 0);
 }
 
+#ifdef _UCRT
+void noopHandler(const wchar_t* _a, const wchar_t* _b, const wchar_t* _c, unsigned _d, uintptr_t _e) {}
+#endif
+
 int main(int argc, char **argv) {
+#ifdef _UCRT
+  _set_invalid_parameter_handler(noopHandler);
+#endif
   char *array0 = (char*)malloc(11);
   char* array = array0 + 8;
   char *endptr = NULL;
