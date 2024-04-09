@@ -1,5 +1,5 @@
 # MSVC does not output this diagnostic message
-UNSUPPORTED: expensive_checks, msvc-host
+UNSUPPORTED: expensive_checks, MSVC
 
 RUN: %cpp_compiler %S/LargeTest.cpp -o %t-LargeTest
 RUN: %run %t-LargeTest -runs=10000

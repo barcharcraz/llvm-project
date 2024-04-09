@@ -1,9 +1,9 @@
 <<<<<<< HEAD
 # Disabled on MSVC due to incomplete /fsanitize-coverage=pc-table support (needed for -print_funcs)
-UNSUPPORTED: darwin, aarch64, msvc-host
+UNSUPPORTED: darwin, aarch64, MSVC
 =======
 # Disabled on MSVC due to incomplete /fsanitize-coverage=pc-table support (needed for -print_funcs)
-UNSUPPORTED: darwin, target=aarch64{{.*}}, msvc-host
+UNSUPPORTED: darwin, target=aarch64{{.*}}, MSVC
 >>>>>>> upstream/main
 RUN: %cpp_compiler %S/PrintFuncTest.cpp -o %t
 RUN: %run %t -seed=1 -runs=100000 2>&1 | FileCheck %s

@@ -4,7 +4,7 @@
 # Binaries must end in .exe or else symbolization will break on Windows because of how periods
 # in expansion of %t cause the compiler to overwrite .lib and .exp files.
 # Disabled on MSVC due to incomplete /fsanitize-coverage=pc-table support (needed for -exit_on_src_pos)
-# UNSUPPORTED: msvc-host
+# UNSUPPORTED: MSVC
 
 # Test does not complete on Armv7 Thumb build bot
 UNSUPPORTED: target=thumb{{.*}}
