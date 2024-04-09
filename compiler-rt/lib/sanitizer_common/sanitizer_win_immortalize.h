@@ -25,6 +25,11 @@
 #  ifndef _WINDOWS_
 typedef void* PVOID;
 typedef int BOOL;
+typedef union _RTL_RUN_ONCE {
+  PVOID ptr;
+} INIT_ONCE, *PINIT_ONCE;
+
+extern "C" {
 __declspec(dllimport) int WINAPI InitOnceExecuteOnce(
     PINIT_ONCE, BOOL(WINAPI*)(PINIT_ONCE, PVOID, PVOID*), void*, void*);
 }
