@@ -16,7 +16,7 @@ int main(int argc, char **argv) {
     int res = x[argc * 10];  // Boom!
   // CHECK:ERROR: AddressSanitizer: heap-buffer-overflow on address [[ADDR:0x[0-9a-f]+]] at pc {{0x[0-9a-f]+}} bp {{0x[0-9a-f]+}} sp {{0x[0-9a-f]+}}
   // CHECK: READ of size {{[0-9]+}} at [[ADDR]] thread T0
-  // CHECK: [[ADDR]] is located {{[0-9]+}} bytes to the right of {{[0-9]+}}-byte region [{{0x[0-9a-f]+}},{{0x[0-9a-f]+}})
+  // CHECK: [[ADDR]] is located {{[0-9]+}} bytes after {{[0-9]+}}-byte region [{{0x[0-9a-f]+}},{{0x[0-9a-f]+}})
   // CHECK: allocated by thread T0 here:
   // CHECK: SUMMARY: AddressSanitizer: heap-buffer-overflow
   // CHECK: Shadow bytes around the buggy address:

@@ -44,7 +44,7 @@ int main(int argc, char **argv) {
     return str[one * 11];                //Boom! .rdata string literal allocated by compiler
     // CHECK:ERROR: AddressSanitizer: global-buffer-overflow on address [[ADDR:0x[0-9a-f]+]] at pc {{0x[0-9a-f]+}} bp {{0x[0-9a-f]+}} sp {{0x[0-9a-f]+}}
     // CHECK: READ of size {{[0-9]+}} at [[ADDR]] thread T0
-    // CHECK: [[ADDR]] is located {{[0-9]+}} bytes to the right of global variable {{.*}} defined in {{.*}} of size {{[0-9]+}}
+    // CHECK: [[ADDR]] is located {{[0-9]+}} bytes after global variable {{.*}} defined in {{.*}} of size {{[0-9]+}}
     // CHECK: SUMMARY: AddressSanitizer: global-buffer-overflow
     // CHECK: Shadow bytes around the buggy address:
     // CHECK: Shadow byte legend (one shadow byte represents 8 application bytes):
