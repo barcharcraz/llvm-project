@@ -1,4 +1,4 @@
-// UNSUPPORTED: msvc-host
+// UNSUPPORTED: MSVC
 // Tracked by vso1226261, ( GeneralTestSuite_amd64chk_MD.txt GeneralTestSuite_amd64chk_MDd.txt GeneralTestSuite_amd64chk_MT.txt GeneralTestSuite_amd64chk_MTd.txt GeneralTestSuite_x86chk_MD.txt GeneralTestSuite_x86chk_MDd.txt GeneralTestSuite_x86chk_MT.txt GeneralTestSuite_x86chk_MTd.txt )
 // Test that no data is collected without a runtime flag.
 //

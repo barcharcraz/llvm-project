@@ -1,4 +1,4 @@
-// UNSUPPORTED: msvc-host
+// UNSUPPORTED: MSVC
 // Tracked by vso1226261, ( GeneralTestSuite_amd64chk_MT.txt GeneralTestSuite_amd64chk_MTd.txt GeneralTestSuite_x86chk_MT.txt GeneralTestSuite_x86chk_MTd.txt )
 // Make sure we report atexit stats.
 // RUN: %clangxx_asan -O3 %s -o %t
@@ -7,7 +7,7 @@
 // No atexit output in older versions of Android due to
 // https://code.google.com/p/address-sanitizer/issues/detail?id=263
 // UNSUPPORTED: android
-// XFAIL: msvc-host
+// XFAIL: MSVC
 
 #include <stdlib.h>
 #if !defined(__APPLE__) && !defined(__FreeBSD__) && !defined(__NetBSD__)

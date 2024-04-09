@@ -1,4 +1,4 @@
-// UNSUPPORTED: msvc-host
+// UNSUPPORTED: MSVC
 // Tracked by vso1226261, ( GeneralTestSuite_amd64chk_MDd.txt GeneralTestSuite_amd64chk_MTd.txt )
 // Verify that objects passed by value get red zones and that the copy
 // constructor is called.

@@ -17,5 +17,5 @@ int main(int argc, char **argv) {
   return res;
 }
 
-// XFAIL: msvc-host
+// XFAIL: MSVC
 // off by one error at the moment, fix in the works.

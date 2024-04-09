@@ -2,7 +2,7 @@
 // RUN: %clang_asan /Od %s -o%t && not %run %t -5
 // RUN: %clang_asan /Od %s -o%t && not %run %t 4  2>&1 | FileCheck --check-prefix=CHECK-A  %s
 // RUN: %clang_asan /Od %s -o%t && not %run %t -1 2>&1 | FileCheck --check-prefix=CHECK-B  %s
-// XFAIL: !msvc-host
+// XFAIL: !MSVC
 
 #include <windows.h>
 int main(int argc, char **argv) {
