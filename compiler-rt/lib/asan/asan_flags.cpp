@@ -241,6 +241,12 @@ void InitializeFlags() {
 
         DisplayHelpMessages(&asan_parser);
         ProcessFlags();
+
+        // TODO: update other globals and data structures that may change after
+        // initialization due to these flags potentially changing
+        if (flags()->continue_on_error) {
+          __asan::InitializeCOE();
+        }
       });
 
 #  if CAN_SANITIZE_UB
