@@ -157,6 +157,7 @@ if platform.system() == "Windows":
         clang_cl_cxxflags = [
             "-EHs",
             "-D_HAS_EXCEPTIONS=0",
+            "/Oy-"
         ] + config.debug_info_flags + target_cflags
         if config.compiler_id != "MSVC":
             clang_cl_cxxflags = ["-Wno-deprecated-declarations"] + clang_cl_cxxflags
