@@ -193,6 +193,8 @@ typedef u64  OFF64_T;
 
 #ifdef __SIZE_TYPE__
 typedef __SIZE_TYPE__ usize;
+#elif defined(SANITIZER_WINDOWS) && SANITIZER_WORDSIZE == 32
+typedef u32 usize;
 #else
 typedef uptr usize;
 #endif
