@@ -1,6 +1,7 @@
 // RUN: %clang_cl_asan /Od %s -Fe%t
 // RUN: %env_asan_opts=allocator_may_return_null=true %run %t
-
+// FIXME: errno is crt state, not reflected
+// XFAIL: debug-crt, (asan-static-runtime && target={{.*-windows-.*}})
 #include <Windows.h>
 
 int main(){
