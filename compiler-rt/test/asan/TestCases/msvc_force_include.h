@@ -18,7 +18,7 @@
 extern "C" {
 #endif
 
-void __prepare_test_environment() {
+static void __prepare_test_environment() {
     // avoid assertion dialog boxes
     _CrtSetReportMode(_CRT_ASSERT, _CRTDBG_MODE_FILE);
     _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);
@@ -31,7 +31,7 @@ void __prepare_test_environment() {
 }
 
 #pragma section(".CRT$XCU", long, read)
-__declspec(allocate(".CRT$XCU")) void (*__pte)() = __prepare_test_environment;
+__declspec(allocate(".CRT$XCU")) static void (*__pte)() = __prepare_test_environment;
 
 #ifdef __cplusplus
 }
