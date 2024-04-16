@@ -99,6 +99,8 @@ if platform.system() == "Windows":
         win_runtime_feature = "win32-dynamic-asan"
     else:
         win_runtime_feature = "win32-static-asan"
+    if "windows-debug" in config.name_suffix:
+        config.available_features.add("debug-crt")
     config.available_features.add(win_runtime_feature)
 
 
