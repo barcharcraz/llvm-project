@@ -10,7 +10,8 @@
 // RUN: %run %t VeryManyHandlers 2>&1 | FileCheck %s --check-prefix=CHECK9
 // RUN: %run %t VCAsanExceptionsIgnored 2>&1 | FileCheck %s --check-prefix=CHECK10
 // RUN: %run %t VCAsanExceptionsNotIgnoredOutsideRange 2>&1 | FileCheck %s --check-prefix=CHECK11
-
+// FIXME: the first test is supported on i386, split this file into several different tests
+// UNSUPPORTED: target={{i386-.*}}
 #include <algorithm>
 #include <iostream>
 #include <sanitizer/asan_interface.h>

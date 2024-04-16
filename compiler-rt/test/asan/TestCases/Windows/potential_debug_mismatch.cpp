@@ -1,10 +1,8 @@
-// RUN: %clang_cl_asan -Od /std:c++17 %s -Fe%t
-// RUN: %clang_cl_asan -LD -Od %p/memory_with_asan_dll.cpp -Fe%t.dll
+// RUN: %clang -Od /std:c++17 %s -Fe%t
+// RUN: %clang_cl_asan /MD -LD -Od %p/../Helpers/memory_with_asan_dll.cpp -Fe%t.dll
 // RUN: %run %t %t.dll 2>&1 | FileCheck %s
-// UNSUPPORTED: clang-static-runtime
-// UNSUPPORTED: non-debug-crt
-// REQURIES: debug-crt
-
+// REQUIRES: debug-crt, asan-dynamic-runtime
+#include "../msvc_force_include.h"
 #include <Windows.h>
 #include <algorithm>
 #include <stdio.h>
@@ -33,7 +31,7 @@ int main(int argc, char **argv) {
   const char *dllName = argv[1];
   std::vector<void *> mems;
   auto counter = 0;
-  while (counter++ < 10000) {
+  for (; counter < 10000; ++counter) {
     void *a = HeapAlloc(GetProcessHeap(), 0, 4);
     AllocationDebugHeader *h = reinterpret_cast<AllocationDebugHeader *>(a) - 1;
 

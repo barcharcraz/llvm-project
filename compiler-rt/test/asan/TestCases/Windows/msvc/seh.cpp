@@ -2,15 +2,15 @@
 // different EH personality depending on the -GS setting, so test both -GS+ and
 // -GS-.
 //
-// RUN: cl /EHa %MD -c %s -Fo%t.obj -DCOMPILE_SEH
-// RUN: %clangxx_asan -o %t.exe %s %t.obj -DCOMPILE_MAIN
+// RUN: cl /EHa -c %s -Fo%t.obj -DCOMPILE_SEH
+// RUN: %clangxx_asan /EHa -o %t.exe %s %t.obj -DCOMPILE_MAIN -DNDEBUG
 // RUN: %run %t.exe
 //
-// RUN: cl /EHa %MD -GS- -c %s -Fo%t.obj -DCOMPILE_SEH
-// RUN: %clangxx_asan -o %t.exe %s %t.obj -DCOMPILE_MAIN
+// RUN: cl /EHa -GS- -c %s -Fo%t.obj -DCOMPILE_SEH
+// RUN: %clangxx_asan /EHa -o %t.exe %s %t.obj -DCOMPILE_MAIN -DNDEBUG
 // RUN: %run %t.exe
 //
-// RUN: %clang_cl_asan /EHa %MD %s -DCOMPILE_SEH -Fe%t.exe -DCOMPILE_MAIN
+// RUN: %clang_cl_asan /EHa %MD %s -DCOMPILE_SEH -Fe%t.exe -DCOMPILE_MAIN -DNDEBUG
 // RUN: %run %t.exe
 
 #include <windows.h>

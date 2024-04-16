@@ -6,7 +6,7 @@
 //
 // RUN: %clang_cl_asan -GS- -LD -Od %s -Fe%t.dll
 // RUN: %run %t %t.dll
-// XFAIL: MSVC && asan-dynamic-runtime && asan-32-bits
+// XFAIL: MSVC && asan-dynamic-runtime && target={{i386-.*}}
 #include <windows.h>
 #include <assert.h>
 #include <stdio.h>
