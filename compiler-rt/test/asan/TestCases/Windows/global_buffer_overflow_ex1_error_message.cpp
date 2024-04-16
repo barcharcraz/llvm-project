@@ -1,7 +1,7 @@
-// RUN: %clang_cl_asan %S/global_buffer_overflow_ex1/a.c %S/global_buffer_overflow_ex1/b.c %S/global_buffer_overflow_ex1/c.c -Od %s -Fe%t
+// RUN: %clang_cl_asan %p/../Helpers/global_buffer_overflow_ex1_a.c %p/../Helpers/global_buffer_overflow_ex1_b.c %p/../Helpers/global_buffer_overflow_ex1_c.c -Od %s -Fe%t
 // RUN: not %run %t 2>&1 | FileCheck %s
 
-// RUN: %clang_cl_asan %S/global_buffer_overflow_ex1/a.c %S/global_buffer_overflow_ex1/b.c %S/global_buffer_overflow_ex1/c.c -Od %s -Fe%t /link /INFERASANLIBS:DEBUG
+// RUN: %clang_cl_asan %p/../Helpers/global_buffer_overflow_ex1_a.c %p/../Helpers/global_buffer_overflow_ex1_b.c %p/../Helpers/global_buffer_overflow_ex1_c.c -Od %s -Fe%t /link /INFERASANLIBS:DEBUG
 // RUN: not %run %t 2>&1 | FileCheck %s
 
 double x[5];
