@@ -1,4 +1,4 @@
-// RUN: %clang-cl /c /Fo%t_asm.obj %p/interception_failed_msg.asm
+// RUN: %if target={{x86_64-.*}} %{ ml64 %} %else %{ ml %} /c /Fo%t_asm.obj %p/interception_failed_msg.asm
 // RUN: %clang_cl -Od %s %t_asm.obj -Fe%t /link /INFERASANLIBS
 // RUN: not %run %t 2>&1 | FileCheck %s --check-prefix=CHECK-1
 // RUN: %clang_cl -Od %s %t_asm.obj -Fe%t /link /INFERASANLIBS:DEBUG
@@ -7,7 +7,7 @@
 // RUN: env ASAN_WIN_CONTINUE_ON_INTERCEPTION_FAILURE=1 not %run %t 2>&1 | FileCheck %s --check-prefix=CHECK-2
 // RUN: %clang_cl -Od %s %t_asm.obj -Fe%t /link /INFERASANLIBS:DEBUG
 // RUN: env ASAN_WIN_CONTINUE_ON_INTERCEPTION_FAILURE=1 not %run %t 2>&1 | FileCheck %s --check-prefix=CHECK-2
-
+// REQUIRES: target={{x86_64-.*}} || target={{i386-.*}}
 extern "C" __declspec(dllimport)
 bool __cdecl __sanitizer_override_function_by_addr(
     void *source_function,
