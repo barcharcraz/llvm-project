@@ -339,6 +339,9 @@ if config.compiler_id == "MSVC":
         [os.path.join(config.compiler_rt_libdir, "..", "..", "include"), 
          config.environment.get("INCLUDE", "")]
     )
+    config.environment["_LINK_"] = " ".join(
+        ["/debug", "/INCREMENTAL:NO"]
+    )
 
 print(os.environ["LIB"])
 
