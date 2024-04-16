@@ -1,4 +1,4 @@
-// RUN: %clang_cl /c /Fo%t_asm.obj %p/intercept_small_func_amd64.asm
+// RUN: ml64 /c /Fo%t_asm.obj %p/intercept_small_func_amd64.asm
 // RUN: %clang_cl -Od %s %t_asm.obj -Fe%t /link /INFERASANLIBS
 // RUN: %run %t 2>&1 | FileCheck %s
 // RUN: %clang_cl -Od %s %t_asm.obj -Fe%t /link /INFERASANLIBS:DEBUG
