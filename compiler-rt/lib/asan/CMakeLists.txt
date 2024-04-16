@@ -55,9 +55,36 @@ if (NOT WIN32 AND NOT APPLE)
     )
 endif()
 
-set(ASAN_CXX_SOURCES
-  asan_new_delete.cpp
-  )
+if (WIN32)
+  set(ASAN_CXX_SOURCES asan_win_new_delete.cpp)
+else()
+  set(ASAN_CXX_SOURCES asan_new_delete.cpp)
+endif()
+
+if (WIN32)
+  set(ASAN_STATIC_IMPLIB_SOURCES
+    asan_win_delete_array_thunk.cpp
+    asan_win_delete_array_align_thunk.cpp
+    asan_win_delete_array_align_nothrow_thunk.cpp
+    asan_win_delete_array_nothrow_thunk.cpp
+    asan_win_delete_array_size_thunk.cpp
+    asan_win_delete_array_size_align_thunk.cpp
+    asan_win_delete_scalar_thunk.cpp
+    asan_win_delete_scalar_align_thunk.cpp
+    asan_win_delete_scalar_align_nothrow_thunk.cpp
+    asan_win_delete_scalar_nothrow_thunk.cpp
+    asan_win_delete_scalar_size_thunk.cpp
+    asan_win_delete_scalar_size_align_thunk.cpp
+    asan_win_new_array_thunk.cpp
+    asan_win_new_array_align_thunk.cpp
+    asan_win_new_array_align_nothrow_thunk.cpp
+    asan_win_new_array_nothrow_thunk.cpp
+    asan_win_new_scalar_thunk.cpp
+    asan_win_new_scalar_align_thunk.cpp
+    asan_win_new_scalar_align_nothrow_thunk.cpp
+    asan_win_new_scalar_nothrow_thunk.cpp
+    )
+endif()
 
 set(ASAN_STATIC_SOURCES
   asan_rtl_static.cpp
@@ -159,7 +186,14 @@ add_compiler_rt_object_libraries(RTAsan_dynamic
   ADDITIONAL_HEADERS ${ASAN_HEADERS}
   CFLAGS ${ASAN_DYNAMIC_CFLAGS}
   DEFS ${ASAN_DYNAMIC_DEFINITIONS})
-
+if (WIN32)
+  add_compiler_rt_object_libraries(RTAsan_static_implib
+    ARCHS ${ASAN_SUPPORTED_ARCH}
+    SOURCES ${ASAN_STATIC_IMPLIB_SOURCES}
+    ADDITIONAL_HEADERS ${ASAN_HEADERS}
+    CFLAGS ${ASAN_CFLAGS}
+    DEFS ${ASAN_COMMON_DEFINITIONS})
+endif()
 if(NOT APPLE)
   add_compiler_rt_object_libraries(RTAsan
     ARCHS ${ASAN_SUPPORTED_ARCH}
@@ -323,10 +357,23 @@ else()
       PARENT_TARGET asan)
 
     if(MSVC)
+
       set_target_properties(clang_rt.asan-dynamic-${arch}
-        PROPERTIES 
-          ARCHIVE_OUTPUT_NAME clang_rt.asan$<$<CONFIG:DEBUG>:_dbg>_dynamic-${arch}
+        PROPERTIES
+          ARCHIVE_OUTPUT_NAME clang_rt.asan$<$<CONFIG:DEBUG>:_dbg>_dynamic-${arch}_implib
           OUTPUT_NAME clang_rt.asan$<$<CONFIG:DEBUG>:_dbg>_dynamic-${arch})
+      add_compiler_rt_runtime(clang_rt.asan_implib
+        STATIC
+        ARCHS ${arch}
+        OBJECT_LIBS
+          RTAsan_static_implib
+        DEPS
+          clang_rt.asan-dynamic-${arch}
+        PARENT_TARGET asan)
+      set_target_properties(clang_rt.asan_implib-${arch}
+        PROPERTIES
+          ARCHIVE_OUTPUT_NAME clang_rt.asan$<$<CONFIG:DEBUG>:_dbg>_dynamic-${arch}
+          STATIC_LIBRARY_OPTIONS $<TARGET_LINKER_FILE:clang_rt.asan-dynamic-${arch}>)
     endif()
 
     if (SANITIZER_USE_SYMBOLS AND NOT ${arch} STREQUAL "i386")
