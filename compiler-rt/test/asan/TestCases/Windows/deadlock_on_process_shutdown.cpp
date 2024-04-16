@@ -1,6 +1,6 @@
 // RUN: %clang_cl_asan /D_DISABLE_VECTOR_ANNOTATION /D_DISABLE_STRING_ANNOTATION -Od %s -Fe%t
 // RUN: %clang_cl_asan /D_DISABLE_VECTOR_ANNOTATION /D_DISABLE_STRING_ANNOTATION /DTEST_DRIVER -Od %s -Fe%t_driver.exe
-// RUN: not %run %t_driver.exe %t 2>&1 | FileCheck %s
+// RUN: %run %t_driver.exe %t 2>&1 | FileCheck %s
 
 // Annotations disabled due to libconcrt.lib compilation mismatch
 

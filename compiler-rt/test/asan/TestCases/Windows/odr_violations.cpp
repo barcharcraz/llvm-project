@@ -4,13 +4,12 @@
 // RUN: %env_asan_opts=detect_odr_violation=2 %run %t 2>&1 | FileCheck %s --check-prefix=CHECK1
 // RUN: %clang_cl_asan /Od /LD /EHsc /DBUILD_DLL2_TEST /DFAIL_CASE %s -Fe%todr2.dll
 // RUN: %clang_cl_asan /Od /EHsc /DBUILD_EXE %s %todr1.lib %todr2.lib -Fe%t
-// RUN: %env_asan_opts=detect_odr_violation=2 %run %t 2>&1 | FileCheck %s --check-prefix=CHECK2
+// RUN: %env_asan_opts=detect_odr_violation=2 not %run %t 2>&1 | FileCheck %s --check-prefix=CHECK2
 
-// REQUIRES: asan-dynamic-runtime
+// REQUIRES: asan-dynamic-runtime, target=i386-{{.*}}
 
 // This only happens on x86. On x64, we use the odr_indicator to check violations rather than
 // poisoning, and the odr_indicator is always set to UINTPTR_MAX, so the check is skipped
-// REQUIRES: asan-32-bits
 
 #include "windows.h"
 #include <iostream>
