@@ -159,8 +159,21 @@ if platform.system() == "Windows":
         clang_cl_cxxflags = [
             "-EHs",
             "-D_HAS_EXCEPTIONS=0",
-            "/Oy-"
+            "/Oy-",
+            "/GS-",
+            "/FI{}".format(os.path.join(
+                config.test_source_root, "TestCases", "msvc_force_include.h"))
         ] + config.debug_info_flags + target_cflags
+        if config.asan_dynamic:
+            if "windows-debug" in config.name_suffix:
+                clang_cl_cxxflags.append("-MDd")
+            else:
+                clang_cl_cxxflags.append("-MD")
+        else:
+            if "windows-debug" in config.name_suffix:
+                clang_cl_cxxflags.append("-MTd")
+            else:
+                clang_cl_cxxflags.append("-MT")
         if config.compiler_id != "MSVC":
             clang_cl_cxxflags = ["-Wno-deprecated-declarations"] + clang_cl_cxxflags
         else:
@@ -169,17 +182,6 @@ if platform.system() == "Windows":
                 "/wd4805"  # 'operation' : unsafe mix of type int and type bool in operation
             ] + clang_cl_cxxflags
         clang_cl_asan_cxxflags = ["-fsanitize=address"] + clang_cl_cxxflags
-        if config.asan_dynamic:
-            if "windows-debug" in config.name_suffix:
-                clang_cl_asan_cxxflags.append("-MDd")
-            else:
-                clang_cl_asan_cxxflags.append("-MD")
-        else:
-            if "windows-debug" in config.name_suffix:
-                clang_cl_asan_cxxflags.append("-D_DEBUG")
-                clang_cl_asan_cxxflags.append("-D_MT")
-                config.substitutions.append(("[\-\/]MT ","-MTd "))
-                config.substitutions.append(("[\-\/]LD ","-LDd "))            
 
         clang_cl_invocation = build_invocation(clang_cl_cxxflags)
         clang_cl_invocation = clang_cl_invocation.replace("clang.exe", "clang-cl.exe")
