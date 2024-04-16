@@ -1,7 +1,7 @@
 // RUN: %clang_cl -Od %s -Fe%t
-// RUN: %clang_cl_asan /LD /Od %p/valid_memory_with_asan.cpp -Fe%t.dll
+// RUN: %clang_cl_asan /LD /Od %p/../Helpers/valid_memory_with_asan.cpp -Fe%t.dll
 // RUN: %run %t %t.dll
-// UNSUPPORTED: clang-static-runtime
+// UNSUPPORTED: asan-static-runtime
 
 #include "Windows.h"
 #include "malloc.h"
