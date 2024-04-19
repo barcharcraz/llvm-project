@@ -91,6 +91,15 @@ extern "C" __declspec(allocate(".CRT$XLAB")) void(WINAPI *__asan_tls_init)(
     void *, unsigned long, void *) = asan_thread_init;
 WIN_FORCE_LINK(__asan_tls_init);
 
+// Force TLS initialization to occur so we can initialize as early as possible.
+// This is needed in case identical COMDAT folding causes ASAN code to be used
+// in non-ASAN code where ASAN might not yet be initialized.
+#ifdef _M_IX86
+#pragma comment(linker, "/INCLUDE:__tls_used")
+#else
+#pragma comment(linker, "/INCLUDE:_tls_used")
+#endif
+
 ////////////////////////////////////////////////////////////////////////////////
 // ASan SEH handling.
 // We need to set the ASan-specific SEH handler at the end of CRT initialization
