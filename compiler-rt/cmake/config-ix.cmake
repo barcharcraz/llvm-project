@@ -125,7 +125,6 @@ check_cxx_compiler_flag(/Oy COMPILER_RT_HAS_Oy_FLAG)
 # Debug info flags.
 check_cxx_compiler_flag(-gline-tables-only COMPILER_RT_HAS_GLINE_TABLES_ONLY_FLAG)
 check_cxx_compiler_flag(-g COMPILER_RT_HAS_G_FLAG)
-check_cxx_compiler_flag(/Zi COMPILER_RT_HAS_Zi_FLAG)
 
 # Warnings.
 check_cxx_compiler_flag(-Wall COMPILER_RT_HAS_WALL_FLAG)
