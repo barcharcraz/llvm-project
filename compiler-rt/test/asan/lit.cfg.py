@@ -234,10 +234,10 @@ if platform.system() == "Windows":
             )
 
             config.substitutions.append(
-                ("(?<! (-|/)c )-o %t( |)", SubstituteCaptures("/Fe:%t\g<2>"))
+                ("(?<! (-|/)c )-o %t( |)", SubstituteCaptures("/Fe:%t\\g<2>"))
             )
             config.substitutions.append(
-                ("(-|/)c -o %t( |)", SubstituteCaptures("/c /Fo:%t\g<2>"))
+                ("(-|/)c -o %t( |)", SubstituteCaptures("/c /Fo:%t\\g<2>"))
             )
             config.substitutions.append(("-O0", "/Od"))
             config.substitutions.append(("-O1", "/O1i-"))
