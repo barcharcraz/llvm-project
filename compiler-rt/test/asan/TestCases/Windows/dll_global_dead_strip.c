@@ -1,4 +1,4 @@
-// RUN: %clang_cl_asan %Od %p/dll_host.cpp %Fe%t
+// RUN: %clang_cl_asan %Od %p/dll_host.cpp %if MSVC %{ /Fo%t_obj %} %Fe%t
 //
 // RUN: %clang_cl_nocxx_asan %Gw %LD %Od %s %Fe%t.dll
 // RUN: %env_asan_opts=report_globals=2 %run %t %t.dll 2>&1 | FileCheck %s --check-prefix=NOSTRIP

@@ -1,4 +1,4 @@
-// RUN: %clang_cl_asan %Od %p/dll_host.cpp %Fe%t
+// RUN: %clang_cl_asan %Od %p/dll_host.cpp %if MSVC %{ /Fo%t_obj %} %Fe%t
 // RUN: %clang_cl_asan %LD %Od %s %Fe%t.dll
 // RUN: %run %t %t.dll | FileCheck %s
 

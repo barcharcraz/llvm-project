@@ -1,4 +1,4 @@
-// RUN: %clang_cl_asan %Od %p/dll_host.cpp %Fe%t
+// RUN: %clang_cl_asan %Od %p/dll_host.cpp %if MSVC %{ /Fo%t_obj %} %Fe%t
 // RUN: %clang_cl_asan %if !MSVC %{ -Wno-fortify-source %} %LD %Od %s %Fe%t.dll
 // RUN: not %run %t %t.dll 2>&1 | FileCheck %s
 

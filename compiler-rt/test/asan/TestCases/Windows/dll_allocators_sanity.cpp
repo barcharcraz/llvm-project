@@ -1,8 +1,8 @@
-// RUN: %clang_cl_asan %Od %p/dll_host.cpp %Fe%t
+// RUN: %clang_cl_asan %Od %p/dll_host.cpp %if MSVC %{ /Fo%t_obj %} %Fe%t
 // RUN: %clang_cl_asan %LD %Od %s %Fe%t.dll
 // RUN: %run %t %t.dll | FileCheck %s
 
-// RUN: %clang_cl_asan -Od %p/dll_host.cpp -Fe%t_dbg /link /INFERASANLIBS:DEBUG
+// RUN: %clang_cl_asan -Od %p/dll_host.cpp %if MSVC %{ /Fo%t_obj %} -Fe%t_dbg /link /INFERASANLIBS:DEBUG
 // RUN: %clang_cl_asan -LD -Od %s -Fe%t_dbg.dll /link /INFERASANLIBS:DEBUG
 // RUN: %run %t_dbg %t_dbg.dll | FileCheck %s
 
