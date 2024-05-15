@@ -352,6 +352,33 @@ else()
       set(VERSION_SCRIPT_FLAG)
     endif()
 
+    # The runtime with the nonewdelete suffix is the same as the usual runtime, except it doesn't contain definitions for 
+    # new/delete. If the user has their own libraries that redefine new/delete, they can use this runtime to avoid collisions with ASan's
+    # own redefinitions of new/delete.
+    # Note that the nonewdelete version has the following behavioral differences:
+    # - different callstacks in ASan error output: operator new/delete and related allocation functions will be arranged differently in the callstacks.
+    # - alloc-dealloc-mismatch is not detected
+    # - new-delete-type-mismatch is not detected
+    add_compiler_rt_runtime(clang_rt.asan${MSVC_DBG_SUFFIX}_nonewdelete
+      SHARED
+      ARCHS ${arch}
+      OBJECT_LIBS ${ASAN_COMMON_RUNTIME_OBJECT_LIBS}
+              RTAsan_cxx
+              RTAsan_dynamic
+              # The only purpose of RTAsan_dynamic_version_script_dummy is to
+              # carry a dependency of the shared runtime on the version script.
+              # Replacing it with a straightforward
+              # add_dependencies(clang_rt.asan-dynamic-${arch} clang_rt.asan-dynamic-${arch}-version-list)
+              # generates an order-only dependency in ninja.
+              RTAsan_dynamic_version_script_dummy
+              RTUbsan_cxx
+      CFLAGS ${ASAN_DYNAMIC_CFLAGS}
+      LINK_FLAGS ${ASAN_DYNAMIC_LINK_FLAGS}
+                ${VERSION_SCRIPT_FLAG}
+      LINK_LIBS ${ASAN_DYNAMIC_LIBS}
+      DEFS ${ASAN_DYNAMIC_DEFINITIONS}
+      PARENT_TARGET asan)
+
     add_compiler_rt_runtime(clang_rt.asan${MSVC_DBG_SUFFIX}
       SHARED
       ARCHS ${arch}
