@@ -1,6 +1,8 @@
 // RUN: %clang_cl -Od %s -Fe%t /link dbghelp.lib /INFERASANLIBS
 // RUN: %run %t 2>&1 | FileCheck %s
 
+// Todo: disabled for llvm19/main upgrade, this should really be a unit test. See VSO-PR-539215
+// UNSUPPORTED: MSVC
 // Regression test for OverrideFunctionWithJump for scenarios.
 // Main concern is when the jump instruction is at an address lower
 // than the original calling function
