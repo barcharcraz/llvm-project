@@ -27,6 +27,8 @@ namespace __asan {
 // just becomes namespace __coe_foo { PLATFORM_DECL }
 namespace __coe_win {
 
+static inline char coe_log_file_name[] = "COE_LOG_FILE";
+
 bool ContinueOnError();
 bool ModulesLoading();
 bool CrtTearingDown();

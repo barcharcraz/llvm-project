@@ -243,7 +243,7 @@ void InitializeFlags() {
 
       // TODO: update other globals and data structures that may change after
       // initialization due to these flags potentially changing
-      if (flags()->continue_on_error) {
+      if (flags()->continue_on_error || GetEnv(__coe_win::coe_log_file_name)) {
         __asan::InitializeCOE();
       }
     });
