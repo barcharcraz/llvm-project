@@ -382,8 +382,9 @@ else:
     dbg_ = ""
 
 import_lib                 = f"clang_rt.asan_{dbg_}dynamic-{arch}.lib"
-dynamic_runtime_thunk      = f"clang_rt.asan_{dbg_}dynamic_runtime_thunk-{arch}.lib"
-static_runtime_thunk       = f"clang_rt.asan_{dbg_}static_runtime_thunk-{arch}.lib"
+nonewdelete_import_lib     = f"clang_rt.asan_{dbg_}nonewdelete_dynamic-{arch}.lib"
+dynamic_runtime_thunk      = f"clang_rt.asan_dynamic_runtime_thunk-{arch}.lib"
+static_runtime_thunk       = f"clang_rt.asan_static_runtime_thunk-{arch}.lib"
 runtime_dll                = f"clang_rt.asan_{dbg_}dynamic-{arch}.dll"
 fuzzer_dynamic_lib         = f"clang_rt.fuzzer_MD{d}-{arch}.lib"
 fuzzer_no_main_dynamic_lib = f"clang_rt.fuzzer_MD{d}_no_main-{arch}.lib"
@@ -442,6 +443,7 @@ testConfig.substitutions = {
                             ("-fsanitize-coverage=func ", lit.TestingConfig.SubstituteCaptures("/d2Sancov " )),
                             ("%if_not_i386", 'if "' + opts.testTargetArch + '" neq "i386" '),
                             ("%if_i386", 'if "' + opts.testTargetArch + '" == "i386" '),
+                            ("%nonewdelete_link", "/link /INFERASANLIBS:NO " + nonewdelete_import_lib + " /WHOLEARCHIVE:" + runtime_thunk),
                             ("%sancov", "sancov.exe"),
                             ("%clangxx_asan ", litConfig.clang +  default_flags + runtime_flags + " /fsanitize=address /Oy- " ),
                             ("%clang_cl_asan ", litConfig.clang + default_flags + runtime_flags + " /fsanitize=address " ),
@@ -584,14 +586,6 @@ for cc_file in cc_files:
                     ("%asan_lib", ""),
                     ("%asan_cxx_lib", "")
                 }
-        else:
-            #elsewhere asan_lib and asan_cxx_lib should still resolve to the regular library names
-            __testConfig.substitutions |= {
-                out_to_obj_tuple,
-                out_to_exe_tuple,
-                ("%asan_lib", __litConfig.compiler_rt_libdir + "\\" + import_lib + ""),
-                ("%asan_cxx_lib", __litConfig.compiler_rt_libdir + "\\" + runtime_thunk + ""),
-            }
         if "seh.cpp" in cc_file:
             __testConfig.environment["_CL_"] = __testConfig.environment["_CL_"].replace("/EHs", "/EHa")
             __testConfig.substitutions |= {

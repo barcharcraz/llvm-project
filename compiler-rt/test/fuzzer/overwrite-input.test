@@ -1,3 +1,4 @@
+// MSVC-DISABLED:*, VSO-2033447: Flaky due to CI timeout
 RUN: %cpp_compiler %S/OverwriteInputTest.cpp -o %t-OverwriteInputTest
 RUN: not %run %t-OverwriteInputTest 2>&1 | FileCheck %s
 CHECK: ERROR: libFuzzer: fuzz target overwrites its const input

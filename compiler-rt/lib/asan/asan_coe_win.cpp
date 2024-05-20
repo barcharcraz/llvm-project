@@ -1,5 +1,5 @@
 
-//===-- asan_coe_win.cpp ------------------------------------------------------===//
+//===-- asan_coe_win.cpp---------------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -28,6 +28,7 @@
 #include "asan_report.h"
 #include "asan_stack.h"
 #include "asan_thread.h"
+#include "asan_coe_win.h"
 #include "sanitizer_common/sanitizer_addrhashmap.h"
 #include "sanitizer_common/sanitizer_libc.h"
 #include "sanitizer_common/sanitizer_mutex.h"
@@ -237,7 +238,7 @@ static const u32 kPrintStackDepthLimit = 64;
 static const u32 kMaxStackDepthForFormat = 128;
 
 // Clipping limit when formatting a function of file name
-static const u32 kMaxFuncOrFileNmaeLen = 512;
+static const u32 kMaxFuncOrFileNameLen = 512;
 
 // Traditional size that's prime for hashing 'errors'.
 static const u32 kHashTablePrimeSize = 1033;
@@ -253,7 +254,7 @@ static bool modules_loading = false;
 
 // All output goes to this file handle
 static HANDLE coe_res_file_handle = nullptr;
-static wchar_t* coe_file_handle_path = nullptr;
+static char coe_file_handle_path[kMaxFuncOrFileNameLen];
 
 // Upon exit when printing summay into, if we are in
 // a really clobbered state, optimize out some actions in
@@ -261,7 +262,15 @@ static wchar_t* coe_file_handle_path = nullptr;
 bool crt_state_tearing_down = false;
 
 static int coe_total_error_cnt = 0;
-static wchar_t coe_wcs_log_file_name[] = L"COE_LOG_FILE";
+
+namespace __asan {
+char* GetEnvironmentVariableValue(const char* wszName);
+namespace continue_on_error {
+static char* GetCOELogFileName() {
+  return __asan::GetEnvironmentVariableValue(__coe_win::coe_log_file_name);
+}
+}  // namespace continue_on_error
+}  // namespace __asan
 
 namespace __coe_win {
 void RawWrite(const char* buffer);
@@ -352,7 +361,7 @@ HMODULE hmDbgHelp;
 static SpinMutex fallback_mutex;
 
 bool COE() {
-  if (flags()->continue_on_error) {
+  if (flags()->continue_on_error != 0) {
     return true;
   }
   return false;
@@ -1316,8 +1325,8 @@ class CoeStack {
  private:
   // tmep. memory only used, as a stack local instantiation,
   // and only when there's a memory safety error.
-  char function_names_[kMaxStackDepthForFormat][kMaxFuncOrFileNmaeLen];
-  char file_names_[kMaxStackDepthForFormat][kMaxFuncOrFileNmaeLen];
+  char function_names_[kMaxStackDepthForFormat][kMaxFuncOrFileNameLen];
+  char file_names_[kMaxStackDepthForFormat][kMaxFuncOrFileNameLen];
   int line_numbers_[kMaxStackDepthForFormat];
   int current_frame_;
 };
@@ -1333,8 +1342,8 @@ void FormatStackFrameStrings(CoeStack* stk, HANDLE hProcess,
 
   Symbol func_sym(hProcess, (DWORD64)pc);
 
-  strncpy_s(stk->CurrentFunctionNamePtr(), kMaxFuncOrFileNmaeLen,
-            func_sym.Name(), kMaxFuncOrFileNmaeLen - 2);
+  strncpy_s(stk->CurrentFunctionNamePtr(), kMaxFuncOrFileNameLen,
+            func_sym.Name(), kMaxFuncOrFileNameLen - 2);
 
   // entered a critical section in the caller thus
   // creating a sequentialized access to dbghelp.dll
@@ -1343,14 +1352,14 @@ void FormatStackFrameStrings(CoeStack* stk, HANDLE hProcess,
 
   if (SymGetLineFromAddr64(hProcess, (DWORD64)pc, &offset_from_symbol, &line)) {
     // Cache the file an line number
-    size_t file_name_len = strnlen_s(line.FileName, kMaxFuncOrFileNmaeLen);
-    CHECK(file_name_len + 2 < kMaxFuncOrFileNmaeLen);
-    strncpy_s(stk->CurrentFileNamePtr(), kMaxFuncOrFileNmaeLen, line.FileName,
+    size_t file_name_len = strnlen_s(line.FileName, kMaxFuncOrFileNameLen);
+    CHECK(file_name_len + 2 < kMaxFuncOrFileNameLen);
+    strncpy_s(stk->CurrentFileNamePtr(), kMaxFuncOrFileNameLen, line.FileName,
               file_name_len);
     *(stk->CurrentLineNumberPtr()) = line.LineNumber;
 
   } else {
-    strncpy_s(stk->CurrentFileNamePtr(), kMaxFuncOrFileNmaeLen, "Windows",
+    strncpy_s(stk->CurrentFileNamePtr(), kMaxFuncOrFileNameLen, "Windows",
               strlen("Windows"));
     *(stk->CurrentLineNumberPtr()) = 0;
   }
@@ -1383,7 +1392,7 @@ void PrintCallStack(HANDLE hProcess, StackTrace* trace_pcs) {
   stk.ReSetCurrentFrame();
 
   for (size_t index = 0; index < stack_frame_cnt; index++) {
-    size_t len = strnlen(stk.CurrentFunctionNamePtr(), kMaxFuncOrFileNmaeLen);
+    size_t len = strnlen(stk.CurrentFunctionNamePtr(), kMaxFuncOrFileNameLen);
     stk.IncCurrentFrame();
     if (len > size_max_name) {
       size_max_name = len;
@@ -1532,22 +1541,22 @@ void CoeReportError(ErrorDescription& current_error) {
 }
 
 static const u32 kMaxLogFileStringSize = 4 * 1024;
-static wchar_t logfile_name[kMaxLogFileStringSize];
-static const u32 kMaxLogFileWChars = kMaxLogFileStringSize / sizeof(short);
+static char logfile_name[kMaxLogFileStringSize];
+static const u32 kMaxLogFileChars = kMaxLogFileStringSize / sizeof(short);
 
-static wchar_t* GetEnvironmentVariableValue(LPCWSTR wszName) {
-  DWORD cntNeeded = GetEnvironmentVariableW(wszName, nullptr, 0);
+char* GetEnvironmentVariableValue(const char* wszName) {
+  DWORD cntNeeded = GetEnvironmentVariableA(wszName, nullptr, 0);
   if (!cntNeeded)
     return nullptr;
 
-  if (cntNeeded >= (kMaxLogFileWChars - sizeof(wchar_t))) {
+  if (cntNeeded >= (kMaxLogFileChars - sizeof(char))) {
     Printf("Log file name is large than %d characters.\n",
            kMaxLogFileStringSize / 2);
     Printf("No logfile created for environment variable COE_LOG_FILE\n");
     return nullptr;
   }
   size_t character_cnt_written =
-      GetEnvironmentVariableW(wszName, logfile_name, cntNeeded);
+      GetEnvironmentVariableA(wszName, logfile_name, cntNeeded);
   if (character_cnt_written != cntNeeded - 1) {
     RAW_CHECK_MSG(
         false,
@@ -1587,59 +1596,102 @@ static void CoeDynamicallyLoadDbghelp() {
   }
 }
 
-HANDLE CoeCreateLogFile() {
-  CHECK(coe_file_handle_path);
-  auto fileHandle = ::CreateFileW(coe_file_handle_path, GENERIC_WRITE, 0, NULL,
-                                  CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+bool IsValidFile(const HANDLE fileHandle) {
+  return fileHandle != INVALID_HANDLE_VALUE;
+}
 
-  if (fileHandle != INVALID_HANDLE_VALUE) {
+HANDLE CoeCreatePIDLogFile() {
+  unsigned int pid = internal_getpid();
+  internal_snprintf(coe_file_handle_path, MAX_PATH, "%s.%u",
+                    coe_file_handle_path, pid);
+  auto fileHandle = ::CreateFileA(coe_file_handle_path, GENERIC_WRITE, 0, NULL,
+                                  CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+  return fileHandle;
+}
+
+HANDLE CoeCreateTempFile() {
+  static constexpr auto MAX_PATH_SIZE = MAX_PATH - 14;
+  char tempFilePath[MAX_PATH_SIZE];
+  char tempFileName[MAX_PATH_SIZE] = "";
+
+  auto tmp_path_char_count = GetTempPathA(MAX_PATH_SIZE, tempFilePath);
+  if (tmp_path_char_count == 0 || tmp_path_char_count >= MAX_PATH_SIZE) {
+    Write("\nFailed to get temp directory. No log file. Internal error %x\n",
+          GetLastError());
+    return INVALID_HANDLE_VALUE;
+  }
+
+  if (!GetTempFileNameA(tempFilePath, "Asan_COE", 0, tempFileName)) {
+    Write("\nFailed to get temp file name. Internal error %x\n",
+          GetLastError());
+    return INVALID_HANDLE_VALUE;
+  }
+
+  auto fileHandle = CreateFileA(tempFileName, GENERIC_WRITE, 0, NULL,
+                                CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+
+  if (fileHandle == INVALID_HANDLE_VALUE) {
+    Write("\nFailed to open temp file %s with error %x\n", tempFileName,
+          GetLastError());
+    return INVALID_HANDLE_VALUE;
+  }
+
+  if (IsValidFile(fileHandle)) {
+    Write("\nUsing %s file for logging.\n", tempFileName);
+  }
+
+  return fileHandle;
+}
+
+HANDLE CoeCreateLogFile() {
+  static HANDLE fileHandle = INVALID_HANDLE_VALUE;
+  if (IsValidFile(fileHandle)) {
+    return fileHandle;
+  }
+  fileHandle = ::CreateFileA(coe_file_handle_path, GENERIC_WRITE, 0, NULL,
+                             CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+
+  if (IsValidFile(fileHandle)) {
     return fileHandle;
   }
 
-  LPWSTR coe_temp_file_path = (LPWSTR)coe_file_handle_path;
   u32 dwError = GetLastError();
+
+  // If we are in a subprocess or the file is locked,
+  // we should just append PID and try logging to it.
+  if (dwError == ERROR_SHARING_VIOLATION) {
+    fileHandle = CoeCreatePIDLogFile();
+    dwError = GetLastError();
+    if (IsValidFile(fileHandle)) {
+      return fileHandle;
+    }
+  }
+
   Write(
-      "\nFailed to open file %ws. Internal error %x.\nTrying to default to "
+      "\nFailed to open file %s. Internal error %x.\nTrying to default to "
       "a newly created temp file.",
       coe_file_handle_path, dwError);
-  // ...otherwise, create a tmp file in the %TMP% then %TEMP% directories
-  // Windwos specifies 14 on MSDN
-  auto tmp_path_wchar_cnt = GetTempPathW(MAX_PATH - 14, coe_temp_file_path);
-  if (0 == tmp_path_wchar_cnt) {
-    Write("\nFailed to get temp directory. No log file. Internal error %x\n",
-          GetLastError());
-    return nullptr;
-  }
+  fileHandle = CoeCreateTempFile();
 
-  if (!GetTempFileNameW(coe_temp_file_path, L"Asan_COE", 0,
-                        &coe_temp_file_path[tmp_path_wchar_cnt])) {
-    Write("\nFailed to get temp file name. Internal error %x\n",
-          GetLastError());
-    return nullptr;
-  }
-
-  auto h_coe_tmp_file = CreateFileW(coe_temp_file_path, GENERIC_WRITE, 0, NULL,
-                                    CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-
-  if (h_coe_tmp_file == INVALID_HANDLE_VALUE) {
-    Write("\nFailed to open temp file %ws with error %x\n", coe_temp_file_path,
-          GetLastError());
-    // failed...but not from a lack of effort
-    return nullptr;
-  }
-
-  return h_coe_tmp_file;
+  return fileHandle;
 }
 
 void InitializeCOE() {
   // Called from AsanInitInternal() in asan\asan_rtl.cpp as well as from weak
   // callbacks if registered to update state
-  auto wszResultsFilePath = GetEnvironmentVariableValue(coe_wcs_log_file_name);
-  if (wszResultsFilePath && wszResultsFilePath != coe_file_handle_path) {
-    coe_file_handle_path =
-        wszResultsFilePath;  // Potentially the environment variable can be set
-                             // programmatically, meaning we should use that
-                             // instead
+  auto logFilePath = GetEnvironmentVariableValue(__coe_win::coe_log_file_name);
+  if (logFilePath && flags()->continue_on_error == 0) {
+    // If the flag isn't set, but the environment variable is, we should
+    // always log to a file. Just set the flag to true for tracking
+    VReport(1,
+            "AddressSanitizer: Enabling ContinueOnError. continue_on_error "
+            "flag not set, but "
+            "COE_LOG_FILE environment variable is set.\n");
+    flags()->continue_on_error = 1;
+  }
+  if (logFilePath && internal_strcmp(logFilePath, coe_file_handle_path)) {
+    internal_strncpy(coe_file_handle_path, logFilePath,
+                     internal_strlen(logFilePath));
     if (!(coe_res_file_handle = CoeCreateLogFile())) {
       RAW_CHECK_MSG(false,
                     "Internal error during continue on error: Failed log file "

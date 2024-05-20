@@ -605,12 +605,14 @@ struct Allocator {
       // In the event that we have somehow missed this allocation,
       // like if it was allocated by ASan before COE was enabled,
       // we should retroactively create an entry for the safe metadata.
+      // We cannot assume that the metadata is valid. There could be malicious
+      // writes to the header that create ill-formed or null chunks. In those
+      // cases, returning the original safe metadata should allow for complete
+      // error printing.
       AsanChunkView av(m);
       if (av.IsValid()) {
         AsanChunkCOE_Allocate(av.Beg(), m);
       }
-      CHECK(smd);
-      CHECK(smd->real_chunk);
     }
     return smd;
   }

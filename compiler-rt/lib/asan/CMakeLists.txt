@@ -335,7 +335,14 @@ else()
     else()
       set(VERSION_SCRIPT_FLAG)
     endif()
-
+    # We use this runtime as the "_nonewdelte" version of the runtime, as well as linking it into the new/delete library to form the "final/real" asan-runtime import library,
+    # the nonewdelete version is the same as the normal version except it doesn't contain definitions for 
+    # new/delete. If the user has their own libraries that redefine new/delete, they can use this runtime to avoid collisions with ASan's
+    # own redefinitions of new/delete.
+    # Note that the nonewdelete version has the following behavioral differences:
+    # - different callstacks in ASan error output: operator new/delete and related allocation functions will be arranged differently in the callstacks.
+    # - alloc-dealloc-mismatch is not detected
+    # - new-delete-type-mismatch is not detected
     add_compiler_rt_runtime(clang_rt.asan
       SHARED
       ARCHS ${arch}
@@ -360,7 +367,7 @@ else()
 
       set_target_properties(clang_rt.asan-dynamic-${arch}
         PROPERTIES
-          ARCHIVE_OUTPUT_NAME clang_rt.asan$<$<CONFIG:DEBUG>:_dbg>_dynamic-${arch}_implib
+          ARCHIVE_OUTPUT_NAME clang_rt.asan$<$<CONFIG:DEBUG>:_dbg>_nonewdelete_dynamic-${arch}
           OUTPUT_NAME clang_rt.asan$<$<CONFIG:DEBUG>:_dbg>_dynamic-${arch})
       add_compiler_rt_runtime(clang_rt.asan_implib
         STATIC
