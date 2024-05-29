@@ -586,6 +586,14 @@ for cc_file in cc_files:
                     ("%asan_lib", ""),
                     ("%asan_cxx_lib", "")
                 }
+        else:
+            #elsewhere asan_lib and asan_cxx_lib should still resolve to the regular library names
+            __testConfig.substitutions |= {
+                out_to_obj_tuple,
+                out_to_exe_tuple,
+                ("%asan_lib", __litConfig.compiler_rt_libdir + "\\" + import_lib + ""),
+                ("%asan_cxx_lib", __litConfig.compiler_rt_libdir + "\\" + runtime_thunk + ""),
+            }
         if "seh.cpp" in cc_file:
             __testConfig.environment["_CL_"] = __testConfig.environment["_CL_"].replace("/EHs", "/EHa")
             __testConfig.substitutions |= {

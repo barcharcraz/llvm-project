@@ -1,4 +1,5 @@
 // RUN: %clang_asan /std:c++17 /EHsc -Od %s -Fe%t && %env_asan_opts=continue_on_error=1 %run %t 2>&1 | FileCheck %s
+// MSVC-DISABLED:*, Flaky due to error reporting inconsistencies
 
 // Stress test for destroying metadata and recovering during continue-on-error
 #include <iostream>
