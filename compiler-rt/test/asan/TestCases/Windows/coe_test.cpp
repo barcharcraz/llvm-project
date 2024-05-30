@@ -15,11 +15,11 @@
 // RUN: %clang_asan /std:c++17 /EHsc -Od /DMANY_ERROR_TEST /DERROR_TEST /DDEFAULT_OPTION_TEST %s -Fe%t && %run %t 2>&1 | FileCheck %s --check-prefix=CHECK-ASAN-COE-NO-WINMAIN --check-prefix=CHECK-ASAN-COE -check-prefix=CHECK-ASAN-COE-MANY-ERROR
 
 // %clang_asan /std:c++17 /EHsc -Od /DERROR_TEST /DCOE_FILE %s -Fe%t
-// RUN: env COE_LOG_FILE=coe_test.log && %run %t 2>&1 | FileCheck %s
+// RUN: env COE_LOG_FILE=coe_test.log %run %t 2>&1 | FileCheck %s
 // %clang_asan /std:c++17 /EHsc -Od /DERROR_TEST /DCOE_FILE2 /DWMAIN_TEST %s -Fe%t
-// RUN: env COE_LOG_FILE=coe_test2.log && %run %t 2>&1 | FileCheck %s
+// RUN: env COE_LOG_FILE=coe_test2.log %run %t 2>&1 | FileCheck %s
 // %clang_asan /std:c++17 /EHsc -Od /DERROR_TEST /DCOE_FILE3 /DCOE_PROGRAMMATIC %s -Fe%t
-// RUN: env COE_LOG_FILE= && %run %t 2>&1 | FileCheck %s
+// RUN: env COE_LOG_FILE= %run %t 2>&1 | FileCheck %s
 
 #include <Windows.h>
 #include <filesystem>
