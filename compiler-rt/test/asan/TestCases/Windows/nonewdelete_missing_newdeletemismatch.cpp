@@ -1,6 +1,6 @@
 // Without ASan's new/delete operators, new-delete-type-mismatch errors are not detected.
 
-// RUN: %clang_cl_asan -Od %s -Fe%t %nonewdelete_link
+// RUN: %clang_cl_asan -Od %s -Fe%t /link /INFERASANLIBS:NO %nonewdelete_libasan /WHOLEARCHIVE:%asan_thunk
 // RUN: not %run %t 2>&1 | FileCheck %s
 
 #include <memory>

@@ -219,6 +219,9 @@ if platform.system() == "Windows":
         config.substitutions.append(
             ("%asan_static_runtime_thunk", base_lib % "_static_runtime_thunk")
         )
+        config.substitutions.append(
+            ("%nonewdelete_libasan", "clang_rt.asan_nonewdelete_dynamic-%s.lib" % config.target_suffix)
+        )
         config.substitutions.append(("%asan_dll_thunk", base_lib % "_dll_thunk"))
 
         if config.compiler_id == "MSVC":

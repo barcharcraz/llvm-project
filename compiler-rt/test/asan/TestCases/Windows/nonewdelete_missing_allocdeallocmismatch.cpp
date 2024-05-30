@@ -1,6 +1,6 @@
 // Without ASan's new/delete overrides, alloc/dealloc mismatch errors are not detected.
 
-// RUN: %clang_cl_asan -Od %s -Fe%t %nonewdelete_link
+// RUN: %clang_cl_asan -Od %s -Fe%t /link /INFERASANLIBS:NO %nonewdelete_libasan /WHOLEARCHIVE:%asan_thunk
 // RUN: %env_asan_opts=alloc_dealloc_mismatch=true not %run %t 2 2>&1 | FileCheck %s
 
 #include <stdio.h>

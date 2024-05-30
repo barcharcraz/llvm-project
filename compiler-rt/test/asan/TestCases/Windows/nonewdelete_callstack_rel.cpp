@@ -3,7 +3,7 @@
 // (See testcase `double_operator_delete.cpp` for the version with new/delete overrides)
 // REQUIRES: asan-release-runtime
 
-// RUN: %clang_cl_asan -Od %s -Fe%t %nonewdelete_link
+// RUN: %clang_cl_asan -Od %s -Fe%t /link /INFERASANLIBS:NO %nonewdelete_libasan /WHOLEARCHIVE:%asan_thunk
 // RUN: not %run %t 2>&1 | FileCheck %s
 
 #include <malloc.h>
