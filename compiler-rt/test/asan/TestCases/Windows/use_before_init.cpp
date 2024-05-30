@@ -1,5 +1,5 @@
 // RUN: %clang_cl_asan -Od %s -Fe%t
-// RUN: not %run %t 2>&1 | FileCheck %s
+// RUN: %run %t 2>&1 | FileCheck %s
 
 #include <malloc.h>
 #include <stdio.h>
@@ -13,4 +13,5 @@ int main() {
   (void) _malloca(16);
   puts("Success");
   // CHECK: Success
+  return 0;
 }
