@@ -220,7 +220,7 @@ if platform.system() == "Windows":
             ("%asan_static_runtime_thunk", base_lib % "_static_runtime_thunk")
         )
         config.substitutions.append(
-            ("%nonewdelete_libasan", "clang_rt.asan_nonewdelete_dynamic-%s.lib" % config.target_suffix)
+            ("%nonewdelete_libasan", base_lib % "_nonewdelete_dynamic")
         )
         config.substitutions.append(("%asan_dll_thunk", base_lib % "_dll_thunk"))
 
