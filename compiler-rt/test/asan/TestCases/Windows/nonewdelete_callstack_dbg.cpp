@@ -1,7 +1,7 @@
 // Without ASan's new/delete overrides, the callstack looks slightly different.
 // This testcase matches against this difference. 
 // (See testcase `double_operator_delete.cpp` for the version with new/delete overrides)
-// REQUIRES: asan-debug-runtime
+// REQUIRES: debug-crt
 
 // RUN: %clang_cl_asan -Od %s -Fe%t /link /INFERASANLIBS:NO %nonewdelete_libasan /WHOLEARCHIVE:%asan_thunk
 // RUN: not %run %t 2>&1 | FileCheck %s
