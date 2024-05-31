@@ -775,6 +775,8 @@ static size_t GetInstructionSize(uptr address, size_t *rel_offset = nullptr) {
   }
   switch (*(u16*)address) {
     case 0x458B:  // 8B 45 XX : mov eax, dword ptr [ebp + XX]
+    case 0x4D8B:  // 8B 4D XX : mov ecx, dword ptr [ebp + XX]
+    case 0x558B:  // 8B 55 XX : mov edx, dword ptr [ebp + XX]
     case 0x5D8B:  // 8B 5D XX : mov ebx, dword ptr [ebp + XX]
     case 0x7D8B:  // 8B 7D XX : mov edi, dword ptr [ebp + XX]
     case 0x758B:  // 8B 75 XX : mov esi, dword ptr [ebp + XX]
@@ -812,6 +814,13 @@ static size_t GetInstructionSize(uptr address, size_t *rel_offset = nullptr) {
   // interceptor or a new compiler version. In either case, they should result
   // in visible and readable error messages. However, merely calling abort()
   // leads to an infinite recursion in CheckFailed.
+
+  u8 *bytes = (u8 *)address;
+  Printf(
+      "interception_win: unhandled instruction at %p: %02x %02x %02x %02x %02x "
+      "%02x %02x %02x\n",
+      (void *)address, bytes[0], bytes[1], bytes[2], bytes[3], bytes[4],
+      bytes[5], bytes[6], bytes[7]);
 
   InterceptionFailed();
   return 0;
