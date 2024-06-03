@@ -245,7 +245,7 @@ static const u32 kHashTablePrimeSize = 1033;
 // Traditional size that's prime for hashing 'strings'.
 static const u32 kStringTablePrimeSize = 1999;
 
-// Used for optimization. If we are printingsymbolizing in process
+// Used for optimization. If we are printing/symbolizing in process
 // there is no need to update meta-data from safe meta data in the
 // allocators. We assume the in process symboizer does not trash
 // memory.
@@ -495,9 +495,14 @@ class Symbol {
     sym->SizeOfStruct = sizeof(*sym);
     sym->MaxNameLength = kAsanWindowsSymMaxLen;
     DWORD64 displacement;
+    // We need to unlock then relock the registry to call into dbghlp.dll
+    // because it can spawn a thread to accomplish symbolization, which can
+    // deadlock if the registry is locked for CreateThread
+    __asan::asanThreadRegistry().Unlock();
     if (!SymGetSymFromAddr64(process, address, &displacement, sym)) {
       internal_memcpy(sym->Name, "NoFuncSymbol()", 8);
     }
+    __asan::asanThreadRegistry().Lock();
   }
 
   char* Name() { return sym->Name; }
@@ -1086,7 +1091,12 @@ class SymHandler {
       : p(process) {
     asan_quarantine_checkpoint();
     SymSetOptions(SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS | SYMOPT_LOAD_LINES);
-    modules_loading = true;
+
+    // TODO: For now, the modules_loading mechanism is disabled. The intention
+    // of it was to optimize safe metadata construction and fetching in the
+    // allocators. It currently causes a deadlock in the managed applications
+    // when multiple threads are reporting errors. 
+    // modules_loading = true;
 
     if (!SymInitialize(p, path, intrude)) {
       DWORD error = GetLastError();
