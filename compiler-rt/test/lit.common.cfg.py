@@ -323,8 +323,15 @@ if config.have_internal_symbolizer:
 # in RUN lines.
 config.substitutions.append(
     (
-        " clang",
+        " clang ",
         """\n\n*** Do not use 'clangXXX' in tests,
+     instead define '%clangXXX' substitution in lit config. ***\n\n""",
+    )
+)
+config.substitutions.append(
+    (
+        " clang++ ",
+         """\n\n*** Do not use 'clangXXX' in tests,
      instead define '%clangXXX' substitution in lit config. ***\n\n""",
     )
 )

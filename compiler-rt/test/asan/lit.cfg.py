@@ -200,9 +200,7 @@ if platform.system() == "Windows":
         config.substitutions.append(("%MT", "-MT"))
         config.substitutions.append(("%Gw", "-Gw"))
 
-        base_lib = os.path.join(
-            config.compiler_rt_libdir, "clang_rt.asan%%s%s.lib" % config.target_suffix
-        )
+        base_lib = "clang_rt.asan%%s%s.lib" % config.target_suffix
         config.substitutions.append(("%asan_lib", base_lib % "_dynamic"))
         if config.asan_dynamic:
             config.substitutions.append(
@@ -336,7 +334,7 @@ if config.host_os == "Windows":
     )
 
 # msvc needs to be instructed where the compiler-rt libraries are
-if config.compiler_id == "MSVC":
+if platform.system() == "Windows" and target_is_msvc:
     config.environment["LIB"] = os.path.pathsep.join(
         [config.compiler_rt_libdir, config.environment.get("LIB", "")]
     )
