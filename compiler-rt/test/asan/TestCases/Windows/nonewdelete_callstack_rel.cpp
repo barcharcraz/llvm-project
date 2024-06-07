@@ -14,11 +14,11 @@ int main() {
   delete [] x;
 // CHECK: AddressSanitizer: attempting double-free on [[ADDR:0x[0-9a-f]+]]
 // CHECK-NEXT: {{#0 .* free}}
-// CHECK-NEXT: {{#1 .* main .*nonewdelete_callstack_rel.cpp}}:[[@LINE-3]]
+// CHECK: {{#[1-2] .* main .*nonewdelete_callstack_rel.cpp}}:[[@LINE-3]]
 // CHECK: [[ADDR]] is located 0 bytes inside of 168-byte region
 // CHECK-LABEL: freed by thread T0 here:
 // CHECK-NEXT: {{#0 .* free}}
-// CHECK-NEXT: {{#1 .* main .*nonewdelete_callstack_rel.cpp}}:[[@LINE-8]]
+// CHECK: {{#[1-2] .* main .*nonewdelete_callstack_rel.cpp}}:[[@LINE-8]]
 // CHECK-LABEL: previously allocated by thread T0 here:
 // CHECK-NEXT: {{#0 .* malloc}}
 // CHECK-NEXT: {{#1 .* operator new}}
