@@ -119,6 +119,27 @@ bool ParseFrameDescription(const char *frame_descr,
   return true;
 }
 
+#if SANITIZER_WINDOWS
+atomic_uint8_t isReportInProgress = {0};
+constexpr u8 kNoReportInProgress = 0;
+constexpr u8 kReportInProgress = 1;
+
+static void SetErrorReportInProgress(u8 val) {
+  asanThreadRegistry().CheckLocked();
+  atomic_store(&isReportInProgress, val, memory_order_release);
+}
+
+bool ErrorReportInProgress() {
+  return atomic_load(&isReportInProgress, memory_order_acquire) ==
+         kReportInProgress;
+}
+
+#define SET_REPORT_IN_PROGRESS() SetErrorReportInProgress(kReportInProgress)
+#define SET_NO_REPORT_IN_PROGRESS() SetErrorReportInProgress(kNoReportInProgress)
+#else
+#define SET_REPORT_IN_PROGRESS()
+#define SET_NO_REPORT_IN_PROGRESS()
+#endif
 
 // -------------------- Different kinds of reports ----------------- {{{1
 
@@ -133,6 +154,7 @@ class ScopedInErrorReport {
     // We can lock them only here to avoid self-deadlock in case of
     // recursive reports.
     asanThreadRegistry().Lock();
+    SET_REPORT_IN_PROGRESS();
     if (!coe.ContinueOnError()) {
       Printf(
           "================================================================="
@@ -146,10 +168,13 @@ class ScopedInErrorReport {
   ~ScopedInErrorReport() {
     if (halt_on_error_ && !__sanitizer_acquire_crash_state() &&
         !coe.ContinueOnError()) {
+      SET_NO_REPORT_IN_PROGRESS();
       asanThreadRegistry().Unlock();
       return;
     }
     if (coe.ContinueOnError() && coe.CrtTearingDown()) {
+      SET_NO_REPORT_IN_PROGRESS();
+      asanThreadRegistry().Unlock();
       return;
     }
     ASAN_ON_ERROR();
@@ -162,6 +187,7 @@ class ScopedInErrorReport {
           Report("CONTINUE ON ERROR\n");
         }
         coe.CloseError(current_error_);
+        SET_NO_REPORT_IN_PROGRESS();
         asanThreadRegistry().Unlock();
         internal_memset(&current_error_, 0, sizeof(current_error_));
         return;
@@ -170,6 +196,7 @@ class ScopedInErrorReport {
     // Make sure the current thread is announced.
     DescribeThread(GetCurrentThread());
     // We may want to grab this lock again when printing stats.
+    SET_NO_REPORT_IN_PROGRESS();
     asanThreadRegistry().Unlock();
     // Print memory stats.
     if (flags()->print_stats)

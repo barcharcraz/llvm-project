@@ -796,7 +796,7 @@ struct Allocator {
     CHECK_EQ(CHUNK_ALLOCATED, old_chunk_state);
     // It was a user data.
     m->SetFreeContext(kInvalidTid, 0);
-    if (flags()->continue_on_error && ! coe.ModulesLoading()) {
+    if (flags()->continue_on_error && !coe.ModulesLoading()) {
       ChunkSafeCopy *smd = AsanChunkCOE_Get(m);
       atomic_compare_exchange_strong(&(smd->chunk_state), &old_chunk_state,
                                      CHUNK_QUARANTINE, memory_order_acquire);
@@ -1049,7 +1049,9 @@ struct Allocator {
   AsanChunkView FindHeapChunkByAddress(uptr addr) {
     AsanChunk *m1 = GetAsanChunkByAddr(addr);
     sptr offset = 0;
-    if (flags()->continue_on_error) {
+    // TODO: With modules_loading always turned off, COE has to fully describe
+    // each chunk properly
+    if (flags()->continue_on_error && coe.ModulesLoading()) {
       // The next brute force loop is super slow for coe
       return AsanChunkView(m1);
     }

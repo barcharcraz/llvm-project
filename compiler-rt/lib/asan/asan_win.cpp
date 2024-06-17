@@ -18,6 +18,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <stdlib.h>
 #include <windows.h>
+#include <psapi.h>
 
 #include "asan_interceptors.h"
 #include "asan_internal.h"
@@ -171,6 +172,48 @@ static thread_return_t THREAD_CALLING_CONV asan_thread_start(void *arg) {
   return res;
 }
 
+// TODO: This is a hack to allow dbghelp asynchronous calls to fetch symbols
+// through without waiting forever on the ThreadRegistry lock. We likely
+// need to change the way the ThreadRegistry respects threads during error
+// reporting on Windows.
+//
+// dbghelp sometimes uses asynchronous wininet callbacks to do the work
+// necessary for the symbolizer, which calls CreateThread, which we intercept.
+// The problem only occurs during error reporting when symbols don't exist on a
+// machine and dbghelp needs to make an HTTP request to fetch them. The solution
+// is to peer into the callstack to see if a known export is trying to create a
+// thread during an active reporting error. If so, we don't really care about it
+// as part of the normal ThreadRegistry routines, and should just allow it to go
+// through and complete.
+bool DbgHelpWaiting() {
+  if (ErrorReportInProgress()) {
+    MODULEINFO Crypt32Info;
+    auto winModule = GetModuleHandleA("wintrust.dll");
+    GetModuleInformation(GetCurrentProcess(), winModule,
+                         &Crypt32Info, sizeof(Crypt32Info));
+    auto dbgHelpSpawnedThreadFn = __interception::InternalGetProcAddress(
+        winModule, "HTTPSCertificateTrust");
+    DWORD64 dbgHelpSpawnedThreadFnEnd = 0;
+
+    MEMORY_BASIC_INFORMATION mbi;
+    if (__sanitizer_virtual_query((void *)dbgHelpSpawnedThreadFn, &mbi,
+                                  sizeof(mbi))) {
+      dbgHelpSpawnedThreadFnEnd = (DWORD64)mbi.BaseAddress + mbi.RegionSize;
+    }
+
+    void *callers[64];
+    int count = CaptureStackBackTrace(0, 64, callers, nullptr);
+    for (int i = 0; i < count; ++i) {
+      auto caller = reinterpret_cast<uptr>(callers[i]);
+      if (caller >= dbgHelpSpawnedThreadFn &&
+          caller < dbgHelpSpawnedThreadFnEnd) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 INTERCEPTOR_WINAPI(HANDLE, CreateThread, LPSECURITY_ATTRIBUTES security,
                    SIZE_T stack_size, LPTHREAD_START_ROUTINE start_routine,
                    void *arg, DWORD thr_flags, DWORD *tid) {
@@ -182,6 +225,14 @@ INTERCEPTOR_WINAPI(HANDLE, CreateThread, LPSECURITY_ATTRIBUTES security,
   // one.  This is a bandaid fix for PR22025.
   bool detached = false;  // FIXME: how can we determine it on Windows?
   u32 current_tid = GetCurrentTidOrInvalid();
+
+  // If a dbghelp thread needs creating for symbolizing an error,
+  // don't track it to prevent deadlocks
+  if (UNLIKELY(DbgHelpWaiting())) {
+    return REAL(CreateThread)(security, stack_size, start_routine, arg,
+                              thr_flags, tid);
+  }
+
   ThreadStartParams params = {start_routine, arg};
   AsanThread *t = AsanThread::Create(params, current_tid, &stack, detached);
   return REAL(CreateThread)(security, stack_size, asan_thread_start, t,
