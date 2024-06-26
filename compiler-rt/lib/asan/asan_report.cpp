@@ -177,6 +177,19 @@ class ScopedInErrorReport {
       asanThreadRegistry().Unlock();
       return;
     }
+    auto copyErrorBuffer = [](InternalScopedString& buffer_copy) {
+      // Copy the message buffer so that we could start logging without holding a
+      // lock that gets acquired during printing.
+
+      {
+        Lock l(&error_message_buf_mutex);
+        error_message_buffer->push_back('\0');
+        buffer_copy.Append(error_message_buffer->data());
+        // Clear error_message_buffer so that if we find other errors
+        // we don't re-log this error.
+        error_message_buffer->clear();
+      }
+    };
     ASAN_ON_ERROR();
     if (current_error_.IsValid()) {
       if (!coe.ContinueOnError()) {
@@ -189,6 +202,11 @@ class ScopedInErrorReport {
         coe.CloseError(current_error_);
         SET_NO_REPORT_IN_PROGRESS();
         asanThreadRegistry().Unlock();
+        if (error_report_callback) {
+          InternalScopedString buffer_copy;
+          copyErrorBuffer(buffer_copy);
+          error_report_callback(buffer_copy.data());
+        }
         internal_memset(&current_error_, 0, sizeof(current_error_));
         return;
       }
@@ -211,15 +229,7 @@ class ScopedInErrorReport {
     // Copy the message buffer so that we could start logging without holding a
     // lock that gets acquired during printing.
     InternalScopedString buffer_copy;
-    {
-      Lock l(&error_message_buf_mutex);
-      error_message_buffer->push_back('\0');
-      buffer_copy.Append(error_message_buffer->data());
-      // Clear error_message_buffer so that if we find other errors
-      // we don't re-log this error.
-      error_message_buffer->clear();
-    }
-
+    copyErrorBuffer(buffer_copy);
     LogFullErrorReport(buffer_copy.data());
 
     if (error_report_callback) {
