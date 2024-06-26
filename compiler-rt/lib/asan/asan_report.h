@@ -19,7 +19,7 @@
 #include "asan_thread.h"
 
 namespace __asan {
-
+  
 struct StackVarDescr {
   uptr beg;
   uptr size;
@@ -99,6 +99,10 @@ void ReportMacMzReallocUnknown(uptr addr, uptr zone_ptr,
 void ReportMacCfReallocUnknown(uptr addr, uptr zone_ptr,
                                const char *zone_name,
                                BufferedStackTrace *stack);
+
+#if SANITIZER_WINDOWS
+bool ErrorReportInProgress();
+#endif
 
 }  // namespace __asan
 #endif  // ASAN_REPORT_H

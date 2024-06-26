@@ -16,7 +16,7 @@
 
 #include "sanitizer_dbghelp.h"
 #include "sanitizer_symbolizer_internal.h"
-#include "asan\asan_continue_on_error.h"
+#include "asan/asan_continue_on_error.h"
 
 namespace __sanitizer {
 
@@ -144,8 +144,8 @@ bool WinSymbolizerTool::SymbolizePC(uptr addr, SymbolizedStack *frame) {
   symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
   symbol->MaxNameLen = MAX_SYM_NAME;
   DWORD64 offset = 0;
-  BOOL got_objname = SymFromAddr(GetCurrentProcess(),
-                                 (DWORD64)addr, &offset, symbol);
+  BOOL got_objname =
+      SymFromAddr(GetCurrentProcess(), (DWORD64)addr, &offset, symbol);
   if (!got_objname)
     return false;
 
