@@ -16,6 +16,7 @@
 #if SANITIZER_WINDOWS
 #include "asan_errors.h"
 #include "sanitizer_common\sanitizer_stacktrace.h"
+#include "sanitizer_common\sanitizer_common.h"
 
 namespace __asan {
   void InitializeCOE();
@@ -39,7 +40,8 @@ void ReportError(__asan::ErrorDescription &e);
 void ReportErrorSummary(const char *bug_descr,
                         const __sanitizer::StackTrace *stack);
 void StackInsert(const __sanitizer::StackTrace *stk_trace);
-void PrintStack(__sanitizer::StackTrace const *stk);
+void PrintStack(__sanitizer::StackTrace const *stk,
+                __sanitizer::InternalScopedString *output);
 void RawWrite(const char *buffer);
 } 
 
@@ -68,8 +70,9 @@ struct COE_Windows {
   void StackInsert(const __sanitizer::StackTrace *stk_trace) {
     __coe_win::StackInsert(stk_trace);
   }
-  void PrintStack(__sanitizer::StackTrace const *stk) {
-    __coe_win::PrintStack(stk);
+  void PrintStack(__sanitizer::StackTrace const *stk,
+                  __sanitizer::InternalScopedString *out) {
+    __coe_win::PrintStack(stk, out);
   }
 
   // Override sanitizer_printf TODO: move to sanitizer_common

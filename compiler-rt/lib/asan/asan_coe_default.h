@@ -16,7 +16,8 @@
 
 
 #include "asan_errors.h"
-#include "sanitizer_common\sanitizer_stacktrace.h"
+#include "sanitizer_common/sanitizer_stacktrace.h"
+#include "sanitizer_common/sanitizer_common.h"
 
 // Defualt to null implementation
 
@@ -37,8 +38,10 @@ struct COE_Default {
                           const __sanitizer::StackTrace *stack) {}
   // Call stacks
   void StackInsert(const __sanitizer::StackTrace *stk_trace) {}
-  void PrintStack(__sanitizer::StackTrace const *stk) {}
+  void PrintStack(__sanitizer::StackTrace const *stk,
+                  __sanitizer::InternalScopedString *out) {}
 
+  // Raw output to presected COE resource handle
   void RawWrite(const char *buffer) {}
 };
 

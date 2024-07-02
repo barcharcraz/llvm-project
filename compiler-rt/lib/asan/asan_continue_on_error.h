@@ -52,8 +52,9 @@ namespace CoeInterface {
       void StackInsert(const __sanitizer::StackTrace* stk_trace) {
         platform.StackInsert(stk_trace);
       }
-      void PrintStack(__sanitizer::StackTrace const* stk) {
-        platform.PrintStack(stk);
+      void PrintStack(__sanitizer::StackTrace const* stk,
+                      __sanitizer::InternalScopedString *out) {
+        platform.PrintStack(stk,out);
       }
       void RawWrite(const char* buffer) { platform.RawWrite(buffer); }
 

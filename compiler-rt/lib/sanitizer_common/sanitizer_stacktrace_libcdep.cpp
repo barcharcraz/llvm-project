@@ -156,7 +156,10 @@ uptr StackTrace::PrintTo(char *out_buf, uptr out_buf_size) const {
 void StackTrace::Print() const {
   if (coe.ContinueOnError()) {
     // not using the out-of-proc symbolizer.exe
-    coe.PrintStack(this);
+    // coe will format everything into one string in the local struct output
+    InternalScopedString output;
+    coe.PrintStack(this, &output);
+    Printf("%s", output.data());
     return;
   }
   InternalScopedString output;

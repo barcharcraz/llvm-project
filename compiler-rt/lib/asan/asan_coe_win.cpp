@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "sanitizer_common/sanitizer_platform.h"
+#include "sanitizer_common/sanitizer_common.h"
 #include <eh.h>
 
 #if SANITIZER_WINDOWS
@@ -262,6 +263,16 @@ static char coe_file_handle_path[kMaxFuncOrFileNameLen];
 bool crt_state_tearing_down = false;
 
 static int coe_total_error_cnt = 0;
+
+static HANDLE CoeProcessHandle() {
+  // TODO: consider adding to sanitizer_win.cpp 
+  // Set once for all possible future threads (where GetCurrentProcess() might
+  // fail). Consider a double free, reported on a thread where
+  // it returns zero. GetCurrentProcess() does not work when called in a user
+  // mode driver.
+  static HANDLE h = ::GetCurrentProcess();
+  return h;
+}
 
 namespace __asan {
 char* GetEnvironmentVariableValue(const char* wszName);
@@ -645,7 +656,7 @@ void SourceErrors::ReportOneUnhashedErrorSummary(
 
   Printf("SUMMARY: AddressSanitizer: %s ", unique_string);
 
-  HANDLE hProcess = ::GetCurrentProcess();
+  HANDLE hProcess = CoeProcessHandle();
   uptr pc = StackTrace::GetPreviousInstructionPc(stack->trace[1]);
   SymSetScopeFromAddr(hProcess, (DWORD64)pc);
 
@@ -686,7 +697,7 @@ void SourceErrors::ReportOneErrorSummary(const char* bug_descr,
 
   Printf("SUMMARY: AddressSanitizer: %s ", unique_string);
 
-  HANDLE hProcess = ::GetCurrentProcess();
+  HANDLE hProcess =  CoeProcessHandle();
   uptr pc = StackTrace::GetPreviousInstructionPc(stack->trace[0]);
   SymSetScopeFromAddr(hProcess, (DWORD64)pc);
 
@@ -992,7 +1003,9 @@ void SourceErrors::SortErrors() {
   }
 }
 
-void PrintCallStack(HANDLE hProcess, StackTrace* trace_pcs);
+void PrintCallStack(HANDLE hProcess, 
+                    StackTrace* trace_pcs,
+                    InternalScopedString* out);
 
 void SourceErrors::PrintSummary() {
   Printf(
@@ -1058,11 +1071,11 @@ void CoeRawWrite(const char* buffer) {
 // API called in  void StackTrace::Print() const { }
 // defined in sanitizer_common\sanitizer_stacktrace_libcdep.cpp
 
-void CoePrintStack(__sanitizer::StackTrace const* stk_trace) {
+void CoePrintStack(__sanitizer::StackTrace const* stk_trace,
+                   __sanitizer::InternalScopedString *output) {
   SpinMutexLock l(&fallback_mutex);
-  HANDLE hProcess = ::GetCurrentProcess();
   try {
-    PrintCallStack(hProcess, (__sanitizer::StackTrace*)stk_trace);
+    PrintCallStack(CoeProcessHandle(), (__sanitizer::StackTrace*)stk_trace, output);
   } catch (char* msg) {
     Write("CoePrintStack(FAIL printing): %s\n", msg);
     UNREACHABLE("Internal error: CoePrintStack");
@@ -1157,8 +1170,14 @@ class GetModuleInfo {
     GetModuleBaseName(process, module, temp, MAX_PATH);
     wcscpy(ret.module_name, temp);
 
-    CHECK(SymLoadModuleExW(process, 0, ret.image_name, ret.module_name,
-                           (DWORD64)ret.base_address, ret.load_size, 0, 0));
+    if (!SymLoadModuleExW(process, 0, ret.image_name, ret.module_name,
+                          (DWORD64)ret.base_address, ret.load_size, 0, 0)) {
+      // SymLoadModuleEx failed. The API requires checking further.
+      // If module is already loaded, GetLastError will return success.
+      DWORD error = GetLastError();
+      RAW_CHECK_MSG(error == ERROR_SUCCESS,
+                    "Internal Asan RT Error: SymLoadModuleExW() failed.");
+    }
     return ret;
   }
 };
@@ -1370,15 +1389,37 @@ void FormatStackFrameStrings(CoeStack* stk, HANDLE hProcess,
   }
 }
 
-void PrintCallStack(HANDLE hProcess, StackTrace* trace_pcs) {
+// Optimization of error printing (if needed): 
+// PrintCallStack() will format *one* string into the output
+// buffer and then append to the global "error_message_buffer" (defined in
+// asan_report.cpp). This code is bing called from:
+/*  
+    void StackTrace::Print() const {
+      if (coe.ContinueOnError()) {
+      // not using the out-of-proc symbolizer.exe
+      InternalScopedString output;
+      // coe will format everything into one string in the local struct output
+      coe.PrintStack(this, &output);
+      Printf("%s", output.data());  <-- 
+      return;
+    }
+*/
+// The Printf() above will 1.) copy the string into
+// error_message_buffer 2.) Output the string to coe_res_handle. An optimization
+// would be to avoid the Printf() interface and *only* use it if the user
+// specified __asan_set_error_report_callback(reportCallback); in their source code.
+// Otherwise (the optimization) just directly Write() to stderr or stdout 
+
+void PrintCallStack(HANDLE hProcess, StackTrace* trace_pcs,
+                    __sanitizer::InternalScopedString *output) {
   CHECK(trace_pcs->size > 0);
 
   CoeStack stk;
   CHECK(stk.GetCurrentFrame() == 0);
 
   if (trace_pcs->size > kPrintStackDepthLimit) {
-    Write("Call stack output is too deep \n");
     // TODO - do we put linker flag /STACKSIZE:20000 in the objs for ASan
+    output->Append("Call stack output is too deep \n");
     return;
   }
   // We use the skip and size factors Google used to get the stack
@@ -1407,32 +1448,32 @@ void PrintCallStack(HANDLE hProcess, StackTrace* trace_pcs) {
   stk.ReSetCurrentFrame();
   if (size_max_name > kMaxFuncFileLineLen) {
     for (size_t index = 0; index < stack_frame_cnt; index++) {
-      Write("\t #%d  %s \n", index, stk.CurrentFunctionNamePtr());
-      Write("\t\t %s", stk.CurrentFileNamePtr());
+      output->AppendF("\t #%d  %s \n", index, stk.CurrentFunctionNamePtr());
+      output->AppendF("\t\t %s", stk.CurrentFileNamePtr());
       if (*(stk.CurrentLineNumberPtr())) {
-        Write("(%d)\n", *(stk.CurrentLineNumberPtr()));
+        output->AppendF("(%d)\n", *(stk.CurrentLineNumberPtr()));
       } else {
-        Write("\n");
+        output->Append("\n");
       }
       stk.IncCurrentFrame();
     }
   } else {
     for (size_t index = 0; index < stack_frame_cnt; index++) {
-      Write("\t #%d  %s  ", index, stk.CurrentFunctionNamePtr());
+      output->AppendF("\t #%d  %s  ", index, stk.CurrentFunctionNamePtr());
       for (size_t i = 0;
            i <= size_max_name - strlen(stk.CurrentFunctionNamePtr()); i++) {
-        Write(" ");
+        output->Append(" ");
       }
-      Write(" %s", stk.CurrentFileNamePtr());
+      output->AppendF(" %s", stk.CurrentFileNamePtr());
       if (*(stk.CurrentLineNumberPtr())) {
-        Write("(%d)\n", *(stk.CurrentLineNumberPtr()));
+        output->AppendF("(%d)\n", *(stk.CurrentLineNumberPtr()));
       } else {
-        Write("\n");
+        output->Append("\n");
       }
       stk.IncCurrentFrame();
     }
   }
-  Write(" \n");
+  output->Append(" \n");
 }
 
 // Called when we "report" a unique error, in terms of hashed, call-stacks.
@@ -1467,7 +1508,7 @@ void ASanLiteCacheError(const ErrorDescription& error) {
 }
 
 void CoeInitializeDbgHelp() {
-  HANDLE hProcess = ::GetCurrentProcess();
+  HANDLE hProcess = CoeProcessHandle();
   // When an executable is run from a location different from the one where it
   // was originally built, we may not see the nearby PDB files.
   // To work around this, I append the directory of the main module
@@ -1475,7 +1516,7 @@ void CoeInitializeDbgHelp() {
   const size_t kSymPathSize = 2048;
   static wchar_t path_buffer[kSymPathSize + 1 + MAX_PATH];
 
-  if (!SymGetSearchPathW(GetCurrentProcess(), path_buffer, kSymPathSize)) {
+  if (!SymGetSearchPathW(hProcess, path_buffer, kSymPathSize)) {
     Report("*** WARNING: Failed to SymGetSearchPathW ***\n");
     return;
   }
@@ -1494,7 +1535,7 @@ void CoeInitializeDbgHelp() {
   wchar_t* last_bslash = wcsrchr(path_buffer + sz, L'\\');
   CHECK_NE(last_bslash, 0);
   *last_bslash = L'\0';
-  if (!SymSetSearchPathW(GetCurrentProcess(), path_buffer)) {
+  if (!SymSetSearchPathW(hProcess, path_buffer)) {
     Report("*** WARNING: Failed to SymSetSearchPathW()\n");
     return;
   }
@@ -1538,8 +1579,7 @@ void CoeReportError(ErrorDescription& current_error) {
   ASanLiteCacheError(current_error);
 
   // Prepare for in process symbolize and report
-  HANDLE hProcess = ::GetCurrentProcess();
-  SymHandler handler(hProcess);
+  SymHandler handler(CoeProcessHandle());
   CoeInitializeDbgHelp();
 
   current_error.Print();
@@ -1715,6 +1755,9 @@ void InitializeCOE() {
   // Calling what follows, in a constructor, caused race conditions with parsing
   // flags.
   CoeDynamicallyLoadDbghelp();
+  
+  // Cache process handle
+  CoeProcessHandle();
 }
 
 }  // namespace __asan
@@ -1765,9 +1808,10 @@ void StackInsert(const __sanitizer::StackTrace* stk_trace) {
     __asan::stacks.Accumulate(stk_trace);
 }
 
-void PrintStack(__sanitizer::StackTrace const* stk) {
+void PrintStack(__sanitizer::StackTrace const* stk,
+                __sanitizer::InternalScopedString *output) {
   if (__asan::COE())
-    __asan::CoePrintStack(stk);
+    __asan::CoePrintStack(stk, output);
 }
 
 }  // namespace __coe_win

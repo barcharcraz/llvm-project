@@ -796,6 +796,8 @@ struct Allocator {
     CHECK_EQ(CHUNK_ALLOCATED, old_chunk_state);
     // It was a user data.
     m->SetFreeContext(kInvalidTid, 0);
+    // This does not matter if we are not restoring metadata
+    // in the Deallocate(). Also the safe metadate should not show CHUNK_QUARANTINE
     if (flags()->continue_on_error && !coe.ModulesLoading()) {
       ChunkSafeCopy *smd = AsanChunkCOE_Get(m);
       atomic_compare_exchange_strong(&(smd->chunk_state), &old_chunk_state,
