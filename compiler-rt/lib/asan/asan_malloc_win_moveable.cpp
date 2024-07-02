@@ -197,7 +197,7 @@ struct FlagsResult {
 
 class MoveableMemoryMap {
 private:
-    static constexpr uptr ReservedAddress = -1ULL;
+    static constexpr uptr ReservedAddress = static_cast<uptr>(-1);
     struct MoveableAllocation {
         explicit MoveableAllocation(void *const h) : handle(h) {}
         MoveableAllocation(const MoveableAllocation &) = delete;
