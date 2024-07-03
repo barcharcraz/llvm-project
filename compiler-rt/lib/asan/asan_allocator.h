@@ -292,6 +292,8 @@ void *asan_valloc(uptr size, BufferedStackTrace *stack);
 void *asan_pvalloc(uptr size, BufferedStackTrace *stack);
 
 void *asan_aligned_alloc(uptr alignment, uptr size, BufferedStackTrace *stack);
+void *asan_aligned_offset_malloc(uptr size, uptr alignment, uptr offset,
+                                 BufferedStackTrace *stack);
 int asan_posix_memalign(void **memptr, uptr alignment, uptr size,
                         BufferedStackTrace *stack);
 uptr asan_malloc_usable_size(const void *ptr, uptr pc, uptr bp);

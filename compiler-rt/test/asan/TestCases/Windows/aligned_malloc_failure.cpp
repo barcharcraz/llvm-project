@@ -7,6 +7,17 @@
 int main(){
     // Should return null and set errno to EINVAL
     // since this alignment of 5 is not valid.
-    void* ptr = _aligned_malloc(8,5); 
-    return (ptr == nullptr && errno == EINVAL) ? 0 : -1;
+    void* ptr = _aligned_malloc(8,5);
+    if (ptr != nullptr || errno != EINVAL)
+      return -1;
+    ptr = _aligned_offset_malloc(8, 5, 65);
+    if (ptr != nullptr || errno != EINVAL)
+      return -1;
+    ptr = _aligned_offset_realloc(ptr, 12, 5, 65);
+    if (ptr != nullptr || errno != EINVAL)
+      return -1;
+    ptr = _aligned_offset_recalloc(ptr, 2, 12, 5, 65);
+    if (ptr != nullptr || errno != EINVAL)
+      return -1;
+    return 0;
 }

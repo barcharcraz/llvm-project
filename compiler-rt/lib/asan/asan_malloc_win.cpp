@@ -111,6 +111,18 @@ size_t msize(void *ptr, const uptr pc, const uptr bp) {
   return asan_malloc_usable_size(ptr, pc, bp);
 }
 
+size_t aligned_msize(void *ptr, size_t align, size_t offset, const uptr pc,
+                     const uptr bp) {
+  // not used, but important to have this
+  // be a different function than msize, so that
+  // asan can catch misaligned pointers used with normal msize
+  (void)offset;
+  (void)align;
+  DCHECK_EQ(ASAN_SHADOW_GRANULARITY & (ASAN_SHADOW_GRANULARITY - 1), 0);
+  uptr memblock = (uptr)ptr & ~(ASAN_SHADOW_GRANULARITY - 1);
+  return asan_malloc_usable_size((void *)memblock, pc, bp);
+}
+
 void free(void *ptr, BufferedStackTrace *stack) {
   return asan_free(ptr, stack, FROM_MALLOC);
 }
@@ -150,34 +162,40 @@ void *aligned_malloc(const size_t size, const size_t alignment,
 }
 
 void aligned_free(void *memblock, BufferedStackTrace *stack) {
+  DCHECK_EQ(ASAN_SHADOW_GRANULARITY & (ASAN_SHADOW_GRANULARITY - 1), 0);
+  memblock = (void *)((uptr)memblock & ~(ASAN_SHADOW_GRANULARITY - 1));
   asan_free(memblock, stack, FROM_MALLOC);
 }
 
-void *aligned_realloc(void *memblock, const size_t size, const size_t alignment,
-                      BufferedStackTrace *stack, const uptr pc, const uptr bp) {
+void *aligned_offset_realloc(void *memblock, const size_t size,
+                             const size_t alignment, const size_t offset,
+                             BufferedStackTrace *stack, const uptr pc,
+                             const uptr bp) {
   if (size == 0 && memblock != nullptr) {
-    asan_free(memblock, stack, FROM_MALLOC);
+    __asan_malloc_impl::aligned_free(memblock, stack);
     return nullptr;
   }
 
-  void *new_ptr = asan_memalign(alignment, size, stack, FROM_MALLOC);
+  void *new_ptr = asan_aligned_offset_malloc(size, alignment, offset, stack);
   if (new_ptr && memblock) {
-    const size_t aligned_size = asan_malloc_usable_size(memblock, pc, bp);
+    const size_t aligned_size =
+        aligned_msize(memblock, alignment, offset, pc, bp);
     internal_memcpy(new_ptr, memblock, Min<size_t>(aligned_size, size));
-    asan_free(memblock, stack, FROM_MALLOC);
+    __asan_malloc_impl::aligned_free(memblock, stack);
   }
 
   return new_ptr;
 }
 
-void *aligned_recalloc(void *memblock, const size_t num,
-                       const size_t element_size, const size_t alignment,
-                       BufferedStackTrace *stack, const uptr pc,
-                       const uptr bp) {
+void *aligned_offset_recalloc(void *memblock, const size_t num,
+                              const size_t element_size, const size_t alignment,
+                              const size_t offset, BufferedStackTrace *stack,
+                              const uptr pc, const uptr bp) {
   const size_t size = num * element_size;
   const size_t old_size =
-      (memblock) ? asan_malloc_usable_size(memblock, pc, bp) : 0;
-  void *new_ptr = aligned_realloc(memblock, size, alignment, stack, pc, bp);
+      (memblock) ? aligned_msize(memblock, alignment, offset, pc, bp) : 0;
+  void *new_ptr =
+      aligned_offset_realloc(memblock, size, alignment, offset, stack, pc, bp);
   if (new_ptr && old_size < size) {
     REAL(memset)(static_cast<u8 *>(new_ptr) + old_size, 0, size - old_size);
   }
@@ -361,21 +379,23 @@ MALLOC_INTERNAL_DEF void *_expand_dbg(void *, size_t, int, const char *, int) {
 MALLOC_INTERNAL_DEF size_t _aligned_msize(void *memblock,
                                           const size_t alignment,
                                           const size_t offset) {
-  // Same impl as non-aligned.
-  (void)alignment;
-  (void)offset;
   GET_CURRENT_PC_BP;
-  return __asan_malloc_impl::msize(memblock, pc, bp);
+  return __asan_malloc_impl::aligned_msize(memblock, alignment, offset, pc, bp);
 }
 
 MALLOC_INTERNAL_DEF size_t _aligned_msize_dbg(void *memblock,
                                               const size_t alignment,
                                               const size_t offset) {
-  // Same impl as non-aligned.
-  (void)alignment;
-  (void)offset;
   GET_CURRENT_PC_BP;
-  return __asan_malloc_impl::msize(memblock, pc, bp);
+  return __asan_malloc_impl::aligned_msize(memblock, alignment, offset, pc, bp);
+}
+
+MALLOC_DLL_EXPORT size_t __cdecl __asan_aligned_msize(
+    __asan_win_stack_data *const data, void *memblock, const size_t alignment,
+    const size_t offset) {
+  GET_STACK_TRACE_OVER_BOUNDARY(data);
+  return __asan_malloc_impl::aligned_msize(memblock, alignment, offset,
+                                           data->pc, data->bp);
 }
 
 // aligned_malloc
@@ -383,6 +403,13 @@ MALLOC_DLL_EXPORT void *__cdecl __asan_aligned_malloc(
     __asan_win_stack_data *data, const size_t size, const size_t alignment) {
   GET_STACK_TRACE_OVER_BOUNDARY(data);
   return __asan_malloc_impl::aligned_malloc(size, alignment, &stack);
+}
+
+MALLOC_DLL_EXPORT void *__cdecl __asan_aligned_offset_malloc(
+    __asan_win_stack_data *data, const size_t size, const size_t alignment,
+    const size_t offset) {
+  GET_STACK_TRACE_OVER_BOUNDARY(data);
+  return asan_aligned_offset_malloc(size, alignment, offset, &stack);
 }
 
 MALLOC_INTERNAL_DEF void *_aligned_malloc(const size_t size,
@@ -401,20 +428,16 @@ MALLOC_INTERNAL_DEF void *_aligned_malloc_dbg(const size_t size,
 MALLOC_INTERNAL_DEF void *_aligned_offset_malloc(const size_t size,
                                                  const size_t alignment,
                                                  const size_t offset) {
-  // We don't respect the offset
-  (void)offset;
   GET_STACK_TRACE_MALLOC;
-  return __asan_malloc_impl::aligned_malloc(size, alignment, &stack);
+  return asan_aligned_offset_malloc(size, alignment, offset, &stack);
 }
 
 MALLOC_INTERNAL_DEF void *_aligned_offset_malloc_dbg(const size_t size,
                                                      const size_t alignment,
                                                      const size_t offset,
                                                      char const *, int) {
-  // We don't respect the offset
-  (void)offset;
   GET_STACK_TRACE_MALLOC;
-  return __asan_malloc_impl::aligned_malloc(size, alignment, &stack);
+  return asan_aligned_offset_malloc(size, alignment, offset, &stack);
 }
 
 // aligned_free
@@ -439,16 +462,24 @@ MALLOC_DLL_EXPORT void *__cdecl __asan_aligned_realloc(
     __asan_win_stack_data *data, void *memblock, const size_t size,
     const size_t alignment) {
   GET_STACK_TRACE_OVER_BOUNDARY(data);
-  return __asan_malloc_impl::aligned_realloc(memblock, size, alignment, &stack,
-                                             data->pc, data->bp);
+  return __asan_malloc_impl::aligned_offset_realloc(
+      memblock, size, alignment, 0, &stack, data->pc, data->bp);
+}
+
+MALLOC_DLL_EXPORT void *__cdecl __asan_aligned_offset_realloc(
+    __asan_win_stack_data *const data, void *const memblock, const size_t size,
+    const size_t alignment, const size_t offset) {
+  GET_STACK_TRACE_OVER_BOUNDARY(data);
+  return __asan_malloc_impl::aligned_offset_realloc(
+      memblock, size, alignment, offset, &stack, data->pc, data->bp);
 }
 
 MALLOC_INTERNAL_DEF void *_aligned_realloc(void *memblock, const size_t size,
                                            const size_t alignment) {
   GET_CURRENT_PC_BP;
   GET_STACK_TRACE_MALLOC;
-  return __asan_malloc_impl::aligned_realloc(memblock, size, alignment, &stack,
-                                             pc, bp);
+  return __asan_malloc_impl::aligned_offset_realloc(memblock, size, alignment,
+                                                    0, &stack, pc, bp);
 }
 
 MALLOC_INTERNAL_DEF void *_aligned_realloc_dbg(void *memblock,
@@ -457,20 +488,18 @@ MALLOC_INTERNAL_DEF void *_aligned_realloc_dbg(void *memblock,
                                                char const *, int) {
   GET_CURRENT_PC_BP;
   GET_STACK_TRACE_MALLOC;
-  return __asan_malloc_impl::aligned_realloc(memblock, size, alignment, &stack,
-                                             pc, bp);
+  return __asan_malloc_impl::aligned_offset_realloc(memblock, size, alignment,
+                                                    0, &stack, pc, bp);
 }
 
 MALLOC_INTERNAL_DEF void *_aligned_offset_realloc(void *memblock,
                                                   const size_t size,
                                                   const size_t alignment,
                                                   const size_t offset) {
-  // We don't respect the offset
-  (void)offset;
   GET_CURRENT_PC_BP;
   GET_STACK_TRACE_MALLOC;
-  return __asan_malloc_impl::aligned_realloc(memblock, size, alignment, &stack,
-                                             pc, bp);
+  return __asan_malloc_impl::aligned_offset_realloc(memblock, size, alignment,
+                                                    offset, &stack, pc, bp);
 }
 
 MALLOC_INTERNAL_DEF void *_aligned_offset_realloc_dbg(void *memblock,
@@ -478,12 +507,10 @@ MALLOC_INTERNAL_DEF void *_aligned_offset_realloc_dbg(void *memblock,
                                                       const size_t alignment,
                                                       const size_t offset,
                                                       char const *, int) {
-  // We don't respect the offset
-  (void)offset;
   GET_CURRENT_PC_BP;
   GET_STACK_TRACE_MALLOC;
-  return __asan_malloc_impl::aligned_realloc(memblock, size, alignment, &stack,
-                                             pc, bp);
+  return __asan_malloc_impl::aligned_offset_realloc(memblock, size, alignment,
+                                                    offset, &stack, pc, bp);
 }
 
 // aligned_recalloc
@@ -491,8 +518,17 @@ MALLOC_DLL_EXPORT void *__cdecl __asan_aligned_recalloc(
     __asan_win_stack_data *data, void *memblock, const size_t num,
     const size_t element_size, const size_t alignment) {
   GET_STACK_TRACE_OVER_BOUNDARY(data);
-  return __asan_malloc_impl::aligned_recalloc(
-      memblock, num, element_size, alignment, &stack, data->pc, data->bp);
+  return __asan_malloc_impl::aligned_offset_recalloc(
+      memblock, num, element_size, alignment, 0, &stack, data->pc, data->bp);
+}
+
+MALLOC_DLL_EXPORT void *__cdecl __asan_aligned_offset_recalloc(
+    __asan_win_stack_data *data, void *memblock, const size_t num,
+    const size_t element_size, const size_t alignment, const size_t offset) {
+  GET_STACK_TRACE_OVER_BOUNDARY(data);
+  return __asan_malloc_impl::aligned_offset_recalloc(
+      memblock, num, element_size, alignment, offset, &stack, data->pc,
+      data->bp);
 }
 
 MALLOC_INTERNAL_DEF void *_aligned_recalloc(void *memblock, const size_t num,
@@ -500,8 +536,8 @@ MALLOC_INTERNAL_DEF void *_aligned_recalloc(void *memblock, const size_t num,
                                             const size_t alignment) {
   GET_CURRENT_PC_BP;
   GET_STACK_TRACE_MALLOC;
-  return __asan_malloc_impl::aligned_recalloc(memblock, num, element_size,
-                                              alignment, &stack, pc, bp);
+  return __asan_malloc_impl::aligned_offset_recalloc(
+      memblock, num, element_size, alignment, 0, &stack, pc, bp);
 }
 
 MALLOC_INTERNAL_DEF void *_aligned_recalloc_dbg(void *memblock,
@@ -511,8 +547,8 @@ MALLOC_INTERNAL_DEF void *_aligned_recalloc_dbg(void *memblock,
                                                 char const *, int) {
   GET_CURRENT_PC_BP;
   GET_STACK_TRACE_MALLOC;
-  return __asan_malloc_impl::aligned_recalloc(memblock, num, element_size,
-                                              alignment, &stack, pc, bp);
+  return __asan_malloc_impl::aligned_offset_recalloc(
+      memblock, num, element_size, alignment, 0, &stack, pc, bp);
 }
 
 MALLOC_INTERNAL_DEF void *_aligned_offset_recalloc(void *memblock,
@@ -520,21 +556,19 @@ MALLOC_INTERNAL_DEF void *_aligned_offset_recalloc(void *memblock,
                                                    const size_t element_size,
                                                    const size_t alignment,
                                                    const size_t offset) {
-  // We don't respect the offset
   GET_CURRENT_PC_BP;
   GET_STACK_TRACE_MALLOC;
-  return __asan_malloc_impl::aligned_recalloc(memblock, num, element_size,
-                                              alignment, &stack, pc, bp);
+  return __asan_malloc_impl::aligned_offset_recalloc(
+      memblock, num, element_size, alignment, offset, &stack, pc, bp);
 }
 
 MALLOC_INTERNAL_DEF void *_aligned_offset_recalloc_dbg(
     void *memblock, const size_t num, const size_t element_size,
     const size_t alignment, const size_t offset, char const *, int) {
-  // We don't respect the offset
   GET_CURRENT_PC_BP;
   GET_STACK_TRACE_MALLOC;
-  return __asan_malloc_impl::aligned_recalloc(memblock, num, element_size,
-                                              alignment, &stack, pc, bp);
+  return __asan_malloc_impl::aligned_offset_recalloc(
+      memblock, num, element_size, alignment, offset, &stack, pc, bp);
 }
 
 // We need to provide symbols for all the debug CRT functions if we decide to

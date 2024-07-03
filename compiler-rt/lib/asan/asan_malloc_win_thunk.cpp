@@ -25,6 +25,10 @@
 extern "C" {
 __declspec(dllimport) size_t
     __cdecl __asan_msize(void const *ptr, const size_t pc, const size_t bp);
+__declspec(dllimport) size_t
+    __cdecl __asan_aligned_msize(__asan_win_stack_data *const data,
+                                 void *memblock, const size_t alignment,
+                                 const size_t offset);
 __declspec(dllimport) void __cdecl __asan_free(
     __asan_win_stack_data *const data, void *const ptr);
 __declspec(dllimport) void *__cdecl __asan_malloc(
@@ -39,11 +43,20 @@ __declspec(dllimport) void *__cdecl __asan_recalloc(
 __declspec(dllimport) void *__cdecl __asan_aligned_malloc(
     __asan_win_stack_data *const data, const size_t alignment,
     const size_t size);
+__declspec(dllimport) void *__cdecl __asan_aligned_offset_malloc(
+    __asan_win_stack_data *const data, const size_t size,
+    const size_t alignment, size_t offset);
 __declspec(dllimport) void *__cdecl __asan_aligned_free(
     __asan_win_stack_data *const data, void *const memblock);
 __declspec(dllimport) void *__cdecl __asan_aligned_realloc(
     __asan_win_stack_data *const data, void *const memblock,
     const size_t alignment, const size_t size);
+__declspec(dllimport) void *__cdecl __asan_aligned_offset_realloc(
+    __asan_win_stack_data *const data, void *const memblock, const size_t size,
+    const size_t alignment, const size_t offset);
+__declspec(dllimport) void *__cdecl __asan_aligned_offset_recalloc(
+    __asan_win_stack_data *data, void *memblock, const size_t num,
+    const size_t element_size, const size_t alignment, const size_t offset);
 __declspec(dllimport) void *__cdecl __asan_aligned_recalloc(
     __asan_win_stack_data *const data, void *const memblock, const size_t num,
     const size_t element_size, const size_t alignment);
@@ -178,19 +191,15 @@ STATIC_MALLOC_INTERFACE void *_expand_dbg(void *, size_t, int, const char *,
 STATIC_MALLOC_INTERFACE size_t _aligned_msize(void *const memblock,
                                               const size_t alignment,
                                               const size_t offset) {
-  // Same impl as non-aligned.
-  (void)alignment;
-  (void)offset;
-  return __asan_msize(memblock, __asan_GetCurrentPc(), GET_CURRENT_FRAME());
+  __asan_win_stack_data data{};
+  return __asan_aligned_msize(&data, memblock, alignment, offset);
 }
 
 STATIC_MALLOC_INTERFACE size_t _aligned_msize_dbg(void *const memblock,
                                                   const size_t alignment,
                                                   const size_t offset) {
-  // Same impl as non-aligned.
-  (void)alignment;
-  (void)offset;
-  return __asan_msize(memblock, __asan_GetCurrentPc(), GET_CURRENT_FRAME());
+  __asan_win_stack_data data{};
+  return __asan_aligned_msize(&data, memblock, alignment, offset);
 }
 
 // aligned_malloc
@@ -210,20 +219,16 @@ STATIC_MALLOC_INTERFACE void *_aligned_malloc_dbg(const size_t size,
 STATIC_MALLOC_INTERFACE void *_aligned_offset_malloc(const size_t size,
                                                      const size_t alignment,
                                                      const size_t offset) {
-  // We don't respect the offset
-  (void)offset;
   __asan_win_stack_data data{};
-  return __asan_aligned_malloc(&data, size, alignment);
+  return __asan_aligned_offset_malloc(&data, size, alignment, offset);
 }
 
 STATIC_MALLOC_INTERFACE void *_aligned_offset_malloc_dbg(const size_t size,
                                                          const size_t alignment,
                                                          const size_t offset,
                                                          char const *, int) {
-  // We don't respect the offset
-  (void)offset;
   __asan_win_stack_data data{};
-  return __asan_aligned_malloc(&data, size, alignment);
+  return __asan_aligned_offset_malloc(&data, size, alignment, offset);
 }
 
 // aligned_free
@@ -257,19 +262,17 @@ STATIC_MALLOC_INTERFACE void *_aligned_offset_realloc(void *const memblock,
                                                       const size_t size,
                                                       const size_t alignment,
                                                       const size_t offset) {
-  // We don't respect the offset
-  (void)offset;
   __asan_win_stack_data data{};
-  return __asan_aligned_realloc(&data, memblock, size, alignment);
+  return __asan_aligned_offset_realloc(&data, memblock, size, alignment,
+                                       offset);
 }
 
 STATIC_MALLOC_INTERFACE void *_aligned_offset_realloc_dbg(
     void *const memblock, const size_t size, const size_t alignment,
     const size_t offset, char const *, int) {
-  // We don't respect the offset
-  (void)offset;
   __asan_win_stack_data data{};
-  return __asan_aligned_realloc(&data, memblock, size, alignment);
+  return __asan_aligned_offset_realloc(&data, memblock, size, alignment,
+                                       offset);
 }
 
 // aligned_recalloc
@@ -293,19 +296,17 @@ STATIC_MALLOC_INTERFACE void *_aligned_recalloc_dbg(void *const memblock,
 STATIC_MALLOC_INTERFACE void *_aligned_offset_recalloc(
     void *const memblock, const size_t num, const size_t element_size,
     const size_t alignment, const size_t offset) {
-  // We don't respect the offset
-  (void)offset;
   __asan_win_stack_data data{};
-  return __asan_aligned_recalloc(&data, memblock, num, element_size, alignment);
+  return __asan_aligned_offset_recalloc(&data, memblock, num, element_size,
+                                        alignment, offset);
 }
 
 STATIC_MALLOC_INTERFACE void *_aligned_offset_recalloc_dbg(
     void *const memblock, const size_t num, const size_t element_size,
     const size_t alignment, const size_t offset, char const *, int) {
-  // We don't respect the offset
-  (void)offset;
   __asan_win_stack_data data{};
-  return __asan_aligned_recalloc(&data, memblock, num, element_size, alignment);
+  return __asan_aligned_offset_recalloc(&data, memblock, num, element_size,
+                                        alignment, offset);
 }
 
 // We need to provide symbols for all the debug CRT functions if we decide to
