@@ -647,8 +647,13 @@ int FuzzerDriver(int *argc, char ***argv, UserCallback Callback) {
   assert(argc && argv && "Argument pointers cannot be nullptr");
   std::string Argv0((*argv)[0]);
   EF = new ExternalFunctions();
-  if (EF->LLVMFuzzerInitialize)
-    EF->LLVMFuzzerInitialize(argc, argv);
+  try {
+    if (EF->LLVMFuzzerInitialize)
+      EF->LLVMFuzzerInitialize(argc, argv);
+  } catch (std::exception& ex) {
+    Printf("ERROR: exception in LLVMFuzzerInitialize: %s\n", ex.what());
+    throw; // rethrow so we participate in normal WER handling via termination
+  }
   if (EF->__msan_scoped_disable_interceptor_checks)
     EF->__msan_scoped_disable_interceptor_checks();
   const std::vector<std::string> Args(*argv, *argv + *argc);
