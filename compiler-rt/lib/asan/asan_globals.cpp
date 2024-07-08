@@ -360,8 +360,8 @@ void __asan_unregister_image_globals(uptr *flag) {
 }
 
 void __asan_register_elf_globals(uptr *flag, void *start, void *stop) {
-  if (*flag) return;
-  if (!start) return;
+  if (*flag || start == stop)
+    return;
   CHECK_EQ(0, ((uptr)stop - (uptr)start) % sizeof(__asan_global));
   __asan_global *globals_start = (__asan_global*)start;
   __asan_global *globals_stop = (__asan_global*)stop;
@@ -370,8 +370,8 @@ void __asan_register_elf_globals(uptr *flag, void *start, void *stop) {
 }
 
 void __asan_unregister_elf_globals(uptr *flag, void *start, void *stop) {
-  if (!*flag) return;
-  if (!start) return;
+  if (!*flag || start == stop)
+    return;
   CHECK_EQ(0, ((uptr)stop - (uptr)start) % sizeof(__asan_global));
   __asan_global *globals_start = (__asan_global*)start;
   __asan_global *globals_stop = (__asan_global*)stop;
