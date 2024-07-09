@@ -377,7 +377,7 @@ define amdgpu_kernel void @s_ctlz_zero_undef_i8_with_select(ptr addrspace(1) noa
 ; GFX9-GISEL-NEXT:    s_load_dwordx2 s[2:3], s[0:1], 0x24
 ; GFX9-GISEL-NEXT:    v_mov_b32_e32 v1, 0
 ; GFX9-GISEL-NEXT:    s_waitcnt lgkmcnt(0)
-; GFX9-GISEL-NEXT:    s_lshr_b32 s0, s4, 24
+; GFX9-GISEL-NEXT:    s_lshl_b32 s0, s4, 24
 ; GFX9-GISEL-NEXT:    s_flbit_i32_b32 s0, s0
 ; GFX9-GISEL-NEXT:    v_mov_b32_e32 v0, s0
 ; GFX9-GISEL-NEXT:    global_store_byte v1, v0, s[2:3]
@@ -408,9 +408,8 @@ define amdgpu_kernel void @s_ctlz_zero_undef_i16_with_select(ptr addrspace(1) no
 ; VI-NEXT:    s_load_dword s2, s[0:1], 0x2c
 ; VI-NEXT:    s_load_dwordx2 s[0:1], s[0:1], 0x24
 ; VI-NEXT:    s_waitcnt lgkmcnt(0)
-; VI-NEXT:    s_and_b32 s2, s2, 0xffff
+; VI-NEXT:    s_lshl_b32 s2, s2, 16
 ; VI-NEXT:    s_flbit_i32_b32 s2, s2
-; VI-NEXT:    s_add_i32 s2, s2, -16
 ; VI-NEXT:    v_mov_b32_e32 v0, s0
 ; VI-NEXT:    v_mov_b32_e32 v1, s1
 ; VI-NEXT:    v_mov_b32_e32 v2, s2
@@ -452,7 +451,7 @@ define amdgpu_kernel void @s_ctlz_zero_undef_i16_with_select(ptr addrspace(1) no
 ; GFX9-GISEL-NEXT:    s_load_dwordx2 s[2:3], s[0:1], 0x24
 ; GFX9-GISEL-NEXT:    v_mov_b32_e32 v1, 0
 ; GFX9-GISEL-NEXT:    s_waitcnt lgkmcnt(0)
-; GFX9-GISEL-NEXT:    s_lshr_b32 s0, s4, 16
+; GFX9-GISEL-NEXT:    s_lshl_b32 s0, s4, 16
 ; GFX9-GISEL-NEXT:    s_flbit_i32_b32 s0, s0
 ; GFX9-GISEL-NEXT:    v_mov_b32_e32 v0, s0
 ; GFX9-GISEL-NEXT:    global_store_short v1, v0, s[2:3]
@@ -655,7 +654,8 @@ define amdgpu_kernel void @v_ctlz_zero_undef_i8_with_select(ptr addrspace(1) noa
 ; GFX9-GISEL-NEXT:    s_waitcnt lgkmcnt(0)
 ; GFX9-GISEL-NEXT:    global_load_ubyte v1, v0, s[2:3]
 ; GFX9-GISEL-NEXT:    s_waitcnt vmcnt(0)
-; GFX9-GISEL-NEXT:    v_ffbh_u32_sdwa v2, v1
+; GFX9-GISEL-NEXT:    v_lshlrev_b32_e32 v2, 24, v1
+; GFX9-GISEL-NEXT:    v_ffbh_u32_e32 v2, v2
 ; GFX9-GISEL-NEXT:    v_and_b32_e32 v2, 0xff, v2
 ; GFX9-GISEL-NEXT:    v_cmp_ne_u32_e32 vcc, 0, v1
 ; GFX9-GISEL-NEXT:    v_cndmask_b32_e32 v1, 32, v2, vcc
@@ -711,8 +711,8 @@ define amdgpu_kernel void @v_ctlz_zero_undef_i16_with_select(ptr addrspace(1) no
 ; VI-NEXT:    v_lshlrev_b16_e32 v1, 8, v2
 ; VI-NEXT:    s_waitcnt vmcnt(0)
 ; VI-NEXT:    v_or_b32_e32 v0, v1, v0
-; VI-NEXT:    v_ffbh_u32_sdwa v1, v0 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_0
-; VI-NEXT:    v_add_u32_e32 v1, vcc, -16, v1
+; VI-NEXT:    v_lshlrev_b32_e32 v1, 16, v0
+; VI-NEXT:    v_ffbh_u32_e32 v1, v1
 ; VI-NEXT:    v_cmp_ne_u16_e32 vcc, 0, v0
 ; VI-NEXT:    v_cndmask_b32_e32 v2, 32, v1, vcc
 ; VI-NEXT:    v_mov_b32_e32 v0, s0
@@ -760,7 +760,8 @@ define amdgpu_kernel void @v_ctlz_zero_undef_i16_with_select(ptr addrspace(1) no
 ; GFX9-GISEL-NEXT:    global_load_ubyte v2, v0, s[2:3] offset:1
 ; GFX9-GISEL-NEXT:    s_waitcnt vmcnt(0)
 ; GFX9-GISEL-NEXT:    v_lshl_or_b32 v1, v2, 8, v1
-; GFX9-GISEL-NEXT:    v_ffbh_u32_sdwa v2, v1
+; GFX9-GISEL-NEXT:    v_lshlrev_b32_e32 v2, 16, v1
+; GFX9-GISEL-NEXT:    v_ffbh_u32_e32 v2, v2
 ; GFX9-GISEL-NEXT:    v_and_b32_e32 v2, 0xffff, v2
 ; GFX9-GISEL-NEXT:    v_cmp_ne_u32_e32 vcc, 0, v1
 ; GFX9-GISEL-NEXT:    v_cndmask_b32_e32 v1, 32, v2, vcc
@@ -1167,7 +1168,8 @@ define amdgpu_kernel void @v_ctlz_zero_undef_i8(ptr addrspace(1) noalias %out, p
 ; GFX9-GISEL-NEXT:    global_load_ubyte v0, v[0:1], off
 ; GFX9-GISEL-NEXT:    v_mov_b32_e32 v1, 0
 ; GFX9-GISEL-NEXT:    s_waitcnt vmcnt(0)
-; GFX9-GISEL-NEXT:    v_ffbh_u32_sdwa v0, v0
+; GFX9-GISEL-NEXT:    v_lshlrev_b32_e32 v0, 24, v0
+; GFX9-GISEL-NEXT:    v_ffbh_u32_e32 v0, v0
 ; GFX9-GISEL-NEXT:    global_store_byte v1, v0, s[0:1]
 ; GFX9-GISEL-NEXT:    s_endpgm
   %tid = call i32 @llvm.amdgcn.workitem.id.x()
@@ -1705,8 +1707,9 @@ define amdgpu_kernel void @v_ctlz_zero_undef_i8_sel_eq_neg1(ptr addrspace(1) noa
 ; GFX9-GISEL-NEXT:    global_load_ubyte v0, v[0:1], off
 ; GFX9-GISEL-NEXT:    v_mov_b32_e32 v1, 0
 ; GFX9-GISEL-NEXT:    s_waitcnt vmcnt(0)
-; GFX9-GISEL-NEXT:    v_ffbh_u32_sdwa v2, v0
-; GFX9-GISEL-NEXT:    v_cmp_eq_u32_sdwa s[2:3], v0, v1
+; GFX9-GISEL-NEXT:    v_lshlrev_b32_e32 v2, 24, v0
+; GFX9-GISEL-NEXT:    v_ffbh_u32_e32 v2, v2
+; GFX9-GISEL-NEXT:    v_cmp_eq_u32_sdwa s[2:3], v0, v1 src0_sel:BYTE_0 src1_sel:DWORD
 ; GFX9-GISEL-NEXT:    v_cndmask_b32_e64 v0, v2, -1, s[2:3]
 ; GFX9-GISEL-NEXT:    global_store_byte v1, v0, s[0:1]
 ; GFX9-GISEL-NEXT:    s_endpgm
@@ -2164,18 +2167,15 @@ define i7 @v_ctlz_zero_undef_i7(i7 %val) {
 ; SI-LABEL: v_ctlz_zero_undef_i7:
 ; SI:       ; %bb.0:
 ; SI-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; SI-NEXT:    v_and_b32_e32 v0, 0x7f, v0
+; SI-NEXT:    v_lshlrev_b32_e32 v0, 25, v0
 ; SI-NEXT:    v_ffbh_u32_e32 v0, v0
-; SI-NEXT:    v_subrev_i32_e32 v0, vcc, 25, v0
 ; SI-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; VI-LABEL: v_ctlz_zero_undef_i7:
 ; VI:       ; %bb.0:
 ; VI-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-NEXT:    v_and_b32_e32 v0, 0x7f, v0
-; VI-NEXT:    v_ffbh_u32_sdwa v0, v0 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_0
-; VI-NEXT:    v_add_u32_e32 v0, vcc, -16, v0
-; VI-NEXT:    v_add_u16_e32 v0, -9, v0
+; VI-NEXT:    v_lshlrev_b32_e32 v0, 25, v0
+; VI-NEXT:    v_ffbh_u32_e32 v0, v0
 ; VI-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; EG-LABEL: v_ctlz_zero_undef_i7:
@@ -2186,7 +2186,7 @@ define i7 @v_ctlz_zero_undef_i7(i7 %val) {
 ; GFX9-GISEL-LABEL: v_ctlz_zero_undef_i7:
 ; GFX9-GISEL:       ; %bb.0:
 ; GFX9-GISEL-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; GFX9-GISEL-NEXT:    v_lshrrev_b32_e32 v0, 25, v0
+; GFX9-GISEL-NEXT:    v_lshlrev_b32_e32 v0, 25, v0
 ; GFX9-GISEL-NEXT:    v_ffbh_u32_e32 v0, v0
 ; GFX9-GISEL-NEXT:    s_setpc_b64 s[30:31]
   %ctlz = call i7 @llvm.ctlz.i7(i7 %val, i1 true)
@@ -2200,9 +2200,8 @@ define amdgpu_kernel void @s_ctlz_zero_undef_i18(ptr addrspace(1) noalias %out, 
 ; SI-NEXT:    s_load_dwordx2 s[0:1], s[0:1], 0x9
 ; SI-NEXT:    s_mov_b32 s3, 0xf000
 ; SI-NEXT:    s_waitcnt lgkmcnt(0)
-; SI-NEXT:    s_and_b32 s2, s2, 0x3ffff
-; SI-NEXT:    s_flbit_i32_b32 s2, s2
-; SI-NEXT:    s_add_i32 s4, s2, -14
+; SI-NEXT:    s_lshl_b32 s2, s2, 14
+; SI-NEXT:    s_flbit_i32_b32 s4, s2
 ; SI-NEXT:    s_mov_b32 s2, -1
 ; SI-NEXT:    v_mov_b32_e32 v0, s4
 ; SI-NEXT:    s_bfe_u32 s4, s4, 0x20010
@@ -2217,15 +2216,14 @@ define amdgpu_kernel void @s_ctlz_zero_undef_i18(ptr addrspace(1) noalias %out, 
 ; VI-NEXT:    s_load_dword s2, s[0:1], 0x2c
 ; VI-NEXT:    s_load_dwordx2 s[0:1], s[0:1], 0x24
 ; VI-NEXT:    s_waitcnt lgkmcnt(0)
-; VI-NEXT:    s_and_b32 s2, s2, 0x3ffff
-; VI-NEXT:    s_flbit_i32_b32 s2, s2
+; VI-NEXT:    s_lshl_b32 s2, s2, 14
 ; VI-NEXT:    v_mov_b32_e32 v0, s0
-; VI-NEXT:    s_add_i32 s2, s2, -14
+; VI-NEXT:    s_flbit_i32_b32 s2, s2
 ; VI-NEXT:    v_mov_b32_e32 v1, s1
-; VI-NEXT:    v_mov_b32_e32 v2, s2
 ; VI-NEXT:    s_add_u32 s0, s0, 2
-; VI-NEXT:    flat_store_short v[0:1], v2
+; VI-NEXT:    v_mov_b32_e32 v2, s2
 ; VI-NEXT:    s_addc_u32 s1, s1, 0
+; VI-NEXT:    flat_store_short v[0:1], v2
 ; VI-NEXT:    s_bfe_u32 s2, s2, 0x20010
 ; VI-NEXT:    v_mov_b32_e32 v0, s0
 ; VI-NEXT:    v_mov_b32_e32 v1, s1
@@ -2235,20 +2233,18 @@ define amdgpu_kernel void @s_ctlz_zero_undef_i18(ptr addrspace(1) noalias %out, 
 ;
 ; EG-LABEL: s_ctlz_zero_undef_i18:
 ; EG:       ; %bb.0:
-; EG-NEXT:    ALU 30, @4, KC0[CB0:0-32], KC1[]
+; EG-NEXT:    ALU 28, @4, KC0[CB0:0-32], KC1[]
 ; EG-NEXT:    MEM_RAT MSKOR T1.XW, T3.X
 ; EG-NEXT:    MEM_RAT MSKOR T0.XW, T2.X
 ; EG-NEXT:    CF_END
 ; EG-NEXT:    ALU clause starting at 4:
-; EG-NEXT:     AND_INT * T0.W, KC0[2].Z, literal.x,
-; EG-NEXT:    262143(3.673406e-40), 0(0.000000e+00)
+; EG-NEXT:     LSHL * T0.W, KC0[2].Z, literal.x,
+; EG-NEXT:    14(1.961818e-44), 0(0.000000e+00)
 ; EG-NEXT:     FFBH_UINT T0.W, PV.W,
 ; EG-NEXT:     AND_INT * T1.W, KC0[2].Y, literal.x,
 ; EG-NEXT:    3(4.203895e-45), 0(0.000000e+00)
-; EG-NEXT:     ADD_INT * T0.W, PV.W, literal.x,
-; EG-NEXT:    -14(nan), 0(0.000000e+00)
 ; EG-NEXT:     AND_INT T2.W, PV.W, literal.x,
-; EG-NEXT:     LSHL * T1.W, T1.W, literal.y,
+; EG-NEXT:     LSHL * T1.W, PS, literal.y,
 ; EG-NEXT:    65535(9.183409e-41), 3(4.203895e-45)
 ; EG-NEXT:     LSHL T1.X, PV.W, PS,
 ; EG-NEXT:     LSHL * T1.W, literal.x, PS,
@@ -2278,7 +2274,7 @@ define amdgpu_kernel void @s_ctlz_zero_undef_i18(ptr addrspace(1) noalias %out, 
 ; GFX9-GISEL-NEXT:    s_load_dwordx2 s[2:3], s[0:1], 0x24
 ; GFX9-GISEL-NEXT:    v_mov_b32_e32 v0, 0
 ; GFX9-GISEL-NEXT:    s_waitcnt lgkmcnt(0)
-; GFX9-GISEL-NEXT:    s_lshr_b32 s0, s4, 14
+; GFX9-GISEL-NEXT:    s_lshl_b32 s0, s4, 14
 ; GFX9-GISEL-NEXT:    s_flbit_i32_b32 s0, s0
 ; GFX9-GISEL-NEXT:    s_and_b32 s0, s0, 0x3ffff
 ; GFX9-GISEL-NEXT:    s_lshr_b32 s1, s0, 16
@@ -2296,17 +2292,15 @@ define i18 @v_ctlz_zero_undef_i18(i18 %val) {
 ; SI-LABEL: v_ctlz_zero_undef_i18:
 ; SI:       ; %bb.0:
 ; SI-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; SI-NEXT:    v_and_b32_e32 v0, 0x3ffff, v0
+; SI-NEXT:    v_lshlrev_b32_e32 v0, 14, v0
 ; SI-NEXT:    v_ffbh_u32_e32 v0, v0
-; SI-NEXT:    v_add_i32_e32 v0, vcc, -14, v0
 ; SI-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; VI-LABEL: v_ctlz_zero_undef_i18:
 ; VI:       ; %bb.0:
 ; VI-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-NEXT:    v_and_b32_e32 v0, 0x3ffff, v0
+; VI-NEXT:    v_lshlrev_b32_e32 v0, 14, v0
 ; VI-NEXT:    v_ffbh_u32_e32 v0, v0
-; VI-NEXT:    v_add_u32_e32 v0, vcc, -14, v0
 ; VI-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; EG-LABEL: v_ctlz_zero_undef_i18:
@@ -2317,7 +2311,7 @@ define i18 @v_ctlz_zero_undef_i18(i18 %val) {
 ; GFX9-GISEL-LABEL: v_ctlz_zero_undef_i18:
 ; GFX9-GISEL:       ; %bb.0:
 ; GFX9-GISEL-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; GFX9-GISEL-NEXT:    v_lshrrev_b32_e32 v0, 14, v0
+; GFX9-GISEL-NEXT:    v_lshlrev_b32_e32 v0, 14, v0
 ; GFX9-GISEL-NEXT:    v_ffbh_u32_e32 v0, v0
 ; GFX9-GISEL-NEXT:    s_setpc_b64 s[30:31]
   %ctlz = call i18 @llvm.ctlz.i18(i18 %val, i1 true)
@@ -2328,23 +2322,19 @@ define <2 x i18> @v_ctlz_zero_undef_v2i18(<2 x i18> %val) {
 ; SI-LABEL: v_ctlz_zero_undef_v2i18:
 ; SI:       ; %bb.0:
 ; SI-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; SI-NEXT:    v_and_b32_e32 v1, 0x3ffff, v1
-; SI-NEXT:    v_and_b32_e32 v0, 0x3ffff, v0
+; SI-NEXT:    v_lshlrev_b32_e32 v0, 14, v0
+; SI-NEXT:    v_lshlrev_b32_e32 v1, 14, v1
 ; SI-NEXT:    v_ffbh_u32_e32 v0, v0
 ; SI-NEXT:    v_ffbh_u32_e32 v1, v1
-; SI-NEXT:    v_add_i32_e32 v0, vcc, -14, v0
-; SI-NEXT:    v_add_i32_e32 v1, vcc, -14, v1
 ; SI-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; VI-LABEL: v_ctlz_zero_undef_v2i18:
 ; VI:       ; %bb.0:
 ; VI-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-NEXT:    v_and_b32_e32 v1, 0x3ffff, v1
-; VI-NEXT:    v_and_b32_e32 v0, 0x3ffff, v0
+; VI-NEXT:    v_lshlrev_b32_e32 v0, 14, v0
+; VI-NEXT:    v_lshlrev_b32_e32 v1, 14, v1
 ; VI-NEXT:    v_ffbh_u32_e32 v0, v0
 ; VI-NEXT:    v_ffbh_u32_e32 v1, v1
-; VI-NEXT:    v_add_u32_e32 v0, vcc, -14, v0
-; VI-NEXT:    v_add_u32_e32 v1, vcc, -14, v1
 ; VI-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; EG-LABEL: v_ctlz_zero_undef_v2i18:
@@ -2355,8 +2345,8 @@ define <2 x i18> @v_ctlz_zero_undef_v2i18(<2 x i18> %val) {
 ; GFX9-GISEL-LABEL: v_ctlz_zero_undef_v2i18:
 ; GFX9-GISEL:       ; %bb.0:
 ; GFX9-GISEL-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; GFX9-GISEL-NEXT:    v_lshrrev_b32_e32 v0, 14, v0
-; GFX9-GISEL-NEXT:    v_lshrrev_b32_e32 v1, 14, v1
+; GFX9-GISEL-NEXT:    v_lshlrev_b32_e32 v0, 14, v0
+; GFX9-GISEL-NEXT:    v_lshlrev_b32_e32 v1, 14, v1
 ; GFX9-GISEL-NEXT:    v_ffbh_u32_e32 v0, v0
 ; GFX9-GISEL-NEXT:    v_ffbh_u32_e32 v1, v1
 ; GFX9-GISEL-NEXT:    s_setpc_b64 s[30:31]
@@ -2379,11 +2369,11 @@ define <2 x i16> @v_ctlz_zero_undef_v2i16(<2 x i16> %val) {
 ; VI-LABEL: v_ctlz_zero_undef_v2i16:
 ; VI:       ; %bb.0:
 ; VI-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-NEXT:    v_ffbh_u32_sdwa v1, v0 dst_sel:WORD_1 dst_unused:UNUSED_PAD src0_sel:WORD_1
-; VI-NEXT:    v_ffbh_u32_sdwa v0, v0 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_0
-; VI-NEXT:    v_add_u32_e32 v0, vcc, -16, v0
-; VI-NEXT:    v_or_b32_sdwa v0, v1, v0 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:DWORD src1_sel:WORD_0
-; VI-NEXT:    v_add_u32_e32 v0, vcc, 0xfff00000, v0
+; VI-NEXT:    v_and_b32_e32 v1, 0xffff0000, v0
+; VI-NEXT:    v_lshlrev_b32_e32 v0, 16, v0
+; VI-NEXT:    v_ffbh_u32_sdwa v1, v1 dst_sel:WORD_1 dst_unused:UNUSED_PAD src0_sel:DWORD
+; VI-NEXT:    v_ffbh_u32_e32 v0, v0
+; VI-NEXT:    v_or_b32_sdwa v0, v0, v1 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_0 src1_sel:DWORD
 ; VI-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; EG-LABEL: v_ctlz_zero_undef_v2i16:
@@ -2394,10 +2384,13 @@ define <2 x i16> @v_ctlz_zero_undef_v2i16(<2 x i16> %val) {
 ; GFX9-GISEL-LABEL: v_ctlz_zero_undef_v2i16:
 ; GFX9-GISEL:       ; %bb.0:
 ; GFX9-GISEL-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; GFX9-GISEL-NEXT:    v_ffbh_u32_sdwa v0, v0 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_1
-; GFX9-GISEL-NEXT:    s_flbit_i32_b32 s4, 0
+; GFX9-GISEL-NEXT:    v_lshrrev_b32_e32 v1, 16, v0
+; GFX9-GISEL-NEXT:    v_lshlrev_b32_e32 v0, 16, v0
+; GFX9-GISEL-NEXT:    v_ffbh_u32_e32 v0, v0
+; GFX9-GISEL-NEXT:    v_lshlrev_b32_e32 v1, 16, v1
+; GFX9-GISEL-NEXT:    v_ffbh_u32_e32 v1, v1
 ; GFX9-GISEL-NEXT:    v_and_b32_e32 v0, 0xffff, v0
-; GFX9-GISEL-NEXT:    v_lshl_or_b32 v0, s4, 16, v0
+; GFX9-GISEL-NEXT:    v_lshl_or_b32 v0, v1, 16, v0
 ; GFX9-GISEL-NEXT:    s_setpc_b64 s[30:31]
   %ctlz = call <2 x i16> @llvm.ctlz.v2i16(<2 x i16> %val, i1 true)
   ret <2 x i16> %ctlz
@@ -2422,13 +2415,13 @@ define <3 x i16> @v_ctlz_zero_undef_v3i16(<3 x i16> %val) {
 ; VI-LABEL: v_ctlz_zero_undef_v3i16:
 ; VI:       ; %bb.0:
 ; VI-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-NEXT:    v_ffbh_u32_sdwa v2, v0 dst_sel:WORD_1 dst_unused:UNUSED_PAD src0_sel:WORD_1
-; VI-NEXT:    v_ffbh_u32_sdwa v0, v0 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_0
-; VI-NEXT:    v_add_u32_e32 v0, vcc, -16, v0
-; VI-NEXT:    v_ffbh_u32_sdwa v1, v1 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_0
-; VI-NEXT:    v_or_b32_sdwa v0, v2, v0 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:DWORD src1_sel:WORD_0
-; VI-NEXT:    v_add_u32_e32 v1, vcc, -16, v1
-; VI-NEXT:    v_add_u32_e32 v0, vcc, 0xfff00000, v0
+; VI-NEXT:    v_lshlrev_b32_e32 v2, 16, v0
+; VI-NEXT:    v_and_b32_e32 v0, 0xffff0000, v0
+; VI-NEXT:    v_lshlrev_b32_e32 v1, 16, v1
+; VI-NEXT:    v_ffbh_u32_e32 v2, v2
+; VI-NEXT:    v_ffbh_u32_sdwa v0, v0 dst_sel:WORD_1 dst_unused:UNUSED_PAD src0_sel:DWORD
+; VI-NEXT:    v_ffbh_u32_e32 v1, v1
+; VI-NEXT:    v_or_b32_sdwa v0, v2, v0 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_0 src1_sel:DWORD
 ; VI-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; EG-LABEL: v_ctlz_zero_undef_v3i16:
@@ -2439,11 +2432,15 @@ define <3 x i16> @v_ctlz_zero_undef_v3i16(<3 x i16> %val) {
 ; GFX9-GISEL-LABEL: v_ctlz_zero_undef_v3i16:
 ; GFX9-GISEL:       ; %bb.0:
 ; GFX9-GISEL-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; GFX9-GISEL-NEXT:    v_ffbh_u32_sdwa v0, v0 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_1
-; GFX9-GISEL-NEXT:    s_flbit_i32_b32 s4, 0
+; GFX9-GISEL-NEXT:    v_lshrrev_b32_e32 v2, 16, v0
+; GFX9-GISEL-NEXT:    v_lshlrev_b32_e32 v0, 16, v0
+; GFX9-GISEL-NEXT:    v_ffbh_u32_e32 v0, v0
+; GFX9-GISEL-NEXT:    v_lshlrev_b32_e32 v2, 16, v2
+; GFX9-GISEL-NEXT:    v_ffbh_u32_e32 v2, v2
+; GFX9-GISEL-NEXT:    v_lshlrev_b32_e32 v1, 16, v1
 ; GFX9-GISEL-NEXT:    v_and_b32_e32 v0, 0xffff, v0
-; GFX9-GISEL-NEXT:    v_ffbh_u32_sdwa v1, v1 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_1
-; GFX9-GISEL-NEXT:    v_lshl_or_b32 v0, s4, 16, v0
+; GFX9-GISEL-NEXT:    v_ffbh_u32_e32 v1, v1
+; GFX9-GISEL-NEXT:    v_lshl_or_b32 v0, v2, 16, v0
 ; GFX9-GISEL-NEXT:    s_setpc_b64 s[30:31]
   %ctlz = call <3 x i16> @llvm.ctlz.v3i16(<3 x i16> %val, i1 true)
   ret <3 x i16> %ctlz
@@ -2472,16 +2469,16 @@ define <4 x i16> @v_ctlz_zero_undef_v4i16(<4 x i16> %val) {
 ; VI-LABEL: v_ctlz_zero_undef_v4i16:
 ; VI:       ; %bb.0:
 ; VI-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-NEXT:    v_ffbh_u32_sdwa v2, v1 dst_sel:WORD_1 dst_unused:UNUSED_PAD src0_sel:WORD_1
-; VI-NEXT:    v_ffbh_u32_sdwa v1, v1 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_0
-; VI-NEXT:    v_ffbh_u32_sdwa v3, v0 dst_sel:WORD_1 dst_unused:UNUSED_PAD src0_sel:WORD_1
-; VI-NEXT:    v_ffbh_u32_sdwa v0, v0 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_0
-; VI-NEXT:    v_add_u32_e32 v1, vcc, -16, v1
-; VI-NEXT:    v_add_u32_e32 v0, vcc, -16, v0
-; VI-NEXT:    v_or_b32_sdwa v0, v3, v0 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:DWORD src1_sel:WORD_0
-; VI-NEXT:    v_or_b32_sdwa v1, v2, v1 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:DWORD src1_sel:WORD_0
-; VI-NEXT:    v_add_u32_e32 v0, vcc, 0xfff00000, v0
-; VI-NEXT:    v_add_u32_e32 v1, vcc, 0xfff00000, v1
+; VI-NEXT:    v_lshlrev_b32_e32 v2, 16, v1
+; VI-NEXT:    v_and_b32_e32 v1, 0xffff0000, v1
+; VI-NEXT:    v_lshlrev_b32_e32 v3, 16, v0
+; VI-NEXT:    v_and_b32_e32 v0, 0xffff0000, v0
+; VI-NEXT:    v_ffbh_u32_e32 v2, v2
+; VI-NEXT:    v_ffbh_u32_sdwa v1, v1 dst_sel:WORD_1 dst_unused:UNUSED_PAD src0_sel:DWORD
+; VI-NEXT:    v_ffbh_u32_e32 v3, v3
+; VI-NEXT:    v_ffbh_u32_sdwa v0, v0 dst_sel:WORD_1 dst_unused:UNUSED_PAD src0_sel:DWORD
+; VI-NEXT:    v_or_b32_sdwa v0, v3, v0 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_0 src1_sel:DWORD
+; VI-NEXT:    v_or_b32_sdwa v1, v2, v1 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_0 src1_sel:DWORD
 ; VI-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; EG-LABEL: v_ctlz_zero_undef_v4i16:
@@ -2492,13 +2489,20 @@ define <4 x i16> @v_ctlz_zero_undef_v4i16(<4 x i16> %val) {
 ; GFX9-GISEL-LABEL: v_ctlz_zero_undef_v4i16:
 ; GFX9-GISEL:       ; %bb.0:
 ; GFX9-GISEL-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; GFX9-GISEL-NEXT:    v_ffbh_u32_sdwa v0, v0 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_1
-; GFX9-GISEL-NEXT:    v_ffbh_u32_sdwa v1, v1 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_1
-; GFX9-GISEL-NEXT:    s_flbit_i32_b32 s4, 0
+; GFX9-GISEL-NEXT:    v_lshrrev_b32_e32 v2, 16, v0
+; GFX9-GISEL-NEXT:    v_lshrrev_b32_e32 v3, 16, v1
+; GFX9-GISEL-NEXT:    v_lshlrev_b32_e32 v0, 16, v0
+; GFX9-GISEL-NEXT:    v_lshlrev_b32_e32 v1, 16, v1
+; GFX9-GISEL-NEXT:    v_ffbh_u32_e32 v0, v0
+; GFX9-GISEL-NEXT:    v_lshlrev_b32_e32 v2, 16, v2
+; GFX9-GISEL-NEXT:    v_ffbh_u32_e32 v1, v1
+; GFX9-GISEL-NEXT:    v_lshlrev_b32_e32 v3, 16, v3
+; GFX9-GISEL-NEXT:    v_ffbh_u32_e32 v2, v2
+; GFX9-GISEL-NEXT:    v_ffbh_u32_e32 v3, v3
 ; GFX9-GISEL-NEXT:    v_and_b32_e32 v0, 0xffff, v0
 ; GFX9-GISEL-NEXT:    v_and_b32_e32 v1, 0xffff, v1
-; GFX9-GISEL-NEXT:    v_lshl_or_b32 v0, s4, 16, v0
-; GFX9-GISEL-NEXT:    v_lshl_or_b32 v1, s4, 16, v1
+; GFX9-GISEL-NEXT:    v_lshl_or_b32 v0, v2, 16, v0
+; GFX9-GISEL-NEXT:    v_lshl_or_b32 v1, v3, 16, v1
 ; GFX9-GISEL-NEXT:    s_setpc_b64 s[30:31]
   %ctlz = call <4 x i16> @llvm.ctlz.v4i16(<4 x i16> %val, i1 true)
   ret <4 x i16> %ctlz
@@ -2536,8 +2540,10 @@ define <2 x i8> @v_ctlz_zero_undef_v2i8(<2 x i8> %val) {
 ; GFX9-GISEL-LABEL: v_ctlz_zero_undef_v2i8:
 ; GFX9-GISEL:       ; %bb.0:
 ; GFX9-GISEL-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; GFX9-GISEL-NEXT:    v_ffbh_u32_sdwa v0, v0 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:BYTE_3
-; GFX9-GISEL-NEXT:    v_ffbh_u32_sdwa v1, v1 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:BYTE_3
+; GFX9-GISEL-NEXT:    v_lshlrev_b32_e32 v0, 24, v0
+; GFX9-GISEL-NEXT:    v_lshlrev_b32_e32 v1, 24, v1
+; GFX9-GISEL-NEXT:    v_ffbh_u32_e32 v0, v0
+; GFX9-GISEL-NEXT:    v_ffbh_u32_e32 v1, v1
 ; GFX9-GISEL-NEXT:    s_setpc_b64 s[30:31]
   %ctlz = call <2 x i8> @llvm.ctlz.v2i8(<2 x i8> %val, i1 true)
   ret <2 x i8> %ctlz
@@ -2547,28 +2553,19 @@ define <2 x i7> @v_ctlz_zero_undef_v2i7(<2 x i7> %val) {
 ; SI-LABEL: v_ctlz_zero_undef_v2i7:
 ; SI:       ; %bb.0:
 ; SI-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; SI-NEXT:    v_and_b32_e32 v1, 0x7f, v1
-; SI-NEXT:    v_and_b32_e32 v0, 0x7f, v0
+; SI-NEXT:    v_lshlrev_b32_e32 v0, 25, v0
+; SI-NEXT:    v_lshlrev_b32_e32 v1, 25, v1
 ; SI-NEXT:    v_ffbh_u32_e32 v0, v0
 ; SI-NEXT:    v_ffbh_u32_e32 v1, v1
-; SI-NEXT:    v_subrev_i32_e32 v0, vcc, 25, v0
-; SI-NEXT:    v_subrev_i32_e32 v1, vcc, 25, v1
 ; SI-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; VI-LABEL: v_ctlz_zero_undef_v2i7:
 ; VI:       ; %bb.0:
 ; VI-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; VI-NEXT:    v_lshlrev_b32_e32 v1, 16, v1
-; VI-NEXT:    v_or_b32_sdwa v0, v0, v1 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_0 src1_sel:DWORD
-; VI-NEXT:    v_and_b32_e32 v2, 0x7f007f, v0
-; VI-NEXT:    v_bfe_u32 v0, v0, 16, 7
+; VI-NEXT:    v_lshlrev_b32_e32 v0, 25, v0
+; VI-NEXT:    v_lshlrev_b32_e32 v1, 25, v1
 ; VI-NEXT:    v_ffbh_u32_e32 v0, v0
-; VI-NEXT:    v_add_u32_e32 v0, vcc, -16, v0
-; VI-NEXT:    v_add_u16_e32 v1, -9, v0
-; VI-NEXT:    v_and_b32_e32 v0, 0x7f, v2
-; VI-NEXT:    v_ffbh_u32_e32 v0, v0
-; VI-NEXT:    v_add_u32_e32 v0, vcc, -16, v0
-; VI-NEXT:    v_add_u16_e32 v0, -9, v0
+; VI-NEXT:    v_ffbh_u32_e32 v1, v1
 ; VI-NEXT:    s_setpc_b64 s[30:31]
 ;
 ; EG-LABEL: v_ctlz_zero_undef_v2i7:
@@ -2579,8 +2576,8 @@ define <2 x i7> @v_ctlz_zero_undef_v2i7(<2 x i7> %val) {
 ; GFX9-GISEL-LABEL: v_ctlz_zero_undef_v2i7:
 ; GFX9-GISEL:       ; %bb.0:
 ; GFX9-GISEL-NEXT:    s_waitcnt vmcnt(0) expcnt(0) lgkmcnt(0)
-; GFX9-GISEL-NEXT:    v_lshrrev_b32_e32 v0, 25, v0
-; GFX9-GISEL-NEXT:    v_lshrrev_b32_e32 v1, 25, v1
+; GFX9-GISEL-NEXT:    v_lshlrev_b32_e32 v0, 25, v0
+; GFX9-GISEL-NEXT:    v_lshlrev_b32_e32 v1, 25, v1
 ; GFX9-GISEL-NEXT:    v_ffbh_u32_e32 v0, v0
 ; GFX9-GISEL-NEXT:    v_ffbh_u32_e32 v1, v1
 ; GFX9-GISEL-NEXT:    s_setpc_b64 s[30:31]
