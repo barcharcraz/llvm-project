@@ -1721,6 +1721,19 @@ HANDLE CoeCreateLogFile() {
   return fileHandle;
 }
 
+void CoeOverrideCommonFlags() {
+  CommonFlags cf;
+  cf.CopyFrom(*common_flags());
+  if (__asan::COE() && common_flags()->suppress_equal_pcs) {
+    // Continue on error has its own logic for caching and suppressing errors.
+    VReport(1,
+            "AddressSanitizer: continue_on_error cannot be used with "
+            "suppress_equal_pcs. Disabling suppress_equal_pcs.\n");
+    cf.suppress_equal_pcs = false;
+  }
+  OverrideCommonFlags(cf);
+}
+
 void InitializeCOE() {
   // Called from AsanInitInternal() in asan\asan_rtl.cpp as well as from weak
   // callbacks if registered to update state
@@ -1758,6 +1771,9 @@ void InitializeCOE() {
   
   // Cache process handle
   CoeProcessHandle();
+
+  // Flags that conflict with COE usage need to be updated
+  CoeOverrideCommonFlags();
 }
 
 }  // namespace __asan
