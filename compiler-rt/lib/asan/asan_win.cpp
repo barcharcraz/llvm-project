@@ -727,7 +727,7 @@ void InitializePlatformExceptionHandlers() {
 }
 
 // Debug and release versions of the allocation header are different
-static uptr GetAlignedAllocationHeader(void *addr) {
+static uptr GetAlignedAllocationHeader(const void *addr) {
   static constexpr auto ptrSize = sizeof(void *);
   uintptr_t ptr = reinterpret_cast<uintptr_t>(addr);
   ptr = (ptr & ~(ptrSize - 1)) - ptrSize;
@@ -736,11 +736,12 @@ static uptr GetAlignedAllocationHeader(void *addr) {
 }
 
 // Returns the debug header information for a potential debug allocation
-static AllocationDebugHeader *const GetAllocationDebugHeader(void *addr) {
-  return static_cast<AllocationDebugHeader *>(addr) - 1;
+static const AllocationDebugHeader *const GetAllocationDebugHeader(
+    const void *addr) {
+  return static_cast<const AllocationDebugHeader *>(addr) - 1;
 }
 
-bool AllocatedPriorToAsanInit(void *addr) {
+bool AllocatedPriorToAsanInit(const void *addr) {
   auto found = false;
   if (!addr || !system_allocations) {
     return found;
@@ -764,7 +765,7 @@ bool AllocatedPriorToAsanInit(void *addr) {
   return found;
 }
 
-bool AlignedAllocatedPriorToAsanInit(void *addr) {
+bool AlignedAllocatedPriorToAsanInit(const void *addr) {
   auto found = false;
   if (!addr || !system_allocations) {
     return found;
@@ -830,7 +831,7 @@ static bool IsDebugRuntimePresent() {
 // Returns debug aligned allocation header information for a potential debug
 // allocation
 static AlignedAllocationDebugHeader *const GetAlignedAllocationDebugHeader(
-    void *addr) {
+    const void *addr) {
   return reinterpret_cast<AlignedAllocationDebugHeader *>(
              reinterpret_cast<uptr>(addr) & ~(sizeof(uptr) - 1)) -
          1;
@@ -868,7 +869,7 @@ static bool IsValidDebugAllocation(uptr addr, PROCESS_HEAP_ENTRY &heapEntry) {
 // debug allocations, that will be the starting address after the debug header.
 // It is the same for aligned debug allocations, but again the aligned
 // allocation header must first be inspected to determine that address
-static bool AllocationPresentAndValid(void *lookupAddr, void *checkAddr) {
+static bool AllocationPresentAndValid(const void *lookupAddr, const void *checkAddr) {
   SystemAllocationMap::Handle h(
       system_allocations, reinterpret_cast<uptr>(lookupAddr), false, false);
   if (h.exists()) {
@@ -878,7 +879,7 @@ static bool AllocationPresentAndValid(void *lookupAddr, void *checkAddr) {
   return false;
 }
 
-bool DbgAllocatedPriorToAsanInit(void *addr) {
+bool DbgAllocatedPriorToAsanInit(const void *addr) {
   if (!IsDebugRuntimePresent()) {
     return false;
   }
@@ -896,7 +897,7 @@ bool DbgAllocatedPriorToAsanInit(void *addr) {
   return found;
 }
 
-bool DbgAlignedAllocatedPriorToAsanInit(void *addr) {
+bool DbgAlignedAllocatedPriorToAsanInit(const void *addr) {
   if (!IsDebugRuntimePresent()) {
     return false;
   }

@@ -79,6 +79,7 @@ int main(int argc, char **argv) {
   // Errors found in memory_operations_after_asan_init.h
   //CHECK-NOT: {{No function found*}}
   //CHECK-NOT: Size Failed.
+  //CHECK-NOT: _CrtIsValidHeapPointer Failed.
   //CHECK-NOT: Flags Failed.
   //CHECK-NOT: Realloc Failed.
   //CHECK-NOT: Recalloc Failed.

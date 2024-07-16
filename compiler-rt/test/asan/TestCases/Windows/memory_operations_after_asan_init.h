@@ -326,6 +326,15 @@ template <typename Type> struct MemoryForManipulating {
     return true;
   }
 
+  void DebugChecks(void *mem) {
+#if DEBUG
+    if (!_CrtIsValidHeapPointer(mem)) {
+      std::cerr << "_CrtIsValidHeapPointer Failed" << std::endl;
+      throw std::exception("_CrtIsValidHeapPointer function failed");
+    }
+#endif
+  }
+
   void Size(void *mem, size_t alignment = 0, size_t offset = 0) {
     size_t result = 0;
     if constexpr (std::is_same_v<Type, HeapMemory>) {
@@ -430,6 +439,7 @@ template <typename Type> struct MemoryForManipulating {
       }
 
       Size(temp, alignment, offset);
+      DebugChecks(mem);
 
       if (!(testType & TestType::LockPrior)) {
         Lock(temp);

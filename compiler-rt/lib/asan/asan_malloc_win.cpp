@@ -600,14 +600,6 @@ int _CrtIsValidPointer(void const *p, unsigned int const, int const) {
   return p != nullptr;
 }
 
-int _CrtIsValidHeapPointer(void const *block) {
-  if (!block) {
-    return 0;
-  }
-
-  return __sanitizer_get_ownership(block);
-}
-
 int _CrtIsMemoryBlock(void const *const, unsigned const, long *const,
                       char **const, int *const) {
   return 0;
@@ -1476,6 +1468,18 @@ size_t RtlSizeHeap(void *HeapHandle, DWORD Flags, void *BaseAddress);
 
 // This function is completely undocmented.
 bool RtlValidateHeap(void *HeapHandle, DWORD Flags, void *BaseAddress);
+
+INTERCEPTOR(int, _CrtIsValidHeapPointer, const void *pUserData) {
+  if (!pUserData) {
+    return 0;
+  }
+
+  if (UNLIKELY(!AsanInited()) || AllocatedPriorToAsanInit(pUserData)) {
+    return REAL(_CrtIsValidHeapPointer)(pUserData);
+  }
+
+  return __sanitizer_get_ownership(pUserData);
+}
 
 INTERCEPTOR_WINAPI(void *, RtlDestroyHeap, void *HeapHandle) {
   if (UNLIKELY(HeapHandle == nullptr || HeapHandle == GetProcessHeap())) {
@@ -2446,10 +2450,12 @@ void ReplaceSystemMalloc() {
   TryToOverrideFunction("_calloc_dbg", (uptr)_calloc_dbg);
   TryToOverrideFunction("_malloc_dbg", (uptr)_malloc_dbg);
 
-  // We should intercept these functions but it's okay that we don't right now.
-  // All of these functions are currently implemented as no-ops for ASan and
-  // allowing an instrumented DLL to forward to the actual CRT functions
-  // shouldn't significantly affect ASan diagnostics.
+  // We should intercept all of these functions but it's okay that we don't
+  // right now. Some of these functions are currently implemented as no-ops for
+  // ASan and allowing an instrumented DLL to forward to the actual CRT
+  // functions shouldn't significantly affect ASan diagnostics. The static thunk
+  // version of these can be found in asan_malloc_win_thunk.cpp
+  INTERCEPT_FUNCTION(_CrtIsValidHeapPointer);
   // TryToOverrideFunction("_CrtCheckMemory", (uptr)_CrtCheckMemory);
   // TryToOverrideFunction("_CrtDoForAllClientObjects",
   //                      (uptr)_CrtDoForAllClientObjects);
@@ -2480,6 +2486,9 @@ void ReplaceSystemMalloc() {
   OverrideFunctionsForEachCrt();
 
   if (flags()->windows_hook_legacy_allocators) {
+    // Replace Global/Local legacy allocator functions to prevent
+    // allocations owned by ASan interacting with the CRT and false positives
+    // from allocations taking place prior to ASan initialization
     INTERCEPT_FUNCTION(GlobalAlloc);
     INTERCEPT_FUNCTION(GlobalFree);
     INTERCEPT_FUNCTION(GlobalSize);

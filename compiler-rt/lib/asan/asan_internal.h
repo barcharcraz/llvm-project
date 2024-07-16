@@ -76,17 +76,17 @@ constexpr auto CHECK_ALL_PROCESS_HEAPS = nullptr;
   // Returns whether an address was allocated prior to ASAN initialization.
   // Used on Windows to determine if the CRT allocated memory in order to not
   // report false negatives with reallocs or frees.
-  bool AllocatedPriorToAsanInit(void *addr);
+  bool AllocatedPriorToAsanInit(const void *addr);
 
   // Specialized version of AllocatedPriorToAsanInit for aligned memory
-  bool AlignedAllocatedPriorToAsanInit(void *addr);
+  bool AlignedAllocatedPriorToAsanInit(const void *addr);
 
   // Used in debug functions instead of the above in order to account for
   // differences in allocations caused by the debug heap
-  bool DbgAllocatedPriorToAsanInit(void *addr);
+  bool DbgAllocatedPriorToAsanInit(const void *addr);
 
   // Specialized version of DbgAllocatedPriorToAsanInit for aligned memory
-  bool DbgAlignedAllocatedPriorToAsanInit(void *addr);
+  bool DbgAlignedAllocatedPriorToAsanInit(const void *addr);
 
   // Records allocations that occured prior to the ASAN runtime initialization.
   // This should only be called once during the ASAN runtime initialization
