@@ -14,7 +14,7 @@ int main() {
 // CHECK: Test type: [[TYPE:(Global|Local)]]
 
   char *buffer;
-  buffer = (char*)ALLOC(GMEM_FIXED, 32),
+  buffer = (char*)ALLOC(GMEM_FIXED, 32);
 
   print_addr("target-ptr", reinterpret_cast<void *>(reinterpret_cast<uint64_t>(buffer) + 33));
 // CHECK: target-ptr: [[ADDR:0x[0-9a-f]+]]

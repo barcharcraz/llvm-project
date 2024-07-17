@@ -29,14 +29,10 @@ inline void print_addr(const char * const name, void * const addr) {
     //     ASAN printf %p of 1 will print 0x01
     fprintf(stderr, "%s: ", name);
 
-    const int num_digits = [=]() {
-        int num_bytes = 0;
-        uintptr_t value = reinterpret_cast<uintptr_t>(addr);
-        while (value) {
-            value >>= 8;
-            ++num_bytes;
-        }
-        return max(num_bytes * 2, 8);
-    }();
+#ifdef _WIN64
+    const int num_digits = 12;
+#else
+    const int num_digits = 8;
+#endif
     fprintf(stderr, "0x%0*" PRIxPTR "\n", num_digits, reinterpret_cast<uintptr_t>(addr));
 }
