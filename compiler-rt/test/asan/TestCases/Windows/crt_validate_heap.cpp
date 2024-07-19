@@ -12,6 +12,9 @@ union AllocationEntry {
   AllocationEntry *m_pNext;
 };
 
+// The +1 in alloc and -1 in free are to demonstrate how a user may
+// decide to do anything with memory and return a different piece than originally allocated
+// to the caller.
 void *Alloc(size_t numBytes) {
   AllocationEntry *pAllocationEntry =
       (AllocationEntry *)::operator new[](numBytes);
@@ -21,7 +24,7 @@ void *Alloc(size_t numBytes) {
 void Free(void *pAllocation) {
   AllocationEntry *pAllocationEntry = (AllocationEntry *)pAllocation - 1;
   if (!_CrtIsValidHeapPointer((const void *)pAllocationEntry)) {
-    std::cerr << "Failed.\n";
+    std::cerr << "Failed _CrtIsValidHeapPointer before custom free.\n";
     return;
   }
   free(pAllocationEntry);
@@ -39,11 +42,13 @@ void testValidation() {
     _CrtIsMemoryBlock((const void *)myPtr, sizeof(char) * 10, NULL, NULL, NULL);
 
     if (!_CrtIsValidPointer((const void *)myPtr, sizeof(char) * 10, true)) {
-      std::cerr << "Failed.\n";
+      std::cerr << "Failed in testValidation _CrtIsValidPointer from malloc "
+                   "before free.\n";
     }
 
     if (!_CrtIsValidHeapPointer((const void *)myPtr)) {
-      std::cerr << "Failed.\n";
+      std::cerr << "Failed in testValidation _CrtIsValidHeapPointer from "
+                   "malloc before free.\n";
     }
 
     free(myPtr);
@@ -53,31 +58,35 @@ void testValidation() {
     int *ptr = new int(42);
 
     if (!_CrtIsValidHeapPointer(ptr)) {
-      std::cerr << "Failed.\n";
+      std::cerr << "Failed in testValidation _CrtIsValidHeapPointer from new "
+                   "before delete.\n";
     }
 
     delete ptr;
 
     if (_CrtIsValidHeapPointer(ptr)) {
-      std::cerr << "Failed.\n";
+      std::cerr << "Failed in testValidation _CrtIsValidHeapPointer from new "
+                   "after delete.\n";
     }
   }
 
   if (_CrtIsValidHeapPointer(&unallocatedThing)) {
-    std::cerr << "Failed.\n";
+    std::cerr << "Failed _CrtIsValidHeapPointer on unallocated object.\n";
   }
 }
 
 void testValidationAfterFree() {
   char *myPtr = (char *)malloc(128);
   if (!_CrtIsValidHeapPointer(myPtr)) {
-    std::cerr << "Failed before free.\n";
+    std::cerr << "Failed in testValidationAfterFree _CrtIsValidHeapPointer "
+                 "before free.\n";
   }
 
   free(myPtr);
 
   if (_CrtIsValidHeapPointer(myPtr)) {
-    std::cerr << "Failed after free.\n";
+    std::cerr << "Failed in testValidationAfterFree _CrtIsValidHeapPointer "
+                 "after free.\n";
   }
 }
 
@@ -86,7 +95,8 @@ void testOffset() {
   auto offsetPtr = ((AllocationEntry *)customPtr) + 4;
   *offsetPtr = AllocationEntry{2};
   if (_CrtIsValidHeapPointer(offsetPtr)) {
-    std::cerr << "Failed on offset address.\n";
+    std::cerr
+        << "Failed in testOffset _CrtIsValidHeapPointer on offset address.\n";
   }
   Free(customPtr);
 }
