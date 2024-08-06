@@ -88,6 +88,8 @@ static void RunWeakFunctionCallbacks(uptr export_address) {
 DECLARE_REAL(long, strtol_static, const char *nptr, char **endptr, int base)
 DECLARE_REAL(int, atoi_static, const char *nptr)
 DECLARE_REAL(long, atol_static, const char *nptr)
+DECLARE_REAL(long long, atoll_static, const char *nptr)
+DECLARE_REAL(long long, strtoll_static, const char *nptr, char **endptr, int base)
 DECLARE_REAL(void *, memcpy, void *dst, const void *src, uptr size)
 DECLARE_REAL(void *, memmove, void *dst, const void *src, uptr size)
 // For the provided interceptor export_name, return the corresponding REAL pointer. 
@@ -103,6 +105,8 @@ __interception::uptr* GetUniqueRealAddressForStaticExport(const char* export_nam
     { "__asan_wrap_strtol_static", (__interception::uptr *)&REAL(strtol_static) },
     { "__asan_wrap_atoi_static", (__interception::uptr *)&REAL(atoi_static) },
     { "__asan_wrap_atol_static", (__interception::uptr *)&REAL(atol_static) },
+    { "__asan_wrap_atoll_static", (__interception::uptr *)&REAL(atoll_static) },
+    { "__asan_wrap_strtoll_static", (__interception::uptr *)&REAL(strtoll_static) },
     { "__asan_wrap_memcpy", (__interception::uptr *)&REAL(memcpy) },
     { "__asan_wrap_memmove", (__interception::uptr *)&REAL(memmove) },
   };
