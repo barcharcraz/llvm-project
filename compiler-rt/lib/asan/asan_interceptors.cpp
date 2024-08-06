@@ -753,7 +753,11 @@ INTERCEPTOR(long, atol, const char *nptr) {
 
 #define INTERCEPTOR_STRTOL_FORDLL(dll) INTERCEPTOR_STRTO_BASE(long, strtol_##dll)
 INTERCEPTOR_ONEPERDLL_STRTOL_FAMILY(STRTOL)
-#endif
+
+#define INTERCEPTOR_STRTOLL_FORDLL(dll) INTERCEPTOR_STRTO_BASE(long long, strtoll_##dll)
+INTERCEPTOR_ONEPERDLL_STRTOL_FAMILY(STRTOLL)
+
+#endif // SANITIZER_WINDOWS
 
 //////////////// ATOI ///////////////////
 #if SANITIZER_WINDOWS
@@ -792,6 +796,8 @@ INTERCEPTOR(long, atol_##dll, const char *nptr) {               \
     return REAL(atol_##dll)(nptr);                              \
   }                                                             \
   char *real_endptr;                                            \
+  /* "man atol" tells that behavior of atol(nptr) is the same as
+  * strtol(nptr, 0, 10) */                                      \
   long result = REAL(strtol_##dll)(nptr, &real_endptr, 10);     \
   FixRealStrtolEndptr(nptr, &real_endptr);                      \
   ASAN_READ_STRING(ctx, nptr, (real_endptr - nptr) + 1);        \
@@ -818,6 +824,27 @@ INTERCEPTOR(long, atol, const char *nptr) {
 #endif
 //////////////// end ATOL ///////////////////
 
+//////////////// ATOLL ///////////////////
+#if SANITIZER_WINDOWS
+#define INTERCEPTOR_ATOLL_FORDLL(dll) \
+INTERCEPTOR(long long, atoll_##dll, const char *nptr) {           \
+  void *ctx;                                                      \
+  ASAN_INTERCEPTOR_ENTER(ctx, atoll_##dll);                       \
+  AsanInitFromRtl();                                              \
+  if (!flags()->replace_str) {                                    \
+    return REAL(atoll_##dll)(nptr);                               \
+  }                                                               \
+  char *real_endptr;                                              \
+  /* "man atoll" tells that behavior of atoll(nptr) is the same as
+  * strtoll(nptr, 0, 10) */                                       \
+  long long result = REAL(strtoll_##dll)(nptr, &real_endptr, 10); \
+  FixRealStrtolEndptr(nptr, &real_endptr);                        \
+  ASAN_READ_STRING(ctx, nptr, (real_endptr - nptr) + 1);          \
+  return result;                                                  \
+}
+
+INTERCEPTOR_ONEPERDLL_STRTOL_FAMILY(ATOLL)
+#else
 INTERCEPTOR(long long, atoll, const char *nptr) {
   void *ctx;
   ASAN_INTERCEPTOR_ENTER(ctx, atoll);
@@ -831,6 +858,8 @@ INTERCEPTOR(long long, atoll, const char *nptr) {
   ASAN_READ_STRING(ctx, nptr, (real_endptr - nptr) + 1);
   return result;
 }
+#endif
+//////////////// end ATOLL ///////////////////
 
 #if ASAN_INTERCEPT___CXA_ATEXIT || ASAN_INTERCEPT_ATEXIT
 static void AtCxaAtexit(void *unused) {
@@ -913,17 +942,18 @@ void InitializeAsanInterceptors() {
 #endif
 
 #if SANITIZER_WINDOWS
-  ASAN_INTERCEPT_STRTOL_FAMILY(atol);
-  // note: atoi may be an alias for atol for some DLLs / platforms, so it should go after atol
-  ASAN_INTERCEPT_STRTOL_FAMILY(atoi);
   ASAN_INTERCEPT_STRTOL_FAMILY(strtol);
+  ASAN_INTERCEPT_STRTOL_FAMILY(atoi);
+  ASAN_INTERCEPT_STRTOL_FAMILY(atol);
+  ASAN_INTERCEPT_STRTOL_FAMILY(atoll);
+  ASAN_INTERCEPT_STRTOL_FAMILY(strtoll);
 #else
   ASAN_INTERCEPT_FUNC(strtol);
   ASAN_INTERCEPT_FUNC(atoi);
   ASAN_INTERCEPT_FUNC(atol);
-#endif
   ASAN_INTERCEPT_FUNC(atoll);
   ASAN_INTERCEPT_FUNC(strtoll);
+#endif
 #  if SANITIZER_GLIBC
   ASAN_INTERCEPT_FUNC(__isoc23_strtol);
   ASAN_INTERCEPT_FUNC(__isoc23_strtoll);
