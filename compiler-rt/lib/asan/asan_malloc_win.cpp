@@ -2016,7 +2016,7 @@ namespace __asan {
 // Global and Local have some distinct (but deprecated and ignored) flags,
 // we'll seperate them to validate these appropriately.
 constexpr unsigned long SHARED_ALLOC_SUPPORTED_FLAGS =
-    (FIXED | ZEROINIT | MOVEABLE | MODIFY | NOCOMPACT | NODISCARD);
+    (FIXED | ZEROINIT | MOVEABLE | MODIFY | NOCOMPACT);
 
 constexpr unsigned long SHARED_ALLOC_UNSUPPORTED_FLAGS =
     (~SHARED_ALLOC_SUPPORTED_FLAGS);

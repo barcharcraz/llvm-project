@@ -14,7 +14,6 @@ static constexpr auto ZEROINIT = GMEM_ZEROINIT;
 static constexpr auto FixedType = GMEM_FIXED;
 static constexpr auto MOVEABLE = GMEM_MOVEABLE;
 static constexpr auto MODIFY = GMEM_MODIFY;
-static constexpr auto NO_DISCARD = GMEM_NODISCARD;
 static constexpr const char *const TEST_TYPE = "Global";
 #else
 #define ALLOC LocalAlloc
@@ -29,7 +28,6 @@ static constexpr auto ZEROINIT = LMEM_ZEROINIT;
 static constexpr auto FixedType = LMEM_FIXED;
 static constexpr auto MOVEABLE = LMEM_MOVEABLE;
 static constexpr auto MODIFY = LMEM_MODIFY;
-static constexpr auto NO_DISCARD = LMEM_NODISCARD;
 static constexpr const char *const TEST_TYPE = "Local";
 #endif
 
