@@ -1255,10 +1255,6 @@ struct CoeShutDown {
     if (coe_total_error_cnt == 0)
       return;
 
-    if (common_flags()->print_cmdline) {
-      PrintCmdline();
-    }
-
     // First, create an error report prioritized on
     // File,Func,Line hit counts. Provides global
     // overview of all the bugs found.

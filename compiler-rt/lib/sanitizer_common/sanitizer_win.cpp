@@ -24,12 +24,10 @@
 #include <Winternl.h>
 #include <io.h>
 #include <psapi.h>
-#include <shellapi.h>
 #include <stdlib.h>
 
 #include "asan/asan_internal.h"
 #include "interception/interception.h"
-#include "sanitizer_allocator_internal.h"
 #include "sanitizer_atomic.h"
 #include "sanitizer_common.h"
 #include "sanitizer_file.h"
@@ -1223,30 +1221,9 @@ void CheckMPROTECT() {
   // Do nothing
 }
 
-static char **WinArgv;
-
-// This is currently only called after a report is complete from PrintCmdline.
-// If this ends up reused outside of error reporting, we should clean up memory.
 char **GetArgv() {
-  int numArgs = 0;
-  LPWSTR cmdLine = GetCommandLineW();
-  LPWSTR *args = CommandLineToArgvW(cmdLine, &numArgs);
-  WinArgv = static_cast<char **>(InternalAlloc(sizeof(char *) * (numArgs + 1)));
-  for (int i = 0; i < numArgs; ++i) {
-    auto sizeNeeded = WideCharToMultiByte(CP_UTF8, 0, args[i], -1, nullptr, 0,
-                                          nullptr, nullptr);
-    WinArgv[i] = static_cast<char *>(InternalAlloc(sizeNeeded));
-    WideCharToMultiByte(CP_UTF8, 0, args[i], -1, WinArgv[i], sizeNeeded,
-                        nullptr, nullptr);
-  }
-  WinArgv[numArgs] = nullptr;
-
-  // CommandLineToArgvW will call LocalAlloc if successful, so we must LocalFree
-  if (args) {
-    LocalFree(args);
-  }
-
-  return WinArgv;
+  // FIXME: Actually implement this function.
+  return 0;
 }
 
 char **GetEnviron() {
