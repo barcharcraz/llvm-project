@@ -134,7 +134,6 @@ static_library("LLVMAMDGPUCodeGen") {
     "AMDGPUAnnotateKernelFeatures.cpp",
     "AMDGPUAnnotateUniformValues.cpp",
     "AMDGPUArgumentUsageInfo.cpp",
-    "AMDGPUAsanInstrumentation.cpp",
     "AMDGPUAsmPrinter.cpp",
     "AMDGPUAtomicOptimizer.cpp",
     "AMDGPUAttributor.cpp",

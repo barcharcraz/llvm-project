@@ -5588,7 +5588,7 @@ MachineInstr *X86InstrInfo::optimizeLoadInstr(MachineInstr &MI,
   DefMI = MRI->getVRegDef(FoldAsLoadDefReg);
   assert(DefMI);
   bool SawStore = false;
-  if (!DefMI->isSafeToMove(SawStore))
+  if (!DefMI->isSafeToMove(nullptr, SawStore))
     return nullptr;
 
   // Collect information about virtual register operands of MI.
@@ -10468,7 +10468,6 @@ enum MachineOutlinerClass { MachineOutlinerDefault, MachineOutlinerTailCall };
 
 std::optional<outliner::OutlinedFunction>
 X86InstrInfo::getOutliningCandidateInfo(
-    const MachineModuleInfo &MMI,
     std::vector<outliner::Candidate> &RepeatedSequenceLocs) const {
   unsigned SequenceSize = 0;
   for (auto &MI : RepeatedSequenceLocs[0]) {
@@ -10545,8 +10544,7 @@ bool X86InstrInfo::isFunctionSafeToOutlineFrom(
 }
 
 outliner::InstrType
-X86InstrInfo::getOutliningTypeImpl(const MachineModuleInfo &MMI,
-                                   MachineBasicBlock::iterator &MIT,
+X86InstrInfo::getOutliningTypeImpl(MachineBasicBlock::iterator &MIT,
                                    unsigned Flags) const {
   MachineInstr &MI = *MIT;
 

@@ -110,9 +110,10 @@ createRISCVObjectTargetStreamer(MCStreamer &S, const MCSubtargetInfo &STI) {
   return nullptr;
 }
 
-static MCTargetStreamer *
-createRISCVAsmTargetStreamer(MCStreamer &S, formatted_raw_ostream &OS,
-                             MCInstPrinter *InstPrint) {
+static MCTargetStreamer *createRISCVAsmTargetStreamer(MCStreamer &S,
+                                                      formatted_raw_ostream &OS,
+                                                      MCInstPrinter *InstPrint,
+                                                      bool isVerboseAsm) {
   return new RISCVTargetAsmStreamer(S, OS);
 }
 

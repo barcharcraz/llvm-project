@@ -31,11 +31,10 @@ TYPE_PARSER(construct<OmpDefaultClause>(
     "SHARED" >> pure(OmpDefaultClause::Type::Shared) ||
     "NONE" >> pure(OmpDefaultClause::Type::None)))
 
-// 2.5 PROC_BIND (MASTER | CLOSE | PRIMARY | SPREAD )
+// 2.5 PROC_BIND (MASTER | CLOSE | SPREAD)
 TYPE_PARSER(construct<OmpProcBindClause>(
     "CLOSE" >> pure(OmpProcBindClause::Type::Close) ||
     "MASTER" >> pure(OmpProcBindClause::Type::Master) ||
-    "PRIMARY" >> pure(OmpProcBindClause::Type::Primary) ||
     "SPREAD" >> pure(OmpProcBindClause::Type::Spread)))
 
 // 2.15.5.1 MAP ([ [ALWAYS[,]] map-type : ] variable-name-list)

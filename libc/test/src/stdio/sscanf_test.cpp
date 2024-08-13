@@ -226,7 +226,6 @@ TEST(LlvmLibcSScanfTest, IntConvNoWriteTests) {
   EXPECT_EQ(result, 0);
 }
 
-#ifndef LIBC_COPT_SCANF_DISABLE_FLOAT
 TEST(LlvmLibcSScanfTest, FloatConvSimple) {
   int ret_val;
   float result = 0;
@@ -581,9 +580,7 @@ TEST(LlvmLibcSScanfTest, FloatConvNoWrite) {
   ret_val = LIBC_NAMESPACE::sscanf("Not a float", "%*f", &result);
   EXPECT_EQ(ret_val, 0);
 }
-#endif
 
-#ifndef LIBC_COPT_SCANF_DISABLE_INDEX_MODE
 TEST(LlvmLibcSScanfTest, CurPosCombined) {
   int ret_val;
   int result = -1;
@@ -631,7 +628,6 @@ TEST(LlvmLibcSScanfTest, CurPosCombined) {
   EXPECT_EQ(ret_val, 1);
   EXPECT_EQ(result, 320);
 }
-#endif
 
 TEST(LlvmLibcSScanfTest, PointerConvCombined) {
   int ret_val;

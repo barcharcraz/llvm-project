@@ -17,6 +17,7 @@ class HeaderFile:
         self.enumerations = []
         self.objects = []
         self.functions = []
+        self.includes = []
 
     def add_macro(self, macro):
         self.macros.append(macro)
@@ -33,8 +34,14 @@ class HeaderFile:
     def add_function(self, function):
         self.functions.append(function)
 
+    def add_include(self, include):
+        self.includes.append(include)
+
     def __str__(self):
         content = [""]
+
+        for include in self.includes:
+            content.append(str(include))
 
         for macro in self.macros:
             content.append(f"{macro}\n")
@@ -50,38 +57,11 @@ class HeaderFile:
 
         content.append("\n__BEGIN_C_DECLS\n")
 
-        current_guard = None
         for function in self.functions:
-            if function.guard == None:
-                content.append(str(function) + " __NOEXCEPT;")
-                content.append("")
-            else:
-                if current_guard == None:
-                    current_guard = function.guard
-                    content.append(f"#ifdef {current_guard}")
-                    content.append(str(function) + " __NOEXCEPT;")
-                    content.append("")
-                elif current_guard == function.guard:
-                    content.append(str(function) + " __NOEXCEPT;")
-                    content.append("")
-                else:
-                    content.pop()
-                    content.append(f"#endif // {current_guard}")
-                    content.append("")
-                    current_guard = function.guard
-                    content.append(f"#ifdef {current_guard}")
-                    content.append(str(function) + " __NOEXCEPT;")
-                    content.append("")
-        if current_guard != None:
-            content.pop()
-            content.append(f"#endif // {current_guard}")
+            content.append(str(function))
             content.append("")
-
         for object in self.objects:
             content.append(str(object))
-        if self.objects:
-            content.append("\n__END_C_DECLS")
-        else:
-            content.append("__END_C_DECLS")
+        content.append("__END_C_DECLS")
 
         return "\n".join(content)

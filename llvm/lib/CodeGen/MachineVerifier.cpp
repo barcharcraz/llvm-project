@@ -20,7 +20,6 @@
 // -verify-machineinstrs.
 //===----------------------------------------------------------------------===//
 
-#include "llvm/CodeGen/MachineVerifier.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
@@ -94,9 +93,6 @@ using namespace llvm;
 namespace {
 
   struct MachineVerifier {
-    MachineVerifier(MachineFunctionAnalysisManager &MFAM, const char *b)
-        : MFAM(&MFAM), Banner(b) {}
-
     MachineVerifier(Pass *pass, const char *b) : PASS(pass), Banner(b) {}
 
     MachineVerifier(const char *b, LiveVariables *LiveVars,
@@ -107,7 +103,6 @@ namespace {
 
     unsigned verify(const MachineFunction &MF);
 
-    MachineFunctionAnalysisManager *MFAM = nullptr;
     Pass *const PASS = nullptr;
     const char *Banner;
     const MachineFunction *MF = nullptr;
@@ -307,15 +302,15 @@ namespace {
     void verifyProperties(const MachineFunction &MF);
   };
 
-  struct MachineVerifierLegacyPass : public MachineFunctionPass {
+  struct MachineVerifierPass : public MachineFunctionPass {
     static char ID; // Pass ID, replacement for typeid
 
     const std::string Banner;
 
-    MachineVerifierLegacyPass(std::string banner = std::string())
-        : MachineFunctionPass(ID), Banner(std::move(banner)) {
-      initializeMachineVerifierLegacyPassPass(*PassRegistry::getPassRegistry());
-    }
+    MachineVerifierPass(std::string banner = std::string())
+      : MachineFunctionPass(ID), Banner(std::move(banner)) {
+        initializeMachineVerifierPassPass(*PassRegistry::getPassRegistry());
+      }
 
     void getAnalysisUsage(AnalysisUsage &AU) const override {
       AU.addUsedIfAvailable<LiveStacks>();
@@ -343,28 +338,13 @@ namespace {
 
 } // end anonymous namespace
 
-PreservedAnalyses
-MachineVerifierPass::run(MachineFunction &MF,
-                         MachineFunctionAnalysisManager &MFAM) {
-  // Skip functions that have known verification problems.
-  // FIXME: Remove this mechanism when all problematic passes have been
-  // fixed.
-  if (MF.getProperties().hasProperty(
-          MachineFunctionProperties::Property::FailsVerification))
-    return PreservedAnalyses::all();
-  unsigned FoundErrors = MachineVerifier(MFAM, Banner.c_str()).verify(MF);
-  if (FoundErrors)
-    report_fatal_error("Found " + Twine(FoundErrors) + " machine code errors.");
-  return PreservedAnalyses::all();
-}
+char MachineVerifierPass::ID = 0;
 
-char MachineVerifierLegacyPass::ID = 0;
-
-INITIALIZE_PASS(MachineVerifierLegacyPass, "machineverifier",
+INITIALIZE_PASS(MachineVerifierPass, "machineverifier",
                 "Verify generated machine code", false, false)
 
 FunctionPass *llvm::createMachineVerifierPass(const std::string &Banner) {
-  return new MachineVerifierLegacyPass(Banner);
+  return new MachineVerifierPass(Banner);
 }
 
 void llvm::verifyMachineFunction(const std::string &Banner,
@@ -457,14 +437,6 @@ unsigned MachineVerifier::verify(const MachineFunction &MF) {
     LiveStks = PASS->getAnalysisIfAvailable<LiveStacks>();
     auto *SIWrapper = PASS->getAnalysisIfAvailable<SlotIndexesWrapperPass>();
     Indexes = SIWrapper ? &SIWrapper->getSI() : nullptr;
-  }
-  if (MFAM) {
-    MachineFunction &Func = const_cast<MachineFunction &>(MF);
-    LiveInts = MFAM->getCachedResult<LiveIntervalsAnalysis>(Func);
-    if (!LiveInts)
-      LiveVars = MFAM->getCachedResult<LiveVariablesAnalysis>(Func);
-    // TODO: LiveStks = MFAM->getCachedResult<LiveStacksAnalysis>(Func);
-    Indexes = MFAM->getCachedResult<SlotIndexesAnalysis>(Func);
   }
 
   verifySlotIndexes();
@@ -1541,36 +1513,6 @@ void MachineVerifier::verifyPreISelGenericInstruction(const MachineInstr *MI) {
         (DstTy.isVector() &&
          DstTy.getElementCount() != SrcTy.getElementCount()))
       report("Generic vector icmp/fcmp must preserve number of lanes", MI);
-
-    break;
-  }
-  case TargetOpcode::G_SCMP:
-  case TargetOpcode::G_UCMP: {
-    LLT DstTy = MRI->getType(MI->getOperand(0).getReg());
-    LLT SrcTy = MRI->getType(MI->getOperand(1).getReg());
-    LLT SrcTy2 = MRI->getType(MI->getOperand(2).getReg());
-
-    if (SrcTy.isPointerOrPointerVector() || SrcTy2.isPointerOrPointerVector()) {
-      report("Generic scmp/ucmp does not support pointers as operands", MI);
-      break;
-    }
-
-    if (DstTy.isPointerOrPointerVector()) {
-      report("Generic scmp/ucmp does not support pointers as a result", MI);
-      break;
-    }
-
-    if ((DstTy.isVector() != SrcTy.isVector()) ||
-        (DstTy.isVector() &&
-         DstTy.getElementCount() != SrcTy.getElementCount())) {
-      report("Generic vector scmp/ucmp must preserve number of lanes", MI);
-      break;
-    }
-
-    if (SrcTy != SrcTy2) {
-      report("Generic scmp/ucmp must have same input types", MI);
-      break;
-    }
 
     break;
   }

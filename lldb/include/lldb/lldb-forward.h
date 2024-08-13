@@ -182,7 +182,6 @@ class RegisterTypeBuilder;
 class RegisterValue;
 class RegularExpression;
 class RichManglingContext;
-class SaveCoreOptions;
 class Scalar;
 class ScriptInterpreter;
 class ScriptInterpreterLocker;

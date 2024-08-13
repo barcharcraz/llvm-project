@@ -26,7 +26,9 @@ class Function:
         attributes_str = " ".join(self.attributes)
         arguments_str = ", ".join(self.arguments)
         if attributes_str == "":
-            result = f"{self.return_type} {self.name}({arguments_str})"
+            result = f"{self.return_type} {self.name}({arguments_str}) __NOEXCEPT;"
         else:
-            result = f"{attributes_str} {self.return_type} {self.name}({arguments_str})"
+            result = f"{attributes_str} {self.return_type} {self.name}({arguments_str}) __NOEXCEPT;"
+        if self.guard:
+            result = f"#ifdef {self.guard}\n{result}\n#endif // {self.guard}"
         return result

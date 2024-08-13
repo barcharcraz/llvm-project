@@ -37,10 +37,6 @@ public:
   bool WriteAll();
   void WriteClosure(llvm::raw_ostream &, const Symbol &,
       UnorderedSymbolSet &nonIntrinsicModulesWritten);
-  ModFileWriter &set_hermeticModuleFileOutput(bool yes = true) {
-    hermeticModuleFileOutput_ = yes;
-    return *this;
-  }
 
 private:
   SemanticsContext &context_;
@@ -61,14 +57,13 @@ private:
   llvm::raw_string_ostream decls_{declsBuf_};
   llvm::raw_string_ostream contains_{containsBuf_};
   bool isSubmodule_{false};
-  bool hermeticModuleFileOutput_{false};
 
   void WriteAll(const Scope &);
   void WriteOne(const Scope &);
   void Write(const Symbol &);
   std::string GetAsString(const Symbol &);
   void PrepareRenamings(const Scope &);
-  void PutSymbols(const Scope &, UnorderedSymbolSet *hermetic);
+  void PutSymbols(const Scope &);
   // Returns true if a derived type with bindings and "contains" was emitted
   bool PutComponents(const Symbol &);
   void PutSymbol(llvm::raw_ostream &, const Symbol &);

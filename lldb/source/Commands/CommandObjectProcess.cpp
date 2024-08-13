@@ -369,23 +369,25 @@ protected:
 
     // Okay, we're done.  Last step is to warn if the executable module has
     // changed:
+    char new_path[PATH_MAX];
     ModuleSP new_exec_module_sp(target->GetExecutableModule());
     if (!old_exec_module_sp) {
       // We might not have a module if we attached to a raw pid...
       if (new_exec_module_sp) {
-        result.AppendMessageWithFormat(
-            "Executable binary set to \"%s\".\n",
-            new_exec_module_sp->GetFileSpec().GetPath().c_str());
+        new_exec_module_sp->GetFileSpec().GetPath(new_path, PATH_MAX);
+        result.AppendMessageWithFormat("Executable module set to \"%s\".\n",
+                                       new_path);
       }
-    } else if (!new_exec_module_sp) {
-      result.AppendWarningWithFormat("No executable binary.");
     } else if (old_exec_module_sp->GetFileSpec() !=
                new_exec_module_sp->GetFileSpec()) {
+      char old_path[PATH_MAX];
+
+      old_exec_module_sp->GetFileSpec().GetPath(old_path, PATH_MAX);
+      new_exec_module_sp->GetFileSpec().GetPath(new_path, PATH_MAX);
 
       result.AppendWarningWithFormat(
-          "Executable binary changed from \"%s\" to \"%s\".\n",
-          old_exec_module_sp->GetFileSpec().GetPath().c_str(),
-          new_exec_module_sp->GetFileSpec().GetPath().c_str());
+          "Executable module changed from \"%s\" to \"%s\".\n", old_path,
+          new_path);
     }
 
     if (!old_arch_spec.IsValid()) {
@@ -948,13 +950,11 @@ public:
                           ExecutionContext *execution_context) override {
       Status error;
       const int short_option = m_getopt_table[option_idx].val;
-      ArchSpec arch =
-          execution_context->GetProcessPtr()->GetSystemArchitecture();
       switch (short_option) {
       case 'i':
         do_install = true;
         if (!option_arg.empty())
-          install_path.SetFile(option_arg, arch.GetTriple());
+          install_path.SetFile(option_arg, FileSpec::Style::native);
         break;
       default:
         llvm_unreachable("Unimplemented option");
@@ -1271,13 +1271,13 @@ public:
 
       switch (short_option) {
       case 'p':
-        error = m_core_dump_options.SetPluginName(option_arg.data());
+        m_requested_plugin_name = option_arg.str();
         break;
       case 's':
-        m_core_dump_options.SetStyle(
+        m_requested_save_core_style =
             (lldb::SaveCoreStyle)OptionArgParser::ToOptionEnum(
                 option_arg, GetDefinitions()[option_idx].enum_values,
-                eSaveCoreUnspecified, error));
+                eSaveCoreUnspecified, error);
         break;
       default:
         llvm_unreachable("Unimplemented option");
@@ -1287,11 +1287,13 @@ public:
     }
 
     void OptionParsingStarting(ExecutionContext *execution_context) override {
-      m_core_dump_options.Clear();
+      m_requested_save_core_style = eSaveCoreUnspecified;
+      m_requested_plugin_name.clear();
     }
 
     // Instance variables to hold the values for command options.
-    SaveCoreOptions m_core_dump_options;
+    SaveCoreStyle m_requested_save_core_style = eSaveCoreUnspecified;
+    std::string m_requested_plugin_name;
   };
 
 protected:
@@ -1301,14 +1303,13 @@ protected:
       if (command.GetArgumentCount() == 1) {
         FileSpec output_file(command.GetArgumentAtIndex(0));
         FileSystem::Instance().Resolve(output_file);
-        auto &core_dump_options = m_options.m_core_dump_options;
-        core_dump_options.SetOutputFile(output_file);
-        Status error = PluginManager::SaveCore(process_sp, core_dump_options);
+        SaveCoreStyle corefile_style = m_options.m_requested_save_core_style;
+        Status error =
+            PluginManager::SaveCore(process_sp, output_file, corefile_style,
+                                    m_options.m_requested_plugin_name);
         if (error.Success()) {
-          if (core_dump_options.GetStyle() ==
-                  SaveCoreStyle::eSaveCoreDirtyOnly ||
-              core_dump_options.GetStyle() ==
-                  SaveCoreStyle::eSaveCoreStackOnly) {
+          if (corefile_style == SaveCoreStyle::eSaveCoreDirtyOnly ||
+              corefile_style == SaveCoreStyle::eSaveCoreStackOnly) {
             result.AppendMessageWithFormat(
                 "\nModified-memory or stack-memory only corefile "
                 "created.  This corefile may \n"

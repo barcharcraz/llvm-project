@@ -9,7 +9,8 @@
 #include "AMDGPUBaseInfo.h"
 #include "SIDefines.h"
 
-namespace llvm::AMDGPU {
+namespace llvm {
+namespace AMDGPU {
 
 //===----------------------------------------------------------------------===//
 // Custom Operands.
@@ -683,4 +684,5 @@ ArrayRef<GFXVersion> getGFXVersions() {
 
 } // namespace UCVersion
 
-} // namespace llvm::AMDGPU
+} // namespace AMDGPU
+} // namespace llvm

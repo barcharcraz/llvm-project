@@ -628,9 +628,8 @@ public:
   /// treated before building actions or binding tools.
   ///
   /// \return Whether any compilation should be built for this
-  /// invocation. The compilation can only be modified when
-  /// this function returns false.
-  bool HandleImmediateArgs(Compilation &C);
+  /// invocation.
+  bool HandleImmediateArgs(const Compilation &C);
 
   /// ConstructAction - Construct the appropriate action to do for
   /// \p Phase on the \p Input, taking in to account arguments

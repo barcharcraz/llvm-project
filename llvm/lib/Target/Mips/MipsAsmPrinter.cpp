@@ -254,10 +254,8 @@ void MipsAsmPrinter::emitInstruction(const MachineInstr *MI) {
 
   do {
     // Do any auto-generated pseudo lowerings.
-    if (MCInst OutInst; lowerPseudoInstExpansion(&*I, OutInst)) {
-      EmitToStreamer(*OutStreamer, OutInst);
+    if (emitPseudoExpansionLowering(*OutStreamer, &*I))
       continue;
-    }
 
     // Skip the BUNDLE pseudo instruction and lower the contents
     if (I->isBundle())

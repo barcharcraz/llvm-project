@@ -40,7 +40,7 @@ private:
   void appendString(int Width, int MaxChars, const char *S);
   void appendPointer(u64 ptr_value);
 
-  Vector<char, 256> String;
+  Vector<char> String;
 };
 
 void Printf(const char *Format, ...) FORMAT(1, 2);

@@ -37,6 +37,7 @@ export namespace std {
 
     // [time.duration.comparisons], duration comparisons
     using std::chrono::operator==;
+    using std::chrono::operator!=;
     using std::chrono::operator<;
     using std::chrono::operator>;
     using std::chrono::operator<=;

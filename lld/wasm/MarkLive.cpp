@@ -63,15 +63,13 @@ void MarkLive::enqueue(Symbol *sym) {
   sym->markLive();
 
   if (markImplicitDeps) {
-    if (auto obj = dyn_cast<ObjFile>(file)) {
-      // Mark as live the ctor functions in the object that defines this symbol.
-      // The ctor functions are all referenced by the synthetic callCtors
-      // function. However, this function does not contain relocations so we
-      // have to manually mark the ctors as live.
-      enqueueInitFunctions(obj);
-      // Mark retained segments in the object that defines this symbol live.
-      enqueueRetainedSegments(obj);
-    }
+    // Mark ctor functions in the object that defines this symbol live.
+    // The ctor functions are all referenced by the synthetic callCtors
+    // function. However, this function does not contain relocations so we
+    // have to manually mark the ctors as live.
+    enqueueInitFunctions(cast<ObjFile>(file));
+    // Mark retained segments in the object that defines this symbol live.
+    enqueueRetainedSegments(cast<ObjFile>(file));
   }
 
   if (InputChunk *chunk = sym->getChunk())

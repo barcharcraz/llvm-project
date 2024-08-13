@@ -66,7 +66,7 @@ createXtensaMCSubtargetInfo(const Triple &TT, StringRef CPU, StringRef FS) {
 
 static MCTargetStreamer *
 createXtensaAsmTargetStreamer(MCStreamer &S, formatted_raw_ostream &OS,
-                              MCInstPrinter *InstPrint) {
+                              MCInstPrinter *InstPrint, bool isVerboseAsm) {
   return new XtensaTargetAsmStreamer(S, OS);
 }
 

@@ -147,7 +147,7 @@ SDValue X86SelectionDAGInfo::EmitTargetCodeForMemset(
                                 DAG.getConstant(Offset, dl, AddrVT)),
                     Val, DAG.getConstant(BytesLeft, dl, SizeVT), Alignment,
                     isVolatile, AlwaysInline,
-                    /* CI */ nullptr, DstPtrInfo.getWithOffset(Offset)));
+                    /* isTailCall */ false, DstPtrInfo.getWithOffset(Offset)));
 
   return DAG.getNode(ISD::TokenFactor, dl, MVT::Other, Results);
 }
@@ -255,7 +255,7 @@ static SDValue emitConstantSizeRepmov(
       DAG.getNode(ISD::ADD, dl, DstVT, Dst, DAG.getConstant(Offset, dl, DstVT)),
       DAG.getNode(ISD::ADD, dl, SrcVT, Src, DAG.getConstant(Offset, dl, SrcVT)),
       DAG.getConstant(BytesLeft, dl, SizeVT), Alignment, isVolatile,
-      /*AlwaysInline*/ true, /*CI=*/nullptr, std::nullopt,
+      /*AlwaysInline*/ true, /*isTailCall*/ false,
       DstPtrInfo.getWithOffset(Offset), SrcPtrInfo.getWithOffset(Offset)));
   return DAG.getNode(ISD::TokenFactor, dl, MVT::Other, Results);
 }

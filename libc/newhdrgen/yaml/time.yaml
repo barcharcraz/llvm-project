@@ -15,7 +15,7 @@ functions:
       - stdc
     return_type: char *
     arguments:
-      - type: const struct tm *
+      - type: struct tm *
   - name: asctime_r
     standard: 
       - stdc

@@ -836,7 +836,7 @@ unsigned DWARFVerifier::verifyDebugInfoForm(const DWARFDie &Die,
   case DW_FORM_ref8:
   case DW_FORM_ref_udata: {
     // Verify all CU relative references are valid CU offsets.
-    std::optional<uint64_t> RefVal = AttrValue.Value.getAsRelativeReference();
+    std::optional<uint64_t> RefVal = AttrValue.Value.getAsReference();
     assert(RefVal);
     if (RefVal) {
       auto CUSize = DieCU->getNextUnitOffset() - DieCU->getOffset();
@@ -854,8 +854,7 @@ unsigned DWARFVerifier::verifyDebugInfoForm(const DWARFDie &Die,
       } else {
         // Valid reference, but we will verify it points to an actual
         // DIE later.
-        LocalReferences[AttrValue.Value.getUnit()->getOffset() + *RefVal]
-            .insert(Die.getOffset());
+        LocalReferences[*RefVal].insert(Die.getOffset());
       }
     }
     break;
@@ -863,7 +862,7 @@ unsigned DWARFVerifier::verifyDebugInfoForm(const DWARFDie &Die,
   case DW_FORM_ref_addr: {
     // Verify all absolute DIE references have valid offsets in the
     // .debug_info section.
-    std::optional<uint64_t> RefVal = AttrValue.Value.getAsDebugInfoReference();
+    std::optional<uint64_t> RefVal = AttrValue.Value.getAsReference();
     assert(RefVal);
     if (RefVal) {
       if (*RefVal >= DieCU->getInfoSection().Data.size()) {

@@ -55,7 +55,7 @@ public:
   // 'Unique' clauses: They can appear at most once in the clause list.
   bool
   processCollapse(mlir::Location currentLocation, lower::pft::Evaluation &eval,
-                  mlir::omp::LoopRelatedOps &result,
+                  mlir::omp::CollapseClauseOps &result,
                   llvm::SmallVectorImpl<const semantics::Symbol *> &iv) const;
   bool processDefault() const;
   bool processDevice(lower::StatementContext &stmtCtx,
@@ -63,8 +63,6 @@ public:
   bool processDeviceType(mlir::omp::DeviceTypeClauseOps &result) const;
   bool processDistSchedule(lower::StatementContext &stmtCtx,
                            mlir::omp::DistScheduleClauseOps &result) const;
-  bool processFilter(lower::StatementContext &stmtCtx,
-                     mlir::omp::FilterClauseOps &result) const;
   bool processFinal(lower::StatementContext &stmtCtx,
                     mlir::omp::FinalClauseOps &result) const;
   bool processHasDeviceAddr(
@@ -127,6 +125,8 @@ public:
       llvm::SmallVectorImpl<mlir::Type> *reductionTypes = nullptr,
       llvm::SmallVectorImpl<const semantics::Symbol *> *reductionSyms =
           nullptr) const;
+  bool processSectionsReduction(mlir::Location currentLocation,
+                                mlir::omp::ReductionClauseOps &result) const;
   bool processTo(llvm::SmallVectorImpl<DeclareTargetCapturePair> &result) const;
   bool processUseDeviceAddr(
       mlir::omp::UseDeviceAddrClauseOps &result,

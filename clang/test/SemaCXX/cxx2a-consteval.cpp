@@ -891,13 +891,13 @@ struct S {
 };
 
 void func() {
-  // Explicitly defaulted constructor.
+  // Explictly defaulted constructor.
   S<Foo, 1> s1;
   S<Bar, 1> s2;
   // User provided constructor.
   S<Foo, 2> s3;
   S<Bar, 2> s4;
-  // Consteval explicitly defaulted constructor.
+  // Consteval explictly defaulted constructor.
   S<Foo, 3> s5; // expected-error {{call to consteval function 'multiple_default_constructors::S<multiple_default_constructors::Foo, 3>::S' is not a constant expression}} \
                    expected-note {{in call to 'S()'}}
   S<Bar, 3> s6;

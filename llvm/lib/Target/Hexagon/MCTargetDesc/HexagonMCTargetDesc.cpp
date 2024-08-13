@@ -26,10 +26,10 @@
 #include "llvm/MC/MCCodeEmitter.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCDwarf.h"
-#include "llvm/MC/MCELFObjectWriter.h"
 #include "llvm/MC/MCELFStreamer.h"
 #include "llvm/MC/MCInstrAnalysis.h"
 #include "llvm/MC/MCInstrInfo.h"
+#include "llvm/MC/MCObjectWriter.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCSubtargetInfo.h"
@@ -226,11 +226,12 @@ namespace {
 
 class HexagonTargetAsmStreamer : public HexagonTargetStreamer {
   formatted_raw_ostream &OS;
+  bool IsVerboseAsm;
 
 public:
   HexagonTargetAsmStreamer(MCStreamer &S, formatted_raw_ostream &OS,
-                           MCInstPrinter &IP)
-      : HexagonTargetStreamer(S), OS(OS) {}
+                           bool IsVerboseAsm, MCInstPrinter &IP)
+      : HexagonTargetStreamer(S), OS(OS), IsVerboseAsm(IsVerboseAsm) {}
 
   void prettyPrintAsm(MCInstPrinter &InstPrinter, uint64_t Address,
                       const MCInst &Inst, const MCSubtargetInfo &STI,
@@ -274,7 +275,7 @@ public:
 
   void emitAttribute(unsigned Attribute, unsigned Value) override {
     OS << "\t.attribute\t" << Attribute << ", " << Twine(Value);
-    if (getStreamer().isVerboseAsm()) {
+    if (IsVerboseAsm) {
       StringRef Name = ELFAttrs::attrTypeAsString(
           Attribute, HexagonAttrs::getHexagonAttributeTags());
       if (!Name.empty())
@@ -291,7 +292,8 @@ public:
   }
   HexagonTargetELFStreamer(MCStreamer &S, MCSubtargetInfo const &STI)
       : HexagonTargetStreamer(S) {
-    getStreamer().getWriter().setELFHeaderEFlags(Hexagon_MC::GetELFFlags(STI));
+    MCAssembler &MCA = getStreamer().getAssembler();
+    MCA.setELFHeaderEFlags(Hexagon_MC::GetELFFlags(STI));
   }
 
   void emitCommonSymbolSorted(MCSymbol *Symbol, uint64_t Size,
@@ -374,10 +376,10 @@ static MCInstPrinter *createHexagonMCInstPrinter(const Triple &T,
     return nullptr;
 }
 
-static MCTargetStreamer *createMCAsmTargetStreamer(MCStreamer &S,
-                                                   formatted_raw_ostream &OS,
-                                                   MCInstPrinter *IP) {
-  return new HexagonTargetAsmStreamer(S, OS, *IP);
+static MCTargetStreamer *
+createMCAsmTargetStreamer(MCStreamer &S, formatted_raw_ostream &OS,
+                          MCInstPrinter *IP, bool IsVerboseAsm) {
+  return new HexagonTargetAsmStreamer(S, OS, IsVerboseAsm, *IP);
 }
 
 static MCStreamer *createMCStreamer(Triple const &T, MCContext &Context,

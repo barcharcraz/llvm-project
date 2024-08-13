@@ -1127,7 +1127,8 @@ define <8 x i8> @test_bitcastv1f64tov8i8(<1 x i64> %a) #0 {
 ; CHECK-SD-LABEL: test_bitcastv1f64tov8i8:
 ; CHECK-SD:       // %bb.0:
 ; CHECK-SD-NEXT:    // kill: def $d0 killed $d0 def $q0
-; CHECK-SD-NEXT:    scvtf d0, d0
+; CHECK-SD-NEXT:    fmov x8, d0
+; CHECK-SD-NEXT:    scvtf d0, x8
 ; CHECK-SD-NEXT:    neg v0.8b, v0.8b
 ; CHECK-SD-NEXT:    ret
 ;
@@ -1146,7 +1147,8 @@ define <4 x i16> @test_bitcastv1f64tov4i16(<1 x i64> %a) #0 {
 ; CHECK-SD-LABEL: test_bitcastv1f64tov4i16:
 ; CHECK-SD:       // %bb.0:
 ; CHECK-SD-NEXT:    // kill: def $d0 killed $d0 def $q0
-; CHECK-SD-NEXT:    scvtf d0, d0
+; CHECK-SD-NEXT:    fmov x8, d0
+; CHECK-SD-NEXT:    scvtf d0, x8
 ; CHECK-SD-NEXT:    neg v0.4h, v0.4h
 ; CHECK-SD-NEXT:    ret
 ;
@@ -1165,7 +1167,8 @@ define <2 x i32> @test_bitcastv1f64tov2i32(<1 x i64> %a) #0 {
 ; CHECK-SD-LABEL: test_bitcastv1f64tov2i32:
 ; CHECK-SD:       // %bb.0:
 ; CHECK-SD-NEXT:    // kill: def $d0 killed $d0 def $q0
-; CHECK-SD-NEXT:    scvtf d0, d0
+; CHECK-SD-NEXT:    fmov x8, d0
+; CHECK-SD-NEXT:    scvtf d0, x8
 ; CHECK-SD-NEXT:    neg v0.2s, v0.2s
 ; CHECK-SD-NEXT:    ret
 ;
@@ -1184,7 +1187,8 @@ define <1 x i64> @test_bitcastv1f64tov1i64(<1 x i64> %a) #0 {
 ; CHECK-SD-LABEL: test_bitcastv1f64tov1i64:
 ; CHECK-SD:       // %bb.0:
 ; CHECK-SD-NEXT:    // kill: def $d0 killed $d0 def $q0
-; CHECK-SD-NEXT:    scvtf d0, d0
+; CHECK-SD-NEXT:    fmov x8, d0
+; CHECK-SD-NEXT:    scvtf d0, x8
 ; CHECK-SD-NEXT:    neg d0, d0
 ; CHECK-SD-NEXT:    ret
 ;
@@ -1205,7 +1209,8 @@ define <2 x float> @test_bitcastv1f64tov2f32(<1 x i64> %a) #0 {
 ; CHECK-LABEL: test_bitcastv1f64tov2f32:
 ; CHECK:       // %bb.0:
 ; CHECK-NEXT:    // kill: def $d0 killed $d0 def $q0
-; CHECK-NEXT:    scvtf d0, d0
+; CHECK-NEXT:    fmov x8, d0
+; CHECK-NEXT:    scvtf d0, x8
 ; CHECK-NEXT:    fneg v0.2s, v0.2s
 ; CHECK-NEXT:    ret
   %vcvt.i = sitofp <1 x i64> %a to <1 x double>

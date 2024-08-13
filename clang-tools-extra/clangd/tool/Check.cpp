@@ -146,13 +146,10 @@ class Checker {
   ClangdLSPServer::Options Opts;
   // from buildCommand
   tooling::CompileCommand Cmd;
-  std::unique_ptr<GlobalCompilationDatabase> BaseCDB;
-  std::unique_ptr<GlobalCompilationDatabase> CDB;
   // from buildInvocation
   ParseInputs Inputs;
   std::unique_ptr<CompilerInvocation> Invocation;
   format::FormatStyle Style;
-  std::optional<ModulesBuilder> ModulesManager;
   // from buildAST
   std::shared_ptr<const PreambleData> Preamble;
   std::optional<ParsedAST> AST;
@@ -171,14 +168,14 @@ public:
     DirectoryBasedGlobalCompilationDatabase::Options CDBOpts(TFS);
     CDBOpts.CompileCommandsDir =
         Config::current().CompileFlags.CDBSearch.FixedCDBPath;
-    BaseCDB =
+    std::unique_ptr<GlobalCompilationDatabase> BaseCDB =
         std::make_unique<DirectoryBasedGlobalCompilationDatabase>(CDBOpts);
     auto Mangler = CommandMangler::detect();
     Mangler.SystemIncludeExtractor =
         getSystemIncludeExtractor(llvm::ArrayRef(Opts.QueryDriverGlobs));
     if (Opts.ResourceDir)
       Mangler.ResourceDir = *Opts.ResourceDir;
-    CDB = std::make_unique<OverlayCDB>(
+    auto CDB = std::make_unique<OverlayCDB>(
         BaseCDB.get(), std::vector<std::string>{}, std::move(Mangler));
 
     if (auto TrueCmd = CDB->getCompileCommand(File)) {
@@ -215,11 +212,6 @@ public:
         elog("Couldn't read {0}: {1}", File, Contents.getError().message());
         return false;
       }
-    }
-    if (Opts.EnableExperimentalModulesSupport) {
-      if (!ModulesManager)
-        ModulesManager.emplace(*CDB);
-      Inputs.ModulesManager = &*ModulesManager;
     }
     log("Parsing command...");
     Invocation =

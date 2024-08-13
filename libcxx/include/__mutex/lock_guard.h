@@ -16,6 +16,8 @@
 #  pragma GCC system_header
 #endif
 
+#ifndef _LIBCPP_HAS_NO_THREADS
+
 _LIBCPP_BEGIN_NAMESPACE_STD
 
 template <class _Mutex>
@@ -44,5 +46,7 @@ public:
 _LIBCPP_CTAD_SUPPORTED_FOR_TYPE(lock_guard);
 
 _LIBCPP_END_NAMESPACE_STD
+
+#endif // _LIBCPP_HAS_NO_THREADS
 
 #endif // _LIBCPP___MUTEX_LOCK_GUARD_H

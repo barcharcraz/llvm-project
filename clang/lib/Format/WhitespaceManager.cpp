@@ -1116,7 +1116,7 @@ void WhitespaceManager::alignTrailingComments() {
       // leave the comments.
       if (RestoredLineLength >= Style.ColumnLimit && Style.ColumnLimit > 0)
         break;
-      C.Spaces = C.NewlinesBefore > 0 ? C.Tok->OriginalColumn : OriginalSpaces;
+      C.Spaces = OriginalSpaces;
       continue;
     }
 

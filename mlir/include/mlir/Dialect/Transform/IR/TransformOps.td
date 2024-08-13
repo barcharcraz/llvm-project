@@ -649,12 +649,11 @@ def ForeachOp : TransformDialectOp<"foreach",
   }];
 
   let arguments = (ins Variadic<Transform_AnyHandleOrParamType>:$targets,
-                       UnitAttr:$with_zip_shortest);
+                       UnitAttr:$zip_shortest);
   let results = (outs Variadic<Transform_AnyHandleOrParamType>:$results);
   let regions = (region SizedRegion<1>:$body);
   let assemblyFormat =
-    "$targets oilist(`with_zip_shortest` $with_zip_shortest) `:` "
-    "type($targets) (`->` type($results)^)? $body attr-dict";
+    "$targets attr-dict `:` type($targets) (`->` type($results)^)? $body";
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{

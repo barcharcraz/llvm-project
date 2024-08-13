@@ -147,7 +147,7 @@ X86MCInstLower::X86MCInstLower(const MachineFunction &mf,
       AsmPrinter(asmprinter) {}
 
 MachineModuleInfoMachO &X86MCInstLower::getMachOMMI() const {
-  return AsmPrinter.MMI->getObjFileInfo<MachineModuleInfoMachO>();
+  return MF.getMMI().getObjFileInfo<MachineModuleInfoMachO>();
 }
 
 /// GetSymbolFromOperand - Lower an MO_GlobalAddress or MO_ExternalSymbol
@@ -203,7 +203,7 @@ MCSymbol *X86MCInstLower::GetSymbolFromOperand(const MachineOperand &MO) const {
     break;
   case X86II::MO_COFFSTUB: {
     MachineModuleInfoCOFF &MMICOFF =
-        AsmPrinter.MMI->getObjFileInfo<MachineModuleInfoCOFF>();
+        MF.getMMI().getObjFileInfo<MachineModuleInfoCOFF>();
     MachineModuleInfoImpl::StubValueTy &StubSym = MMICOFF.getGVStubEntry(Sym);
     if (!StubSym.getPointer()) {
       assert(MO.isGlobal() && "Extern symbol not handled yet");

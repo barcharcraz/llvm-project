@@ -141,26 +141,10 @@ void ModFileWriter::Write(const Symbol &symbol) {
   auto ancestorName{ancestor ? ancestor->GetName().value().ToString() : ""s};
   auto path{context_.moduleDirectory() + '/' +
       ModFileName(symbol.name(), ancestorName, context_.moduleFileSuffix())};
-
-  UnorderedSymbolSet hermeticModules;
-  hermeticModules.insert(symbol);
-  UnorderedSymbolSet additionalModules;
-  PutSymbols(DEREF(symbol.scope()),
-      hermeticModuleFileOutput_ ? &additionalModules : nullptr);
-  auto asStr{GetAsString(symbol)};
-  while (!additionalModules.empty()) {
-    for (auto ref : UnorderedSymbolSet{std::move(additionalModules)}) {
-      if (hermeticModules.insert(*ref).second &&
-          !ref->owner().IsIntrinsicModules()) {
-        PutSymbols(DEREF(ref->scope()), &additionalModules);
-        asStr += GetAsString(*ref);
-      }
-    }
-  }
-
+  PutSymbols(DEREF(symbol.scope()));
   ModuleCheckSumType checkSum;
-  if (std::error_code error{
-          WriteFile(path, asStr, checkSum, context_.debugModuleWriter())}) {
+  if (std::error_code error{WriteFile(
+          path, GetAsString(symbol), checkSum, context_.debugModuleWriter())}) {
     context_.Say(
         symbol.name(), "Error writing %s: %s"_err_en_US, path, error.message());
   }
@@ -173,7 +157,7 @@ void ModFileWriter::WriteClosure(llvm::raw_ostream &out, const Symbol &symbol,
       !nonIntrinsicModulesWritten.insert(symbol).second) {
     return;
   }
-  PutSymbols(DEREF(symbol.scope()), /*hermeticModules=*/nullptr);
+  PutSymbols(DEREF(symbol.scope()));
   needsBuf_.clear(); // omit module checksums
   auto str{GetAsString(symbol)};
   for (auto depRef : std::move(usedNonIntrinsicModules_)) {
@@ -354,8 +338,7 @@ void ModFileWriter::PrepareRenamings(const Scope &scope) {
 }
 
 // Put out the visible symbols from scope.
-void ModFileWriter::PutSymbols(
-    const Scope &scope, UnorderedSymbolSet *hermeticModules) {
+void ModFileWriter::PutSymbols(const Scope &scope) {
   SymbolVector sorted;
   SymbolVector uses;
   auto &renamings{context_.moduleFileOutputRenamings()};
@@ -366,16 +349,11 @@ void ModFileWriter::PutSymbols(
   // Write module files for dependencies first so that their
   // hashes are known.
   for (auto ref : modules) {
-    if (hermeticModules) {
-      hermeticModules->insert(*ref);
-    } else {
-      Write(*ref);
-      needs_ << ModHeader::need
-             << CheckSumString(
-                    ref->get<ModuleDetails>().moduleFileHash().value())
-             << (ref->owner().IsIntrinsicModules() ? " i " : " n ")
-             << ref->name().ToString() << '\n';
-    }
+    Write(*ref);
+    needs_ << ModHeader::need
+           << CheckSumString(ref->get<ModuleDetails>().moduleFileHash().value())
+           << (ref->owner().IsIntrinsicModules() ? " i " : " n ")
+           << ref->name().ToString() << '\n';
   }
   std::string buf; // stuff after CONTAINS in derived type
   llvm::raw_string_ostream typeBindings{buf};

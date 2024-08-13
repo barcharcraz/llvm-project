@@ -19,21 +19,27 @@
 
 using namespace clang;
 
-static void
-CreateUnsatisfiedConstraintRecord(const ASTContext &C,
-                                  const UnsatisfiedConstraintRecord &Detail,
-                                  UnsatisfiedConstraintRecord *TrailingObject) {
-  if (Detail.is<Expr *>())
-    new (TrailingObject) UnsatisfiedConstraintRecord(Detail.get<Expr *>());
+namespace {
+void CreatUnsatisfiedConstraintRecord(
+    const ASTContext &C, const UnsatisfiedConstraintRecord &Detail,
+    UnsatisfiedConstraintRecord *TrailingObject) {
+  if (Detail.second.is<Expr *>())
+    new (TrailingObject) UnsatisfiedConstraintRecord{
+        Detail.first,
+        UnsatisfiedConstraintRecord::second_type(Detail.second.get<Expr *>())};
   else {
     auto &SubstitutionDiagnostic =
-        *Detail.get<std::pair<SourceLocation, StringRef> *>();
-    StringRef Message = C.backupStr(SubstitutionDiagnostic.second);
+        *Detail.second.get<std::pair<SourceLocation, StringRef> *>();
+    unsigned MessageSize = SubstitutionDiagnostic.second.size();
+    char *Mem = new (C) char[MessageSize];
+    memcpy(Mem, SubstitutionDiagnostic.second.data(), MessageSize);
     auto *NewSubstDiag = new (C) std::pair<SourceLocation, StringRef>(
-        SubstitutionDiagnostic.first, Message);
-    new (TrailingObject) UnsatisfiedConstraintRecord(NewSubstDiag);
+        SubstitutionDiagnostic.first, StringRef(Mem, MessageSize));
+    new (TrailingObject) UnsatisfiedConstraintRecord{
+        Detail.first, UnsatisfiedConstraintRecord::second_type(NewSubstDiag)};
   }
 }
+} // namespace
 
 ASTConstraintSatisfaction::ASTConstraintSatisfaction(
     const ASTContext &C, const ConstraintSatisfaction &Satisfaction)
@@ -41,7 +47,7 @@ ASTConstraintSatisfaction::ASTConstraintSatisfaction(
       IsSatisfied{Satisfaction.IsSatisfied}, ContainsErrors{
                                                  Satisfaction.ContainsErrors} {
   for (unsigned I = 0; I < NumRecords; ++I)
-    CreateUnsatisfiedConstraintRecord(
+    CreatUnsatisfiedConstraintRecord(
         C, Satisfaction.Details[I],
         getTrailingObjects<UnsatisfiedConstraintRecord>() + I);
 }
@@ -52,7 +58,7 @@ ASTConstraintSatisfaction::ASTConstraintSatisfaction(
       IsSatisfied{Satisfaction.IsSatisfied},
       ContainsErrors{Satisfaction.ContainsErrors} {
   for (unsigned I = 0; I < NumRecords; ++I)
-    CreateUnsatisfiedConstraintRecord(
+    CreatUnsatisfiedConstraintRecord(
         C, *(Satisfaction.begin() + I),
         getTrailingObjects<UnsatisfiedConstraintRecord>() + I);
 }

@@ -54,11 +54,9 @@ template <typename Op>
 static llvm::LogicalResult checkCudaAttr(Op op) {
   if (op.getDataAttr() == cuf::DataAttribute::Device ||
       op.getDataAttr() == cuf::DataAttribute::Managed ||
-      op.getDataAttr() == cuf::DataAttribute::Unified ||
-      op.getDataAttr() == cuf::DataAttribute::Pinned)
+      op.getDataAttr() == cuf::DataAttribute::Unified)
     return mlir::success();
-  return op.emitOpError()
-         << "expect device, managed, pinned or unified cuda attribute";
+  return op.emitOpError("expect device, managed or unified cuda attribute");
 }
 
 llvm::LogicalResult cuf::AllocOp::verify() { return checkCudaAttr(*this); }

@@ -44,12 +44,6 @@ using namespace clang;
 // TemplateParameterList Implementation
 //===----------------------------------------------------------------------===//
 
-template <class TemplateParam>
-static bool
-DefaultTemplateArgumentContainsUnexpandedPack(const TemplateParam &P) {
-  return P.hasDefaultArgument() &&
-         P.getDefaultArgument().getArgument().containsUnexpandedParameterPack();
-}
 
 TemplateParameterList::TemplateParameterList(const ASTContext& C,
                                              SourceLocation TemplateLoc,
@@ -67,30 +61,27 @@ TemplateParameterList::TemplateParameterList(const ASTContext& C,
 
     bool IsPack = P->isTemplateParameterPack();
     if (const auto *NTTP = dyn_cast<NonTypeTemplateParmDecl>(P)) {
-      if (!IsPack && (NTTP->getType()->containsUnexpandedParameterPack() ||
-                      DefaultTemplateArgumentContainsUnexpandedPack(*NTTP)))
+      if (!IsPack && NTTP->getType()->containsUnexpandedParameterPack())
         ContainsUnexpandedParameterPack = true;
       if (NTTP->hasPlaceholderTypeConstraint())
         HasConstrainedParameters = true;
     } else if (const auto *TTP = dyn_cast<TemplateTemplateParmDecl>(P)) {
       if (!IsPack &&
-          (TTP->getTemplateParameters()->containsUnexpandedParameterPack() ||
-           DefaultTemplateArgumentContainsUnexpandedPack(*TTP))) {
+          TTP->getTemplateParameters()->containsUnexpandedParameterPack())
         ContainsUnexpandedParameterPack = true;
-      }
     } else if (const auto *TTP = dyn_cast<TemplateTypeParmDecl>(P)) {
-      if (!IsPack && DefaultTemplateArgumentContainsUnexpandedPack(*TTP)) {
-        ContainsUnexpandedParameterPack = true;
-      } else if (const TypeConstraint *TC = TTP->getTypeConstraint();
-                 TC && TC->getImmediatelyDeclaredConstraint()
-                           ->containsUnexpandedParameterPack()) {
-        ContainsUnexpandedParameterPack = true;
+      if (const TypeConstraint *TC = TTP->getTypeConstraint()) {
+        if (TC->getImmediatelyDeclaredConstraint()
+            ->containsUnexpandedParameterPack())
+          ContainsUnexpandedParameterPack = true;
       }
       if (TTP->hasTypeConstraint())
         HasConstrainedParameters = true;
     } else {
       llvm_unreachable("unexpected template parameter type");
     }
+    // FIXME: If a default argument contains an unexpanded parameter pack, the
+    // template parameter list does too.
   }
 
   if (HasRequiresClause) {

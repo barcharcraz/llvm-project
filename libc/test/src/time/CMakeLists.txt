@@ -30,7 +30,7 @@ add_libc_unittest(
     libc.src.time.asctime_r
 )
 
-add_libc_test(
+add_libc_unittest(
   clock_gettime_test
   SUITE
     libc_time_unittests

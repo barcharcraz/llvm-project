@@ -49,7 +49,6 @@ def SysRegsList : GenericTable {
 
   let PrimaryKey = [ "Encoding" ];
   let PrimaryKeyName = "lookupSysRegByEncoding";
-  let PrimaryKeyReturnRange = true;
 }
 
 def lookupSysRegByName : SearchIndex {

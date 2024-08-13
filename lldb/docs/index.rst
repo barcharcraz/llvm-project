@@ -125,6 +125,7 @@ interesting areas to contribute to lldb.
    use/symbolication
    use/symbols
    use/remote
+   use/qemu-testing
    use/intel_pt
    use/ondemand
    use/aarch64-linux
@@ -152,7 +153,6 @@ interesting areas to contribute to lldb.
    resources/contributing
    resources/build
    resources/test
-   resources/qemu-testing
    resources/debugging
    resources/fuzzing
    resources/sbapi

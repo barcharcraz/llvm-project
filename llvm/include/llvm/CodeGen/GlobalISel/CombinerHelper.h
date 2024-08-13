@@ -129,12 +129,6 @@ public:
 
   const TargetLowering &getTargetLowering() const;
 
-  const MachineFunction &getMachineFunction() const;
-
-  const DataLayout &getDataLayout() const;
-
-  LLVMContext &getContext() const;
-
   /// \returns true if the combiner is running pre-legalization.
   bool isPreLegalize() const;
 
@@ -395,6 +389,12 @@ public:
                             std::tuple<Register, unsigned> &MatchInfo);
   void applyCombineExtOfExt(MachineInstr &MI,
                             std::tuple<Register, unsigned> &MatchInfo);
+
+  /// Transform trunc ([asz]ext x) to x or ([asz]ext x) or (trunc x).
+  bool matchCombineTruncOfExt(MachineInstr &MI,
+                              std::pair<Register, unsigned> &MatchInfo);
+  void applyCombineTruncOfExt(MachineInstr &MI,
+                              std::pair<Register, unsigned> &MatchInfo);
 
   /// Transform trunc (shl x, K) to shl (trunc x), K
   ///    if K < VT.getScalarSizeInBits().
@@ -886,13 +886,6 @@ public:
 
   bool matchShlOfVScale(const MachineOperand &MO, BuildFnTy &MatchInfo);
 
-  /// Transform trunc ([asz]ext x) to x or ([asz]ext x) or (trunc x).
-  bool matchTruncateOfExt(const MachineInstr &Root, const MachineInstr &ExtMI,
-                          BuildFnTy &MatchInfo);
-
-  bool matchCastOfSelect(const MachineInstr &Cast, const MachineInstr &SelectMI,
-                         BuildFnTy &MatchInfo);
-
 private:
   /// Checks for legality of an indexed variant of \p LdSt.
   bool isIndexedLoadStoreLegal(GLoadStore &LdSt) const;
@@ -1005,8 +998,6 @@ private:
 
   // Simplify (cmp cc0 x, y) (&& or ||) (cmp cc1 x, y) -> cmp cc2 x, y.
   bool tryFoldLogicOfFCmps(GLogicalBinOp *Logic, BuildFnTy &MatchInfo);
-
-  bool isCastFree(unsigned Opcode, LLT ToTy, LLT FromTy) const;
 };
 } // namespace llvm
 

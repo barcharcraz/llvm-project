@@ -232,7 +232,7 @@ void CodeGenFunction::EmitCXXGlobalVarDeclInit(const VarDecl &D,
 
 /// Create a stub function, suitable for being passed to atexit,
 /// which passes the given address to the given destructor function.
-llvm::Constant *CodeGenFunction::createAtExitStub(const VarDecl &VD,
+llvm::Function *CodeGenFunction::createAtExitStub(const VarDecl &VD,
                                                   llvm::FunctionCallee dtor,
                                                   llvm::Constant *addr) {
   // Get the destructor function type, void(*)(void).
@@ -264,12 +264,7 @@ llvm::Constant *CodeGenFunction::createAtExitStub(const VarDecl &VD,
 
   CGF.FinishFunction();
 
-  // Get a proper function pointer.
-  FunctionProtoType::ExtProtoInfo EPI(getContext().getDefaultCallingConvention(
-      /*IsVariadic=*/false, /*IsCXXMethod=*/false));
-  QualType fnType = getContext().getFunctionType(getContext().VoidTy,
-                                                 {getContext().VoidPtrTy}, EPI);
-  return CGM.getFunctionPointer(fn, fnType);
+  return fn;
 }
 
 /// Create a stub function, suitable for being passed to __pt_atexit_np,
@@ -338,8 +333,7 @@ void CodeGenFunction::registerGlobalDtorWithLLVM(const VarDecl &VD,
                                                  llvm::FunctionCallee Dtor,
                                                  llvm::Constant *Addr) {
   // Create a function which calls the destructor.
-  llvm::Function *dtorStub =
-      cast<llvm::Function>(createAtExitStub(VD, Dtor, Addr));
+  llvm::Function *dtorStub = createAtExitStub(VD, Dtor, Addr);
   CGM.AddGlobalDtor(dtorStub);
 }
 

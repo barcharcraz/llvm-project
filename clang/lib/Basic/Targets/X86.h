@@ -67,7 +67,12 @@ class LLVM_LIBRARY_VISIBILITY X86TargetInfo : public TargetInfo {
     AVX2,
     AVX512F
   } SSELevel = NoSSE;
-  bool HasMMX = false;
+  enum MMX3DNowEnum {
+    NoMMX3DNow,
+    MMX,
+    AMD3DNow,
+    AMD3DNowAthlon
+  } MMX3DNowLevel = NoMMX3DNow;
   enum XOPEnum { NoXOP, SSE4A, FMA4, XOP } XOPLevel = NoXOP;
   enum AddrSpace { ptr32_sptr = 270, ptr32_uptr = 271, ptr64 = 272 };
 
@@ -343,7 +348,8 @@ public:
       return "avx512";
     if (getTriple().getArch() == llvm::Triple::x86_64 && SSELevel >= AVX)
       return "avx";
-    if (getTriple().getArch() == llvm::Triple::x86 && !HasMMX)
+    if (getTriple().getArch() == llvm::Triple::x86 &&
+        MMX3DNowLevel == NoMMX3DNow)
       return "no-mmx";
     return "";
   }
@@ -513,6 +519,15 @@ class LLVM_LIBRARY_VISIBILITY NetBSDI386TargetInfo
 public:
   NetBSDI386TargetInfo(const llvm::Triple &Triple, const TargetOptions &Opts)
       : NetBSDTargetInfo<X86_32TargetInfo>(Triple, Opts) {}
+
+  LangOptions::FPEvalMethodKind getFPEvalMethod() const override {
+    VersionTuple OsVersion = getTriple().getOSVersion();
+    // New NetBSD uses the default rounding mode.
+    if (OsVersion >= VersionTuple(6, 99, 26) || OsVersion.getMajor() == 0)
+      return X86_32TargetInfo::getFPEvalMethod();
+    // NetBSD before 6.99.26 defaults to "double" rounding.
+    return LangOptions::FPEvalMethodKind::FEM_Double;
+  }
 };
 
 class LLVM_LIBRARY_VISIBILITY OpenBSDI386TargetInfo

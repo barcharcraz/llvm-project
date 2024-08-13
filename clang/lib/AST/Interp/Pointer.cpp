@@ -16,7 +16,6 @@
 #include "MemberPointer.h"
 #include "PrimType.h"
 #include "Record.h"
-#include "clang/AST/RecordLayout.h"
 
 using namespace clang;
 using namespace clang::interp;
@@ -55,7 +54,7 @@ Pointer::Pointer(Pointer &&P)
 }
 
 Pointer::~Pointer() {
-  if (!isBlockPointer())
+  if (isIntegralPointer())
     return;
 
   if (Block *Pointee = PointeeStorage.BS.Pointee) {
@@ -87,8 +86,6 @@ void Pointer::operator=(const Pointer &P) {
       PointeeStorage.BS.Pointee->addPointer(this);
   } else if (P.isIntegralPointer()) {
     PointeeStorage.Int = P.PointeeStorage.Int;
-  } else if (P.isFunctionPointer()) {
-    PointeeStorage.Fn = P.PointeeStorage.Fn;
   } else {
     assert(false && "Unhandled storage kind");
   }
@@ -117,14 +114,12 @@ void Pointer::operator=(Pointer &&P) {
       PointeeStorage.BS.Pointee->addPointer(this);
   } else if (P.isIntegralPointer()) {
     PointeeStorage.Int = P.PointeeStorage.Int;
-  } else if (P.isFunctionPointer()) {
-    PointeeStorage.Fn = P.PointeeStorage.Fn;
   } else {
     assert(false && "Unhandled storage kind");
   }
 }
 
-APValue Pointer::toAPValue(const ASTContext &ASTCtx) const {
+APValue Pointer::toAPValue() const {
   llvm::SmallVector<APValue::LValuePathEntry, 5> Path;
 
   if (isZero())
@@ -135,8 +130,6 @@ APValue Pointer::toAPValue(const ASTContext &ASTCtx) const {
                    CharUnits::fromQuantity(asIntPointer().Value + this->Offset),
                    Path,
                    /*IsOnePastEnd=*/false, /*IsNullPtr=*/false);
-  if (isFunctionPointer())
-    return asFunctionPointer().toAPValue(ASTCtx);
 
   // Build the lvalue base from the block.
   const Descriptor *Desc = getDeclDesc();
@@ -148,78 +141,39 @@ APValue Pointer::toAPValue(const ASTContext &ASTCtx) const {
   else
     llvm_unreachable("Invalid allocation type");
 
-  if (isUnknownSizeArray() || Desc->asExpr())
+  if (isDummy() || isUnknownSizeArray() || Desc->asExpr())
     return APValue(Base, CharUnits::Zero(), Path,
                    /*IsOnePastEnd=*/isOnePastEnd(), /*IsNullPtr=*/false);
 
+  // TODO: compute the offset into the object.
   CharUnits Offset = CharUnits::Zero();
-
-  auto getFieldOffset = [&](const FieldDecl *FD) -> CharUnits {
-    // This shouldn't happen, but if it does, don't crash inside
-    // getASTRecordLayout.
-    if (FD->getParent()->isInvalidDecl())
-      return CharUnits::Zero();
-    const ASTRecordLayout &Layout = ASTCtx.getASTRecordLayout(FD->getParent());
-    unsigned FieldIndex = FD->getFieldIndex();
-    return ASTCtx.toCharUnitsFromBits(Layout.getFieldOffset(FieldIndex));
-  };
 
   // Build the path into the object.
   Pointer Ptr = *this;
   while (Ptr.isField() || Ptr.isArrayElement()) {
     if (Ptr.isArrayRoot()) {
-      Path.push_back(APValue::LValuePathEntry(
-          {Ptr.getFieldDesc()->asDecl(), /*IsVirtual=*/false}));
-
-      if (const auto *FD = dyn_cast<FieldDecl>(Ptr.getFieldDesc()->asDecl()))
-        Offset += getFieldOffset(FD);
-
-      Ptr = Ptr.getBase();
+        Path.push_back(APValue::LValuePathEntry::ArrayIndex(0));
+        Ptr = Ptr.getBase();
     } else if (Ptr.isArrayElement()) {
-      unsigned Index;
       if (Ptr.isOnePastEnd())
-        Index = Ptr.getArray().getNumElems();
+        Path.push_back(APValue::LValuePathEntry::ArrayIndex(Ptr.getArray().getNumElems()));
       else
-        Index = Ptr.getIndex();
-
-      Offset += (Index * ASTCtx.getTypeSizeInChars(Ptr.getType()));
-      Path.push_back(APValue::LValuePathEntry::ArrayIndex(Index));
+        Path.push_back(APValue::LValuePathEntry::ArrayIndex(Ptr.getIndex()));
       Ptr = Ptr.getArray();
     } else {
+      // TODO: figure out if base is virtual
       bool IsVirtual = false;
 
       // Create a path entry for the field.
       const Descriptor *Desc = Ptr.getFieldDesc();
       if (const auto *BaseOrMember = Desc->asDecl()) {
-        if (const auto *FD = dyn_cast<FieldDecl>(BaseOrMember)) {
-          Ptr = Ptr.getBase();
-          Offset += getFieldOffset(FD);
-        } else if (const auto *RD = dyn_cast<CXXRecordDecl>(BaseOrMember)) {
-          IsVirtual = Ptr.isVirtualBaseClass();
-          Ptr = Ptr.getBase();
-          const Record *BaseRecord = Ptr.getRecord();
-
-          const ASTRecordLayout &Layout = ASTCtx.getASTRecordLayout(
-              cast<CXXRecordDecl>(BaseRecord->getDecl()));
-          if (IsVirtual)
-            Offset += Layout.getVBaseClassOffset(RD);
-          else
-            Offset += Layout.getBaseClassOffset(RD);
-
-        } else {
-          Ptr = Ptr.getBase();
-        }
         Path.push_back(APValue::LValuePathEntry({BaseOrMember, IsVirtual}));
+        Ptr = Ptr.getBase();
         continue;
       }
       llvm_unreachable("Invalid field type");
     }
   }
-
-  // FIXME(perf): We compute the lvalue path above, but we can't supply it
-  // for dummy pointers (that causes crashes later in CheckConstantExpression).
-  if (isDummy())
-    Path.clear();
 
   // We assemble the LValuePath starting from the innermost pointer to the
   // outermost one. SO in a.b.c, the first element in Path will refer to
@@ -265,18 +219,12 @@ std::string Pointer::toDiagnosticString(const ASTContext &Ctx) const {
   if (isIntegralPointer())
     return (Twine("&(") + Twine(asIntPointer().Value + Offset) + ")").str();
 
-  return toAPValue(Ctx).getAsString(Ctx, getType());
+  return toAPValue().getAsString(Ctx, getType());
 }
 
 bool Pointer::isInitialized() const {
-  if (!isBlockPointer())
+  if (isIntegralPointer())
     return true;
-
-  if (isRoot() && PointeeStorage.BS.Base == sizeof(GlobalInlineDescriptor)) {
-    const GlobalInlineDescriptor &GD =
-        *reinterpret_cast<const GlobalInlineDescriptor *>(block()->rawData());
-    return GD.InitState == GlobalInitState::Initialized;
-  }
 
   assert(PointeeStorage.BS.Pointee &&
          "Cannot check if null pointer was initialized");
@@ -300,23 +248,22 @@ bool Pointer::isInitialized() const {
   if (asBlockPointer().Base == 0)
     return true;
 
+  if (isRoot() && PointeeStorage.BS.Base == sizeof(GlobalInlineDescriptor)) {
+    const GlobalInlineDescriptor &GD =
+        *reinterpret_cast<const GlobalInlineDescriptor *>(block()->rawData());
+    return GD.InitState == GlobalInitState::Initialized;
+  }
+
   // Field has its bit in an inline descriptor.
   return getInlineDesc()->IsInitialized;
 }
 
 void Pointer::initialize() const {
-  if (!isBlockPointer())
+  if (isIntegralPointer())
     return;
 
   assert(PointeeStorage.BS.Pointee && "Cannot initialize null pointer");
   const Descriptor *Desc = getFieldDesc();
-
-  if (isRoot() && PointeeStorage.BS.Base == sizeof(GlobalInlineDescriptor)) {
-    GlobalInlineDescriptor &GD = *reinterpret_cast<GlobalInlineDescriptor *>(
-        asBlockPointer().Pointee->rawData());
-    GD.InitState = GlobalInitState::Initialized;
-    return;
-  }
 
   assert(Desc);
   if (Desc->isPrimitiveArray()) {
@@ -343,6 +290,13 @@ void Pointer::initialize() const {
       IM->first = true;
       IM->second.reset();
     }
+    return;
+  }
+
+  if (isRoot() && PointeeStorage.BS.Base == sizeof(GlobalInlineDescriptor)) {
+    GlobalInlineDescriptor &GD = *reinterpret_cast<GlobalInlineDescriptor *>(
+        asBlockPointer().Pointee->rawData());
+    GD.InitState = GlobalInitState::Initialized;
     return;
   }
 
@@ -374,14 +328,9 @@ bool Pointer::hasSameBase(const Pointer &A, const Pointer &B) {
 
   if (A.isIntegralPointer() && B.isIntegralPointer())
     return true;
-  if (A.isFunctionPointer() && B.isFunctionPointer())
-    return true;
 
   if (A.isIntegralPointer() || B.isIntegralPointer())
     return A.getSource() == B.getSource();
-
-  if (A.StorageKind != B.StorageKind)
-    return false;
 
   return A.asBlockPointer().Pointee == B.asBlockPointer().Pointee;
 }
@@ -394,12 +343,10 @@ bool Pointer::hasSameArray(const Pointer &A, const Pointer &B) {
 
 std::optional<APValue> Pointer::toRValue(const Context &Ctx,
                                          QualType ResultType) const {
-  const ASTContext &ASTCtx = Ctx.getASTContext();
   assert(!ResultType.isNull());
   // Method to recursively traverse composites.
   std::function<bool(QualType, const Pointer &, APValue &)> Composite;
-  Composite = [&Composite, &Ctx, &ASTCtx](QualType Ty, const Pointer &Ptr,
-                                          APValue &R) {
+  Composite = [&Composite, &Ctx](QualType Ty, const Pointer &Ptr, APValue &R) {
     if (const auto *AT = Ty->getAs<AtomicType>())
       Ty = AT->getValueType();
 
@@ -410,7 +357,7 @@ std::optional<APValue> Pointer::toRValue(const Context &Ctx,
 
     // Primitive values.
     if (std::optional<PrimType> T = Ctx.classify(Ty)) {
-      TYPE_SWITCH(*T, R = Ptr.deref<T>().toAPValue(ASTCtx));
+      TYPE_SWITCH(*T, R = Ptr.deref<T>().toAPValue());
       return true;
     }
 
@@ -427,7 +374,7 @@ std::optional<APValue> Pointer::toRValue(const Context &Ctx,
           QualType FieldTy = F.Decl->getType();
           if (FP.isActive()) {
             if (std::optional<PrimType> T = Ctx.classify(FieldTy)) {
-              TYPE_SWITCH(*T, Value = FP.deref<T>().toAPValue(ASTCtx));
+              TYPE_SWITCH(*T, Value = FP.deref<T>().toAPValue());
             } else {
               Ok &= Composite(FieldTy, FP, Value);
             }
@@ -450,7 +397,7 @@ std::optional<APValue> Pointer::toRValue(const Context &Ctx,
           APValue &Value = R.getStructField(I);
 
           if (std::optional<PrimType> T = Ctx.classify(FieldTy)) {
-            TYPE_SWITCH(*T, Value = FP.deref<T>().toAPValue(ASTCtx));
+            TYPE_SWITCH(*T, Value = FP.deref<T>().toAPValue());
           } else {
             Ok &= Composite(FieldTy, FP, Value);
           }
@@ -488,7 +435,7 @@ std::optional<APValue> Pointer::toRValue(const Context &Ctx,
         APValue &Slot = R.getArrayInitializedElt(I);
         const Pointer &EP = Ptr.atIndex(I);
         if (std::optional<PrimType> T = Ctx.classify(ElemTy)) {
-          TYPE_SWITCH(*T, Slot = EP.deref<T>().toAPValue(ASTCtx));
+          TYPE_SWITCH(*T, Slot = EP.deref<T>().toAPValue());
         } else {
           Ok &= Composite(ElemTy, EP.narrow(), Slot);
         }
@@ -527,7 +474,7 @@ std::optional<APValue> Pointer::toRValue(const Context &Ctx,
       Values.reserve(VT->getNumElements());
       for (unsigned I = 0; I != VT->getNumElements(); ++I) {
         TYPE_SWITCH(ElemT, {
-          Values.push_back(Ptr.atIndex(I).deref<T>().toAPValue(ASTCtx));
+          Values.push_back(Ptr.atIndex(I).deref<T>().toAPValue());
         });
       }
 
@@ -545,11 +492,11 @@ std::optional<APValue> Pointer::toRValue(const Context &Ctx,
 
   // We can return these as rvalues, but we can't deref() them.
   if (isZero() || isIntegralPointer())
-    return toAPValue(ASTCtx);
+    return toAPValue();
 
   // Just load primitive types.
   if (std::optional<PrimType> T = Ctx.classify(ResultType)) {
-    TYPE_SWITCH(*T, return this->deref<T>().toAPValue(ASTCtx));
+    TYPE_SWITCH(*T, return this->deref<T>().toAPValue());
   }
 
   // Return the composite type.

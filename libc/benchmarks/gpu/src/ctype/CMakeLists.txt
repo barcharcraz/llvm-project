@@ -8,8 +8,6 @@ add_benchmark(
     isalnum_benchmark.cpp
   DEPENDS
     libc.src.ctype.isalnum
-  LOADER_ARGS
-    --threads 64
 )
 
 add_benchmark(

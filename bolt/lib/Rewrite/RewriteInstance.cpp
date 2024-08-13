@@ -669,7 +669,6 @@ Error RewriteInstance::run() {
         opts::ProfileFormat == opts::ProfileFormatKind::PF_YAML) {
       selectFunctionsToProcess();
       disassembleFunctions();
-      processMetadataPreCFG();
       buildFunctionsCFG();
     }
     processProfileData();
@@ -887,7 +886,7 @@ void RewriteInstance::discoverFileObjects() {
     if (SymName == "__hot_start" || SymName == "__hot_end")
       continue;
 
-    FileSymRefs.emplace(SymbolAddress, Symbol);
+    FileSymRefs[SymbolAddress] = Symbol;
 
     // Skip section symbols that will be registered by disassemblePLT().
     if (SymbolType == SymbolRef::ST_Debug) {
@@ -1053,9 +1052,7 @@ void RewriteInstance::discoverFileObjects() {
 
         // Remove the symbol from FileSymRefs so that we can skip it from
         // in the future.
-        auto SI = llvm::find_if(
-            llvm::make_range(FileSymRefs.equal_range(SymbolAddress)),
-            [&](auto SymIt) { return SymIt.second == Symbol; });
+        auto SI = FileSymRefs.find(SymbolAddress);
         assert(SI != FileSymRefs.end() && "symbol expected to be present");
         assert(SI->second == Symbol && "wrong symbol found");
         FileSymRefs.erase(SI);
@@ -1263,7 +1260,6 @@ void RewriteInstance::discoverFileObjects() {
 
   registerFragments();
   FileSymbols.clear();
-  FileSymRefs.clear();
 
   discoverBOLTReserved();
 }
@@ -1433,17 +1429,11 @@ void RewriteInstance::registerFragments() {
   // of the last local symbol.
   ELFSymbolRef LocalSymEnd = ELF64LEFile->toSymbolRef(SymTab, SymTab->sh_info);
 
-  for (auto &Fragment : AmbiguousFragments) {
-    const StringRef &ParentName = Fragment.first;
-    BinaryFunction *BF = Fragment.second;
+  for (auto &[ParentName, BF] : AmbiguousFragments) {
     const uint64_t Address = BF->getAddress();
 
     // Get fragment's own symbol
-    const auto SymIt = llvm::find_if(
-        llvm::make_range(FileSymRefs.equal_range(Address)), [&](auto SI) {
-          StringRef Name = cantFail(SI.second.getName());
-          return Name.contains(ParentName);
-        });
+    const auto SymIt = FileSymRefs.find(Address);
     if (SymIt == FileSymRefs.end()) {
       BC->errs()
           << "BOLT-ERROR: symbol lookup failed for function at address 0x"

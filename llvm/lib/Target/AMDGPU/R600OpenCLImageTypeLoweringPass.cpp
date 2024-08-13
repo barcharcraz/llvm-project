@@ -244,8 +244,9 @@ class R600OpenCLImageTypeLoweringPass : public ModulePass {
         Modified |= replaceSamplerUses(Arg, ResourceID);
       }
     }
-    for (auto *Inst : InstsToErase)
-      Inst->eraseFromParent();
+    for (unsigned i = 0; i < InstsToErase.size(); ++i) {
+      InstsToErase[i]->eraseFromParent();
+    }
 
     return Modified;
   }

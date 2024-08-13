@@ -206,9 +206,7 @@ Other Things to Consider
    that fact is critical for optimization purposes.  Assumes are a great
    prototyping mechanism, but they can have negative effects on both compile
    time and optimization effectiveness.  The former is fixable with enough
-   effort, but the later is fairly fundamental to their designed purpose.  If
-   you are creating a non-terminator unreachable instruction or passing a false
-   value, use the ``store i1 true, ptr poison, align 1`` canonical form.
+   effort, but the later is fairly fundamental to their designed purpose.
 
 
 Describing Language Specific Properties

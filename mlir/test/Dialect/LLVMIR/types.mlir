@@ -6,6 +6,8 @@ func.func @primitive() {
   "some.op"() : () -> !llvm.void
   // CHECK: !llvm.ppc_fp128
   "some.op"() : () -> !llvm.ppc_fp128
+  // CHECK: !llvm.x86_mmx
+  "some.op"() : () -> !llvm.x86_mmx
   // CHECK: !llvm.token
   "some.op"() : () -> !llvm.token
   // CHECK: !llvm.label

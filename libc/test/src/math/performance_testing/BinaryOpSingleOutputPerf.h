@@ -6,15 +6,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "src/__support/CPP/algorithm.h"
 #include "src/__support/FPUtil/FPBits.h"
-#include "src/__support/macros/config.h"
 #include "test/src/math/performance_testing/Timer.h"
 
 #include <cstddef>
 #include <fstream>
 
-namespace LIBC_NAMESPACE_DECL {
+namespace LIBC_NAMESPACE {
 namespace testing {
 
 template <typename T> class BinaryOpSingleOutputPerf {
@@ -29,11 +27,11 @@ public:
   static void run_perf_in_range(Func myFunc, Func otherFunc,
                                 StorageType startingBit, StorageType endingBit,
                                 size_t N, size_t rounds, std::ofstream &log) {
-    if (sizeof(StorageType) <= sizeof(size_t))
-      N = cpp::min(N, static_cast<size_t>(endingBit - startingBit));
+    if (endingBit - startingBit < N)
+      N = endingBit - startingBit;
 
     auto runner = [=](Func func) {
-      [[maybe_unused]] volatile T result;
+      volatile T result;
       if (endingBit < startingBit) {
         return;
       }
@@ -123,7 +121,7 @@ public:
 };
 
 } // namespace testing
-} // namespace LIBC_NAMESPACE_DECL
+} // namespace LIBC_NAMESPACE
 
 #define BINARY_OP_SINGLE_OUTPUT_PERF(T, myFunc, otherFunc, filename)           \
   int main() {                                                                 \

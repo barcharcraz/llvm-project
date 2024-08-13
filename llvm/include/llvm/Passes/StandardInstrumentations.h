@@ -461,8 +461,7 @@ class VerifyInstrumentation {
 
 public:
   VerifyInstrumentation(bool DebugLogging) : DebugLogging(DebugLogging) {}
-  void registerCallbacks(PassInstrumentationCallbacks &PIC,
-                         ModuleAnalysisManager *MAM);
+  void registerCallbacks(PassInstrumentationCallbacks &PIC);
 };
 
 /// This class implements --time-trace functionality for new pass manager.

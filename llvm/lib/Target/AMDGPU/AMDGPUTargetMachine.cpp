@@ -85,18 +85,15 @@ public:
 };
 
 static bool onlyAllocateSGPRs(const TargetRegisterInfo &TRI,
-                              const MachineRegisterInfo &MRI,
-                              const Register Reg) {
-  const TargetRegisterClass *RC = MRI.getRegClass(Reg);
-  return static_cast<const SIRegisterInfo &>(TRI).isSGPRClass(RC);
+                              const TargetRegisterClass &RC) {
+  return static_cast<const SIRegisterInfo &>(TRI).isSGPRClass(&RC);
 }
 
 static bool onlyAllocateVGPRs(const TargetRegisterInfo &TRI,
-                              const MachineRegisterInfo &MRI,
-                              const Register Reg) {
-  const TargetRegisterClass *RC = MRI.getRegClass(Reg);
-  return !static_cast<const SIRegisterInfo &>(TRI).isSGPRClass(RC);
+                              const TargetRegisterClass &RC) {
+  return !static_cast<const SIRegisterInfo &>(TRI).isSGPRClass(&RC);
 }
+
 
 /// -{sgpr|vgpr}-regalloc=... command line option.
 static FunctionPass *useDefaultRegisterAllocator() { return nullptr; }
@@ -180,7 +177,7 @@ static VGPRRegisterRegAlloc greedyRegAllocVGPR(
 
 static VGPRRegisterRegAlloc fastRegAllocVGPR(
   "fast", "fast register allocator", createFastVGPRRegisterAllocator);
-} // anonymous namespace
+}
 
 static cl::opt<bool>
 EnableEarlyIfConversion("amdgpu-early-ifcvt", cl::Hidden,
@@ -734,14 +731,6 @@ void AMDGPUTargetMachine::registerPassBuilderCallbacks(PassBuilder &PB) {
         PM.addPass(createCGSCCToFunctionPassAdaptor(std::move(FPM)));
       });
 
-  // FIXME: Why is AMDGPUAttributor not in CGSCC?
-  PB.registerOptimizerLastEPCallback(
-      [this](ModulePassManager &MPM, OptimizationLevel Level) {
-        if (Level != OptimizationLevel::O0) {
-          MPM.addPass(AMDGPUAttributorPass(*this));
-        }
-      });
-
   PB.registerFullLinkTimeOptimizationLastEPCallback(
       [this](ModulePassManager &PM, OptimizationLevel Level) {
         // We want to support the -lto-partitions=N option as "best effort".
@@ -752,7 +741,7 @@ void AMDGPUTargetMachine::registerPassBuilderCallbacks(PassBuilder &PB) {
       });
 
   PB.registerRegClassFilterParsingCallback(
-      [](StringRef FilterName) -> RegAllocFilterFunc {
+      [](StringRef FilterName) -> RegClassFilterFunc {
         if (FilterName == "sgpr")
           return onlyAllocateSGPRs;
         if (FilterName == "vgpr")
@@ -1047,6 +1036,11 @@ void AMDGPUPassConfig::addIRPasses() {
   if (EnableLowerModuleLDS) {
     addPass(createAMDGPULowerModuleLDSLegacyPass(&TM));
   }
+
+  // AMDGPUAttributor infers lack of llvm.amdgcn.lds.kernel.id calls, so run
+  // after their introduction
+  if (TM.getOptLevel() > CodeGenOptLevel::None)
+    addPass(createAMDGPUAttributorLegacyPass());
 
   if (TM.getOptLevel() > CodeGenOptLevel::None)
     addPass(createInferAddressSpacesPass());

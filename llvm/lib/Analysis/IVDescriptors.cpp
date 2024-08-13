@@ -635,8 +635,9 @@ RecurrenceDescriptor::isAnyOfPattern(Loop *Loop, PHINode *OrigPhi,
       return InstDesc(Select, Prev.getRecKind());
   }
 
-  if (!match(I,
-             m_Select(m_Cmp(Pred, m_Value(), m_Value()), m_Value(), m_Value())))
+  // Only match select with single use cmp condition.
+  if (!match(I, m_Select(m_OneUse(m_Cmp(Pred, m_Value(), m_Value())), m_Value(),
+                         m_Value())))
     return InstDesc(false, I);
 
   SelectInst *SI = cast<SelectInst>(I);

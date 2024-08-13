@@ -1,4 +1,5 @@
-//===-- Implementation header of fileno -------------------------*- C++ -*-===//
+//===-- Implementation header of fileno --------------------------*- C++
+//-*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -9,13 +10,12 @@
 #ifndef LLVM_LIBC_SRC_STDIO_FILENO_H
 #define LLVM_LIBC_SRC_STDIO_FILENO_H
 
-#include "hdr/types/FILE.h"
-#include "src/__support/macros/config.h"
+#include "include/llvm-libc-types/FILE.h"
 
-namespace LIBC_NAMESPACE_DECL {
+namespace LIBC_NAMESPACE {
 
 int fileno(::FILE *f);
 
-} // namespace LIBC_NAMESPACE_DECL
+} // namespace LIBC_NAMESPACE
 
 #endif // LLVM_LIBC_SRC_STDIO_FILENO_H

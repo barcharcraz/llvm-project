@@ -141,7 +141,6 @@ struct JumpInstrMod {
 // Call reportUndefinedSymbols() after calling scanRelocations() to emit
 // the diagnostics.
 template <class ELFT> void scanRelocations();
-template <class ELFT> void checkNoCrossRefs();
 void reportUndefinedSymbols();
 void postScanRelocations();
 void addGotEntry(Symbol &sym);
@@ -205,11 +204,6 @@ private:
   uint32_t pass = 0;
 };
 
-template <class RelTy> struct Relocs : ArrayRef<RelTy> {
-  Relocs() = default;
-  Relocs(ArrayRef<RelTy> a) : ArrayRef<RelTy>(a) {}
-};
-
 // Return a int64_t to make sure we get the sign extension out of the way as
 // early as possible.
 template <class ELFT>
@@ -222,15 +216,14 @@ static inline int64_t getAddend(const typename ELFT::Rela &rel) {
 }
 
 template <typename RelTy>
-inline Relocs<RelTy> sortRels(Relocs<RelTy> rels,
-                              SmallVector<RelTy, 0> &storage) {
+ArrayRef<RelTy> sortRels(ArrayRef<RelTy> rels, SmallVector<RelTy, 0> &storage) {
   auto cmp = [](const RelTy &a, const RelTy &b) {
     return a.r_offset < b.r_offset;
   };
   if (!llvm::is_sorted(rels, cmp)) {
     storage.assign(rels.begin(), rels.end());
     llvm::stable_sort(storage, cmp);
-    rels = Relocs<RelTy>(storage);
+    rels = storage;
   }
   return rels;
 }

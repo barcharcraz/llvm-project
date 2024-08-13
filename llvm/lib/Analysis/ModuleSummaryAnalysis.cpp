@@ -85,8 +85,6 @@ extern cl::opt<bool> ScalePartialSampleProfileWorkingSetSize;
 
 extern cl::opt<unsigned> MaxNumVTableAnnotations;
 
-extern cl::opt<bool> MemProfReportHintedSizes;
-
 // Walk through the operands of a given User via worklist iteration and populate
 // the set of GlobalValue references encountered. Invoked either on an
 // Instruction or a GlobalVariable (which walks its initializer).
@@ -519,7 +517,6 @@ static void computeFunctionSummary(
       auto *MemProfMD = I.getMetadata(LLVMContext::MD_memprof);
       if (MemProfMD) {
         std::vector<MIBInfo> MIBs;
-        std::vector<uint64_t> TotalSizes;
         for (auto &MDOp : MemProfMD->operands()) {
           auto *MIBMD = cast<const MDNode>(MDOp);
           MDNode *StackNode = getMIBStackNode(MIBMD);
@@ -539,17 +536,8 @@ static void computeFunctionSummary(
           }
           MIBs.push_back(
               MIBInfo(getMIBAllocType(MIBMD), std::move(StackIdIndices)));
-          if (MemProfReportHintedSizes) {
-            auto TotalSize = getMIBTotalSize(MIBMD);
-            assert(TotalSize);
-            TotalSizes.push_back(TotalSize);
-          }
         }
         Allocs.push_back(AllocInfo(std::move(MIBs)));
-        if (MemProfReportHintedSizes) {
-          assert(Allocs.back().MIBs.size() == TotalSizes.size());
-          Allocs.back().TotalSizes = std::move(TotalSizes);
-        }
       } else if (!InstCallsite.empty()) {
         SmallVector<unsigned> StackIdIndices;
         for (auto StackId : InstCallsite)

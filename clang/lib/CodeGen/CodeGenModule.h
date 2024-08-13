@@ -563,9 +563,6 @@ private:
 
   bool isTriviallyRecursive(const FunctionDecl *F);
   bool shouldEmitFunction(GlobalDecl GD);
-  // Whether a global variable should be emitted by CUDA/HIP host/device
-  // related attributes.
-  bool shouldEmitCUDAGlobalVar(const VarDecl *VD) const;
   bool shouldOpportunisticallyEmitVTables();
   /// Map used to be sure we don't emit the same CompoundLiteral twice.
   llvm::DenseMap<const CompoundLiteralExpr *, llvm::GlobalVariable *>
@@ -973,15 +970,7 @@ public:
   llvm::Constant *getFunctionPointer(llvm::Constant *Pointer,
                                      QualType FunctionType);
 
-  llvm::Constant *getMemberFunctionPointer(const FunctionDecl *FD,
-                                           llvm::Type *Ty = nullptr);
-
-  llvm::Constant *getMemberFunctionPointer(llvm::Constant *Pointer,
-                                           QualType FT);
-
   CGPointerAuthInfo getFunctionPointerAuthInfo(QualType T);
-
-  CGPointerAuthInfo getMemberFunctionPointerAuthInfo(QualType FT);
 
   CGPointerAuthInfo getPointerAuthInfoForPointeeType(QualType type);
 
@@ -1018,7 +1007,7 @@ public:
   bool shouldEmitRTTI(bool ForEH = false) {
     return (ForEH || getLangOpts().RTTI) && !getLangOpts().CUDAIsDevice &&
            !(getLangOpts().OpenMP && getLangOpts().OpenMPIsTargetDevice &&
-             (getTriple().isNVPTX() || getTriple().isAMDGPU()));
+             getTriple().isNVPTX());
   }
 
   /// Get the address of the RTTI descriptor for the given type.

@@ -51,8 +51,6 @@ add_entrypoint_object(
   DEPENDS
     libc.src.__support.OSUtil.osutil
     .exit_handler
-    .at_quick_exit
-    .atexit
 )
 
 add_entrypoint_object(
@@ -260,13 +258,9 @@ add_entrypoint_object(
 add_header_library(
   qsort_util
   HDRS
-    qsort_data.h
     qsort_util.h
-    heap_sort.h
-    quick_sort.h
   DEPENDS
     libc.include.stdlib
-    libc.src.__support.CPP.cstddef
 )
 
 add_entrypoint_object(
@@ -331,12 +325,7 @@ if(NOT LIBC_TARGET_OS_IS_GPU)
     include(${LIBC_SOURCE_DIR}/../compiler-rt/cmake/Modules/AllSupportedArchDefs.cmake)
 
     # scudo distinguishes riscv32 and riscv64, so we need to translate the architecture
-    # set(LIBC_TARGET_ARCHITECTURE_FOR_SCUDO ${LIBC_TARGET_ARCHITECTURE})
-    if (LIBC_TARGET_OS_IS_DARWIN AND (LIBC_TARGET_ARCHITECTURE STREQUAL "arm"))
-      set(LIBC_TARGET_ARCHITECTURE_FOR_SCUDO arm64)
-    else()
-      set(LIBC_TARGET_ARCHITECTURE_FOR_SCUDO ${LIBC_TARGET_ARCHITECTURE})
-    endif()
+    set(LIBC_TARGET_ARCHITECTURE_FOR_SCUDO ${LIBC_TARGET_ARCHITECTURE})
     if(LIBC_TARGET_ARCHITECTURE_IS_RISCV64)
       set(LIBC_TARGET_ARCHITECTURE_FOR_SCUDO riscv64)
     elseif(LIBC_TARGET_ARCHITECTURE_IS_RISCV32)
@@ -392,6 +381,8 @@ if(NOT LIBC_TARGET_OS_IS_GPU)
         malloc.h
       DEPENDS
         libc.src.__support.freelist_heap
+      COMPILE_OPTIONS
+        -DLIBC_FREELIST_MALLOC_SIZE=${LIBC_CONF_FREELIST_MALLOC_BUFFER_SIZE}
     )
     get_target_property(freelist_malloc_is_skipped libc.src.stdlib.freelist_malloc "SKIPPED")
     if(LIBC_TARGET_OS_IS_BAREMETAL AND NOT freelist_malloc_is_skipped)
@@ -467,11 +458,15 @@ add_entrypoint_object(
 
 # TODO: Move all exit functions to linux specific 
 
-if(TARGET libc.src.__support.threads.mutex)
-add_header_library(
+if (TARGET libc.src.__support.threads.mutex)
+add_object_library(
   exit_handler
+  SRCS
+    exit_handler.cpp
   HDRS
     exit_handler.h
+  CXX_STANDARD
+    20 # For constinit 
   DEPENDS
     libc.src.__support.CPP.mutex
     libc.src.__support.CPP.new
@@ -488,8 +483,6 @@ add_entrypoint_object(
     atexit.cpp
   HDRS
     atexit.h
-  CXX_STANDARD
-    20 # For constinit 
   DEPENDS
     .exit_handler
 )
@@ -500,22 +493,9 @@ add_entrypoint_object(
     at_quick_exit.cpp
   HDRS
     at_quick_exit.h
-  CXX_STANDARD
-    20 # For constinit 
   DEPENDS
     .exit_handler
-    .atexit
 )
-
-list(APPEND exit_deps
-  libc.src.__support.OSUtil.osutil
-  ._Exit
-)
-if (NOT LIBC_TARGET_OS_IS_BAREMETAL)
-  list(APPEND exit_deps
-    .atexit
-  )
-endif()
 
 add_entrypoint_object(
   exit
@@ -524,7 +504,8 @@ add_entrypoint_object(
   HDRS
     exit.h
   DEPENDS
-    ${exit_deps}
+    ._Exit
+    libc.src.__support.OSUtil.osutil
 )
 
 add_entrypoint_object(

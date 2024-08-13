@@ -684,13 +684,13 @@ private:
 /// CheckValueTypeMatcher - This checks to see if the current node is a
 /// VTSDNode with the specified type, if not it fails to match.
 class CheckValueTypeMatcher : public Matcher {
-  MVT::SimpleValueType VT;
+  StringRef TypeName;
 
 public:
-  CheckValueTypeMatcher(MVT::SimpleValueType SimpleVT)
-      : Matcher(CheckValueType), VT(SimpleVT) {}
+  CheckValueTypeMatcher(StringRef type_name)
+      : Matcher(CheckValueType), TypeName(type_name) {}
 
-  MVT::SimpleValueType getVT() const { return VT; }
+  StringRef getTypeName() const { return TypeName; }
 
   static bool classof(const Matcher *N) {
     return N->getKind() == CheckValueType;
@@ -699,7 +699,7 @@ public:
 private:
   void printImpl(raw_ostream &OS, unsigned indent) const override;
   bool isEqualImpl(const Matcher *M) const override {
-    return cast<CheckValueTypeMatcher>(M)->VT == VT;
+    return cast<CheckValueTypeMatcher>(M)->TypeName == TypeName;
   }
   bool isContradictoryImpl(const Matcher *M) const override;
 };

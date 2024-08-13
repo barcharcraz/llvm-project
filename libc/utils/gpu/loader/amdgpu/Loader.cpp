@@ -125,10 +125,6 @@ hsa_status_t get_agent(hsa_agent_t *output_agent) {
   return iterate_agents(cb);
 }
 
-void print_kernel_resources(const char *kernel_name) {
-  fprintf(stderr, "Kernel resources on AMDGPU is not supported yet.\n");
-}
-
 /// Retrieve a global memory pool with a \p flag from the agent.
 template <hsa_amd_memory_pool_global_flag_t flag>
 hsa_status_t get_agent_memory_pool(hsa_agent_t agent,
@@ -160,9 +156,8 @@ hsa_status_t launch_kernel(hsa_agent_t dev_agent, hsa_executable_t executable,
                            hsa_amd_memory_pool_t coarsegrained_pool,
                            hsa_queue_t *queue, rpc_device_t device,
                            const LaunchParameters &params,
-                           const char *kernel_name, args_t kernel_args,
-                           bool print_resource_usage) {
-  // Look up the kernel in the loaded executable.
+                           const char *kernel_name, args_t kernel_args) {
+  // Look up the '_start' kernel in the loaded executable.
   hsa_executable_symbol_t symbol;
   if (hsa_status_t err = hsa_executable_get_symbol_by_name(
           executable, kernel_name, &dev_agent, &symbol))
@@ -225,7 +220,7 @@ hsa_status_t launch_kernel(hsa_agent_t dev_agent, hsa_executable_t executable,
     handle_error(err);
   hsa_amd_agents_allow_access(1, &dev_agent, nullptr, args);
 
-  // Initialize all the arguments (explicit and implicit) to zero, then set the
+  // Initialie all the arguments (explicit and implicit) to zero, then set the
   // explicit arguments to the values created above.
   std::memset(args, 0, args_size);
   std::memcpy(args, &kernel_args, sizeof(args_t));
@@ -274,9 +269,6 @@ hsa_status_t launch_kernel(hsa_agent_t dev_agent, hsa_executable_t executable,
   if (hsa_status_t err =
           hsa_signal_create(1, 0, nullptr, &packet->completion_signal))
     handle_error(err);
-
-  if (print_resource_usage)
-    print_kernel_resources(kernel_name);
 
   // Initialize the packet header and set the doorbell signal to begin execution
   // by the HSA runtime.
@@ -335,7 +327,7 @@ static hsa_status_t hsa_memcpy(void *dst, hsa_agent_t dst_agent,
 }
 
 int load(int argc, char **argv, char **envp, void *image, size_t size,
-         const LaunchParameters &params, bool print_resource_usage) {
+         const LaunchParameters &params) {
   // Initialize the HSA runtime used to communicate with the device.
   if (hsa_status_t err = hsa_init())
     handle_error(err);
@@ -553,16 +545,15 @@ int load(int argc, char **argv, char **envp, void *image, size_t size,
 
   LaunchParameters single_threaded_params = {1, 1, 1, 1, 1, 1};
   begin_args_t init_args = {argc, dev_argv, dev_envp};
-  if (hsa_status_t err = launch_kernel(dev_agent, executable, kernargs_pool,
-                                       coarsegrained_pool, queue, device,
-                                       single_threaded_params, "_begin.kd",
-                                       init_args, print_resource_usage))
+  if (hsa_status_t err = launch_kernel(
+          dev_agent, executable, kernargs_pool, coarsegrained_pool, queue,
+          device, single_threaded_params, "_begin.kd", init_args))
     handle_error(err);
 
   start_args_t args = {argc, dev_argv, dev_envp, dev_ret};
-  if (hsa_status_t err = launch_kernel(
-          dev_agent, executable, kernargs_pool, coarsegrained_pool, queue,
-          device, params, "_start.kd", args, print_resource_usage))
+  if (hsa_status_t err = launch_kernel(dev_agent, executable, kernargs_pool,
+                                       coarsegrained_pool, queue, device,
+                                       params, "_start.kd", args))
     handle_error(err);
 
   void *host_ret;
@@ -580,10 +571,9 @@ int load(int argc, char **argv, char **envp, void *image, size_t size,
   int ret = *static_cast<int *>(host_ret);
 
   end_args_t fini_args = {ret};
-  if (hsa_status_t err = launch_kernel(dev_agent, executable, kernargs_pool,
-                                       coarsegrained_pool, queue, device,
-                                       single_threaded_params, "_end.kd",
-                                       fini_args, print_resource_usage))
+  if (hsa_status_t err = launch_kernel(
+          dev_agent, executable, kernargs_pool, coarsegrained_pool, queue,
+          device, single_threaded_params, "_end.kd", fini_args))
     handle_error(err);
 
   if (rpc_status_t err = rpc_server_shutdown(

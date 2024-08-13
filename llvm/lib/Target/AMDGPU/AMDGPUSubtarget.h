@@ -71,7 +71,7 @@ protected:
   char WavefrontSizeLog2 = 0;
 
 public:
-  AMDGPUSubtarget(Triple TT);
+  AMDGPUSubtarget(const Triple &TT);
 
   static const AMDGPUSubtarget &get(const MachineFunction &MF);
   static const AMDGPUSubtarget &get(const TargetMachine &TM,

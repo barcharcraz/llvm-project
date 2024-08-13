@@ -511,10 +511,10 @@ void IntegerRelation::getLowerAndUpperBoundIndices(
       continue;
     if (atIneq(r, pos) >= 1) {
       // Lower bound.
-      lbIndices->emplace_back(r);
+      lbIndices->push_back(r);
     } else if (atIneq(r, pos) <= -1) {
       // Upper bound.
-      ubIndices->emplace_back(r);
+      ubIndices->push_back(r);
     }
   }
 
@@ -528,7 +528,7 @@ void IntegerRelation::getLowerAndUpperBoundIndices(
       continue;
     if (containsConstraintDependentOnRange(r, /*isEq=*/true))
       continue;
-    eqIndices->emplace_back(r);
+    eqIndices->push_back(r);
   }
 }
 
@@ -791,7 +791,7 @@ IntMatrix IntegerRelation::getBoundedDirections() const {
   // processes all the inequalities.
   for (unsigned i = 0, e = getNumInequalities(); i < e; ++i) {
     if (simplex.isBoundedAlongConstraint(i))
-      boundedIneqs.emplace_back(i);
+      boundedIneqs.push_back(i);
   }
 
   // The direction vector is given by the coefficients and does not include the
@@ -1981,13 +1981,13 @@ void IntegerRelation::fourierMotzkinEliminate(unsigned pos, bool darkShadow,
   for (unsigned r = 0, e = getNumInequalities(); r < e; r++) {
     if (atIneq(r, pos) == 0) {
       // Var does not appear in bound.
-      nbIndices.emplace_back(r);
+      nbIndices.push_back(r);
     } else if (atIneq(r, pos) >= 1) {
       // Lower bound.
-      lbIndices.emplace_back(r);
+      lbIndices.push_back(r);
     } else {
       // Upper bound.
-      ubIndices.emplace_back(r);
+      ubIndices.push_back(r);
     }
   }
 
@@ -2028,8 +2028,8 @@ void IntegerRelation::fourierMotzkinEliminate(unsigned pos, bool darkShadow,
           continue;
         assert(lbCoeff >= 1 && ubCoeff >= 1 && "bounds wrongly identified");
         DynamicAPInt lcm = llvm::lcm(lbCoeff, ubCoeff);
-        ineq.emplace_back(atIneq(ubPos, l) * (lcm / ubCoeff) +
-                          atIneq(lbPos, l) * (lcm / lbCoeff));
+        ineq.push_back(atIneq(ubPos, l) * (lcm / ubCoeff) +
+                       atIneq(lbPos, l) * (lcm / lbCoeff));
         assert(lcm > 0 && "lcm should be positive!");
         if (lcm != 1)
           allLCMsAreOne = false;
@@ -2057,7 +2057,7 @@ void IntegerRelation::fourierMotzkinEliminate(unsigned pos, bool darkShadow,
     for (unsigned l = 0, e = getNumCols(); l < e; l++) {
       if (l == pos)
         continue;
-      ineq.emplace_back(atIneq(nbPos, l));
+      ineq.push_back(atIneq(nbPos, l));
     }
     newRel.addInequality(ineq);
   }
@@ -2072,7 +2072,7 @@ void IntegerRelation::fourierMotzkinEliminate(unsigned pos, bool darkShadow,
     for (unsigned l = 0, e = getNumCols(); l < e; l++) {
       if (l == pos)
         continue;
-      eq.emplace_back(atEq(r, l));
+      eq.push_back(atEq(r, l));
     }
     newRel.addEquality(eq);
   }
@@ -2264,8 +2264,8 @@ IntegerRelation::unionBoundingBox(const IntegerRelation &otherCst) {
                    std::negate<DynamicAPInt>());
     std::copy(maxUb.begin(), maxUb.end(), newUb.begin() + getNumDimVars());
 
-    boundingLbs.emplace_back(newLb);
-    boundingUbs.emplace_back(newUb);
+    boundingLbs.push_back(newLb);
+    boundingUbs.push_back(newUb);
   }
 
   // Clear all constraints and add the lower/upper bounds for the bounding box.
@@ -2309,7 +2309,7 @@ static void getIndependentConstraints(const IntegerRelation &cst, unsigned pos,
         break;
     }
     if (c == pos + num)
-      nbIneqIndices.emplace_back(r);
+      nbIneqIndices.push_back(r);
   }
 
   for (unsigned r = 0, e = cst.getNumEqualities(); r < e; r++) {
@@ -2320,7 +2320,7 @@ static void getIndependentConstraints(const IntegerRelation &cst, unsigned pos,
         break;
     }
     if (c == pos + num)
-      nbEqIndices.emplace_back(r);
+      nbEqIndices.push_back(r);
   }
 }
 

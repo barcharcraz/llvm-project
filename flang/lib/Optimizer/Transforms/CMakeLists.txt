@@ -10,7 +10,6 @@ add_flang_library(FIRTransforms
   ControlFlowConverter.cpp
   ArrayValueCopy.cpp
   ExternalNameConversion.cpp
-  MemoryUtils.cpp
   MemoryAllocation.cpp
   StackArrays.cpp
   MemRefDataFlowOpt.cpp

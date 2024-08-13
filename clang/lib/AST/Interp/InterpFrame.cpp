@@ -158,9 +158,7 @@ void InterpFrame::describe(llvm::raw_ostream &OS) const {
   // diagnose them. The 'in call to' diagnostics for them add no value to the
   // user _and_ it doesn't generally work since the argument types don't always
   // match the function prototype. Just ignore them.
-  // Similarly, for lambda static invokers, we would just print __invoke().
-  if (const auto *F = getFunction();
-      F && (F->isBuiltin() || F->isLambdaStaticInvoker()))
+  if (const auto *F = getFunction(); F && F->isBuiltin())
     return;
 
   const FunctionDecl *F = getCallee();
@@ -169,10 +167,7 @@ void InterpFrame::describe(llvm::raw_ostream &OS) const {
     print(OS, This, S.getCtx(), S.getCtx().getRecordType(M->getParent()));
     OS << "->";
   }
-
-  F->getNameForDiagnostic(OS, S.getCtx().getPrintingPolicy(),
-                          /*Qualified=*/false);
-  OS << '(';
+  OS << *F << "(";
   unsigned Off = 0;
 
   Off += Func->hasRVO() ? primSize(PT_Ptr) : 0;
@@ -227,7 +222,6 @@ Pointer InterpFrame::getParamPointer(unsigned Off) {
   size_t BlockSize = sizeof(Block) + Desc.second->getAllocSize();
   auto Memory = std::make_unique<char[]>(BlockSize);
   auto *B = new (Memory.get()) Block(S.Ctx.getEvalID(), Desc.second);
-  B->invokeCtor();
 
   // Copy the initial value.
   TYPE_SWITCH(Desc.first, new (B->data()) T(stackRef<T>(Off)));

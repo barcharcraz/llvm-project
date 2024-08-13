@@ -334,14 +334,12 @@ export namespace std {
   using std::expint;
   using std::expintf;
   using std::expintl;
-#endif
 
   // [sf.cmath.hermite], Hermite polynomials
   using std::hermite;
   using std::hermitef;
   using std::hermitel;
 
-#if 0
   // [sf.cmath.laguerre], Laguerre polynomials
   using std::laguerre;
   using std::laguerref;

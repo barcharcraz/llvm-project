@@ -136,8 +136,7 @@ public:
         MDT(pass.getAnalysis<MachineDominatorTreeWrapperPass>().getDomTree()),
         VRM(vrm), MRI(mf.getRegInfo()), TII(*mf.getSubtarget().getInstrInfo()),
         TRI(*mf.getSubtarget().getRegisterInfo()),
-        MBFI(
-            pass.getAnalysis<MachineBlockFrequencyInfoWrapperPass>().getMBFI()),
+        MBFI(pass.getAnalysis<MachineBlockFrequencyInfo>()),
         IPA(LIS, mf.getNumBlockIDs()) {}
 
   void addToMergeableSpills(MachineInstr &Spill, int StackSlot,
@@ -194,8 +193,7 @@ public:
         MDT(Pass.getAnalysis<MachineDominatorTreeWrapperPass>().getDomTree()),
         VRM(VRM), MRI(MF.getRegInfo()), TII(*MF.getSubtarget().getInstrInfo()),
         TRI(*MF.getSubtarget().getRegisterInfo()),
-        MBFI(
-            Pass.getAnalysis<MachineBlockFrequencyInfoWrapperPass>().getMBFI()),
+        MBFI(Pass.getAnalysis<MachineBlockFrequencyInfo>()),
         HSpiller(Pass, MF, VRM), VRAI(VRAI) {}
 
   void spill(LiveRangeEdit &) override;

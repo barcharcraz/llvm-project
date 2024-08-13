@@ -38,38 +38,20 @@ public:
                     const llvm::opt::ArgList &TCArgs,
                     const char *LinkingOutput) const override;
 };
+
+class LLVM_LIBRARY_VISIBILITY Linker final : public Tool {
+public:
+  Linker(const ToolChain &TC) : Tool("PScpu::Linker", "linker", TC) {}
+
+  bool hasIntegratedCPP() const override { return false; }
+  bool isLinkJob() const override { return true; }
+
+  void ConstructJob(Compilation &C, const JobAction &JA,
+                    const InputInfo &Output, const InputInfoList &Inputs,
+                    const llvm::opt::ArgList &TCArgs,
+                    const char *LinkingOutput) const override;
+};
 } // namespace PScpu
-
-namespace PS4cpu {
-class LLVM_LIBRARY_VISIBILITY Linker final : public Tool {
-public:
-  Linker(const ToolChain &TC) : Tool("PS4cpu::Linker", "linker", TC) {}
-
-  bool hasIntegratedCPP() const override { return false; }
-  bool isLinkJob() const override { return true; }
-
-  void ConstructJob(Compilation &C, const JobAction &JA,
-                    const InputInfo &Output, const InputInfoList &Inputs,
-                    const llvm::opt::ArgList &TCArgs,
-                    const char *LinkingOutput) const override;
-};
-} // namespace PS4cpu
-
-namespace PS5cpu {
-class LLVM_LIBRARY_VISIBILITY Linker final : public Tool {
-public:
-  Linker(const ToolChain &TC) : Tool("PS5cpu::Linker", "linker", TC) {}
-
-  bool hasIntegratedCPP() const override { return false; }
-  bool isLinkJob() const override { return true; }
-
-  void ConstructJob(Compilation &C, const JobAction &JA,
-                    const InputInfo &Output, const InputInfoList &Inputs,
-                    const llvm::opt::ArgList &TCArgs,
-                    const char *LinkingOutput) const override;
-};
-} // namespace PS5cpu
-
 } // namespace tools
 
 namespace toolchains {
@@ -128,6 +110,9 @@ public:
                                 const char *Suffix) const = 0;
   virtual const char *getProfileRTLibName() const = 0;
 
+protected:
+  Tool *buildLinker() const override;
+
 private:
   // We compute the SDK root dir in the ctor, and use it later.
   std::string SDKRootDir;
@@ -158,7 +143,6 @@ public:
 
 protected:
   Tool *buildAssembler() const override;
-  Tool *buildLinker() const override;
 };
 
 // PS5-specific Toolchain class.
@@ -179,12 +163,11 @@ public:
                         llvm::opt::ArgStringList &CmdArgs, const char *Prefix,
                         const char *Suffix) const override;
   const char *getProfileRTLibName() const override {
-    return "libclang_rt.profile_nosubmission.a";
+    return "libclang_rt.profile-x86_64_nosubmission.a";
   }
 
 protected:
   Tool *buildAssembler() const override;
-  Tool *buildLinker() const override;
 };
 
 } // end namespace toolchains

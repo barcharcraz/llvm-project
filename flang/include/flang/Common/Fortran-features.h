@@ -69,8 +69,7 @@ ENUM_CLASS(UsageWarning, Portability, PointerToUndefinable,
     IgnoredDirective, HomonymousSpecific, HomonymousResult,
     IgnoredIntrinsicFunctionType, PreviousScalarUse,
     RedeclaredInaccessibleComponent, ImplicitShared, IndexVarRedefinition,
-    IncompatibleImplicitInterfaces, BadTypeForTarget,
-    VectorSubscriptFinalization)
+    IncompatibleImplicitInterfaces, BadTypeForTarget)
 
 using LanguageFeatures = EnumSet<LanguageFeature, LanguageFeature_enumSize>;
 using UsageWarnings = EnumSet<UsageWarning, UsageWarning_enumSize>;
@@ -143,7 +142,6 @@ public:
     warnUsage_.set(UsageWarning::IndexVarRedefinition);
     warnUsage_.set(UsageWarning::IncompatibleImplicitInterfaces);
     warnUsage_.set(UsageWarning::BadTypeForTarget);
-    warnUsage_.set(UsageWarning::VectorSubscriptFinalization);
   }
   LanguageFeatureControl(const LanguageFeatureControl &) = default;
 

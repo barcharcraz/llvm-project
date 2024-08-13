@@ -611,8 +611,7 @@ bool AArch64RegisterInfo::isArgumentRegister(const MachineFunction &MF,
                                              MCRegister Reg) const {
   CallingConv::ID CC = MF.getFunction().getCallingConv();
   const AArch64Subtarget &STI = MF.getSubtarget<AArch64Subtarget>();
-  bool IsVarArg = STI.isCallingConvWin64(MF.getFunction().getCallingConv(),
-                                         MF.getFunction().isVarArg());
+  bool IsVarArg = STI.isCallingConvWin64(MF.getFunction().getCallingConv());
 
   auto HasReg = [](ArrayRef<MCRegister> RegList, MCRegister Reg) {
     return llvm::is_contained(RegList, Reg);
@@ -624,9 +623,7 @@ bool AArch64RegisterInfo::isArgumentRegister(const MachineFunction &MF,
   case CallingConv::GHC:
     return HasReg(CC_AArch64_GHC_ArgRegs, Reg);
   case CallingConv::PreserveNone:
-    if (!MF.getFunction().isVarArg())
-      return HasReg(CC_AArch64_Preserve_None_ArgRegs, Reg);
-    [[fallthrough]];
+    return HasReg(CC_AArch64_Preserve_None_ArgRegs, Reg);
   case CallingConv::C:
   case CallingConv::Fast:
   case CallingConv::PreserveMost:

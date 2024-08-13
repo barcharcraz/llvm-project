@@ -508,8 +508,7 @@ void RTDEF(CshiftVector)(Descriptor &result, const Descriptor &source,
   SubscriptValue lb{sourceDim.LowerBound()};
   for (SubscriptValue j{0}; j < extent; ++j) {
     SubscriptValue resultAt{1 + j};
-    SubscriptValue sourceAt{
-        lb + static_cast<SubscriptValue>(j + shift) % extent};
+    SubscriptValue sourceAt{lb + (j + shift) % extent};
     if (sourceAt < lb) {
       sourceAt += extent;
     }
@@ -620,7 +619,7 @@ void RTDEF(EoshiftVector)(Descriptor &result, const Descriptor &source,
   }
   SubscriptValue lb{source.GetDimension(0).LowerBound()};
   for (SubscriptValue j{1}; j <= extent; ++j) {
-    SubscriptValue sourceAt{lb + j - 1 + static_cast<SubscriptValue>(shift)};
+    SubscriptValue sourceAt{lb + j - 1 + shift};
     if (sourceAt >= lb && sourceAt < lb + extent) {
       CopyElement(result, &j, source, &sourceAt, terminator);
     } else if (boundary) {

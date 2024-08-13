@@ -638,8 +638,7 @@ def: InstRW<[SBWriteResGroup5], (instrs MMX_PABSBrr,
                                         MMX_PALIGNRrri,
                                         MMX_PSIGNBrr,
                                         MMX_PSIGNDrr,
-                                        MMX_PSIGNWrr,
-                                        MMX_PSUBQrr)>;
+                                        MMX_PSIGNWrr)>;
 
 def SBWriteResGroup11 : SchedWriteRes<[SBPort015]> {
   let Latency = 2;
@@ -899,8 +898,7 @@ def SBWriteResGroup59 : SchedWriteRes<[SBPort23,SBPort15]> {
   let NumMicroOps = 2;
   let ReleaseAtCycles = [1,1];
 }
-def: InstRW<[SBWriteResGroup59], (instrs MMX_PADDQrm,
-                                         MMX_PSUBQrm)>;
+def: InstRW<[SBWriteResGroup59], (instrs MMX_PADDQrm)>;
 
 def SBWriteResGroup62 : SchedWriteRes<[SBPort5,SBPort23]> {
   let Latency = 7;

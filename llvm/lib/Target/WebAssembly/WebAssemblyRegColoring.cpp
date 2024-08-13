@@ -41,8 +41,8 @@ public:
   void getAnalysisUsage(AnalysisUsage &AU) const override {
     AU.setPreservesCFG();
     AU.addRequired<LiveIntervalsWrapperPass>();
-    AU.addRequired<MachineBlockFrequencyInfoWrapperPass>();
-    AU.addPreserved<MachineBlockFrequencyInfoWrapperPass>();
+    AU.addRequired<MachineBlockFrequencyInfo>();
+    AU.addPreserved<MachineBlockFrequencyInfo>();
     AU.addPreservedID(MachineDominatorsID);
     MachineFunctionPass::getAnalysisUsage(AU);
   }
@@ -135,7 +135,8 @@ static void undefInvalidDbgValues(
 #ifndef NDEBUG
   DenseSet<Register> SeenRegs;
 #endif
-  for (const auto &CoalescedIntervals : Assignments) {
+  for (size_t I = 0, E = Assignments.size(); I < E; ++I) {
+    const auto &CoalescedIntervals = Assignments[I];
     if (CoalescedIntervals.empty())
       continue;
     for (LiveInterval *LI : CoalescedIntervals) {
@@ -233,7 +234,7 @@ bool WebAssemblyRegColoring::runOnMachineFunction(MachineFunction &MF) {
   MachineRegisterInfo *MRI = &MF.getRegInfo();
   LiveIntervals *Liveness = &getAnalysis<LiveIntervalsWrapperPass>().getLIS();
   const MachineBlockFrequencyInfo *MBFI =
-      &getAnalysis<MachineBlockFrequencyInfoWrapperPass>().getMBFI();
+      &getAnalysis<MachineBlockFrequencyInfo>();
   WebAssemblyFunctionInfo &MFI = *MF.getInfo<WebAssemblyFunctionInfo>();
 
   // We don't preserve SSA form.

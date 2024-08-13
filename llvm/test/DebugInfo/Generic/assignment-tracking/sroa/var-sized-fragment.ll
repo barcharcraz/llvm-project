@@ -19,7 +19,10 @@
 ;;   return a;
 ;; }
 
-; CHECK: #dbg_value(i32 %.sroa.2.0.extract.trunc, ![[B:[0-9]+]], !DIExpression(),
+;; FIXME: Variable 'b' gets an incorrect location (value and expression) - see
+;; llvm.org/PR61981. This check just ensures that no fragment info is added to
+;; the dbg.value.
+; CHECK: #dbg_value(i32 %.sroa.0.0.extract.trunc, ![[B:[0-9]+]], !DIExpression(DW_OP_plus_uconst, 4),
 ; CHECK: #dbg_value(i32 %.sroa.0.0.extract.trunc, ![[A:[0-9]+]], !DIExpression(),
 ; CHECK: ![[A]] = !DILocalVariable(name: "a",
 ; CHECK: ![[B]] = !DILocalVariable(name: "b",

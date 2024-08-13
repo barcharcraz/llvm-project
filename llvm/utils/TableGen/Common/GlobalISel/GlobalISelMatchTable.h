@@ -1175,7 +1175,7 @@ protected:
 public:
   CmpPredicateOperandMatcher(unsigned InsnVarID, unsigned OpIdx, std::string P)
       : OperandPredicateMatcher(OPM_CmpPredicate, InsnVarID, OpIdx),
-        PredName(std::move(P)) {}
+        PredName(P) {}
 
   bool isIdentical(const PredicateMatcher &B) const override {
     return OperandPredicateMatcher::isIdentical(B) &&

@@ -124,7 +124,7 @@ class SIFixSGPRCopies : public MachineFunctionPass {
   SmallVector<MachineInstr*, 4> RegSequences;
   SmallVector<MachineInstr*, 4> PHINodes;
   SmallVector<MachineInstr*, 4> S2VCopies;
-  unsigned NextVGPRToSGPRCopyID = 0;
+  unsigned NextVGPRToSGPRCopyID;
   MapVector<unsigned, V2SCopyInfo> V2SCopies;
   DenseMap<MachineInstr *, SetVector<unsigned>> SiblingPenalty;
 
@@ -135,7 +135,7 @@ public:
   const SIRegisterInfo *TRI;
   const SIInstrInfo *TII;
 
-  SIFixSGPRCopies() : MachineFunctionPass(ID) {}
+  SIFixSGPRCopies() : MachineFunctionPass(ID), NextVGPRToSGPRCopyID(0) {}
 
   bool runOnMachineFunction(MachineFunction &MF) override;
   void fixSCCCopies(MachineFunction &MF);
@@ -456,8 +456,7 @@ static bool hoistAndMergeSGPRInits(unsigned Reg,
           (!MO.isImm() && !MO.isReg()) || (MO.isImm() && Imm)) {
         Imm = nullptr;
         break;
-      }
-      if (MO.isImm())
+      } else if (MO.isImm())
         Imm = &MO;
     }
     if (Imm)
@@ -614,8 +613,10 @@ bool SIFixSGPRCopies::runOnMachineFunction(MachineFunction &MF) {
   TII = ST.getInstrInfo();
   MDT = &getAnalysis<MachineDominatorTreeWrapperPass>().getDomTree();
 
-  for (MachineBasicBlock &MBB : MF) {
-    for (MachineBasicBlock::iterator I = MBB.begin(), E = MBB.end(); I != E;
+  for (MachineFunction::iterator BI = MF.begin(), BE = MF.end();
+                                                  BI != BE; ++BI) {
+    MachineBasicBlock *MBB = &*BI;
+    for (MachineBasicBlock::iterator I = MBB->begin(), E = MBB->end(); I != E;
          ++I) {
       MachineInstr &MI = *I;
 
@@ -664,7 +665,7 @@ bool SIFixSGPRCopies::runOnMachineFunction(MachineFunction &MF) {
               Register NewDst = MRI->createVirtualRegister(DestRC);
               MachineBasicBlock *BlockToInsertCopy =
                   MI.isPHI() ? MI.getOperand(MO.getOperandNo() + 1).getMBB()
-                             : &MBB;
+                             : MBB;
               MachineBasicBlock::iterator PointToInsertCopy =
                   MI.isPHI() ? BlockToInsertCopy->getFirstInstrTerminator() : I;
 
@@ -1094,8 +1095,10 @@ void SIFixSGPRCopies::lowerVGPR2SGPRCopies(MachineFunction &MF) {
 
 void SIFixSGPRCopies::fixSCCCopies(MachineFunction &MF) {
   bool IsWave32 = MF.getSubtarget<GCNSubtarget>().isWave32();
-  for (MachineBasicBlock &MBB : MF) {
-    for (MachineBasicBlock::iterator I = MBB.begin(), E = MBB.end(); I != E;
+  for (MachineFunction::iterator BI = MF.begin(), BE = MF.end(); BI != BE;
+       ++BI) {
+    MachineBasicBlock *MBB = &*BI;
+    for (MachineBasicBlock::iterator I = MBB->begin(), E = MBB->end(); I != E;
          ++I) {
       MachineInstr &MI = *I;
       // May already have been lowered.

@@ -553,8 +553,8 @@ void RegAllocPBQP::getAnalysisUsage(AnalysisUsage &au) const {
     au.addRequiredID(*customPassID);
   au.addRequired<LiveStacks>();
   au.addPreserved<LiveStacks>();
-  au.addRequired<MachineBlockFrequencyInfoWrapperPass>();
-  au.addPreserved<MachineBlockFrequencyInfoWrapperPass>();
+  au.addRequired<MachineBlockFrequencyInfo>();
+  au.addPreserved<MachineBlockFrequencyInfo>();
   au.addRequired<MachineLoopInfoWrapperPass>();
   au.addPreserved<MachineLoopInfoWrapperPass>();
   au.addRequired<MachineDominatorTreeWrapperPass>();
@@ -793,7 +793,7 @@ void RegAllocPBQP::postOptimization(Spiller &VRegSpiller, LiveIntervals &LIS) {
 bool RegAllocPBQP::runOnMachineFunction(MachineFunction &MF) {
   LiveIntervals &LIS = getAnalysis<LiveIntervalsWrapperPass>().getLIS();
   MachineBlockFrequencyInfo &MBFI =
-      getAnalysis<MachineBlockFrequencyInfoWrapperPass>().getMBFI();
+    getAnalysis<MachineBlockFrequencyInfo>();
 
   VirtRegMap &VRM = getAnalysis<VirtRegMap>();
 

@@ -792,10 +792,10 @@ def BWWriteResGroup28 : SchedWriteRes<[BWPort5]> {
 def: InstRW<[BWWriteResGroup28], (instrs VPBROADCASTBrr,
                                          VPBROADCASTWrr)>;
 
-def BWWriteResGroup33 : SchedWriteRes<[BWPort5]> {
+def BWWriteResGroup33 : SchedWriteRes<[BWPort5,BWPort0156]> {
   let Latency = 3;
-  let NumMicroOps = 2;
-  let ReleaseAtCycles = [2];
+  let NumMicroOps = 3;
+  let ReleaseAtCycles = [2,1];
 }
 def: InstRW<[BWWriteResGroup33], (instrs MMX_PACKSSDWrr,
                                          MMX_PACKSSWBrr,

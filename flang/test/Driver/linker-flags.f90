@@ -11,7 +11,6 @@
 ! RUN: %flang -### --target=x86_64-unknown-dragonfly %S/Inputs/hello.f90 2>&1 | FileCheck %s --check-prefixes=CHECK,UNIX,UNIX-F128%f128-lib
 ! RUN: %flang -### --target=x86_64-unknown-haiku %S/Inputs/hello.f90 2>&1 | FileCheck %s --check-prefixes=CHECK,HAIKU,HAIKU-F128%f128-lib
 ! RUN: %flang -### --target=x86_64-windows-gnu %S/Inputs/hello.f90 2>&1 | FileCheck %s --check-prefixes=CHECK,MINGW,MINGW-F128%f128-lib
-! RUN: %flang -### -rtlib=compiler-rt --target=aarch64-linux-gnu %S/Inputs/hello.f90 2>&1 | FileCheck %s --check-prefixes=CHECK,UNIX,COMPILER-RT
 
 ! NOTE: Clang's driver library, clangDriver, usually adds 'oldnames' on Windows,
 !       but it is not needed when compiling Fortran code and they might bring in
@@ -34,7 +33,6 @@
 ! UNIX-F128LIBQUADMATH-SAME: "-lFortranFloat128Math" "--as-needed" "-lquadmath" "--no-as-needed"
 ! SOLARIS-F128LIBQUADMATH-SAME: "-lFortranFloat128Math" "-z" "ignore" "-lquadmath" "-z" "record"
 ! UNIX-SAME: "-lFortranRuntime" "-lFortranDecimal" "-lm"
-! COMPILER-RT: "{{.*}}{{\\|/}}libclang_rt.builtins.a"
 
 ! DARWIN-LABEL:  "{{.*}}ld{{(\.exe)?}}"
 ! DARWIN-SAME: "[[object_file]]"
@@ -63,6 +61,3 @@
 ! MSVC-LABEL: link
 ! MSVC-SAME: /subsystem:console
 ! MSVC-SAME: "[[object_file]]"
-
-! COMPILER-RT-NOT: "-lgcc"
-! COMPILER-RT-NOT: "-lgcc_s"

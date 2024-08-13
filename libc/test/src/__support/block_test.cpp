@@ -54,6 +54,7 @@ TEST_FOR_EACH_BLOCK_TYPE(CanCreateSingleAlignedBlock) {
   EXPECT_EQ(block->prev(), static_cast<BlockType *>(nullptr));
   EXPECT_EQ(block->next(), static_cast<BlockType *>(nullptr));
   EXPECT_FALSE(block->used());
+  EXPECT_TRUE(block->last());
 }
 
 TEST_FOR_EACH_BLOCK_TYPE(CanCreateUnalignedSingleBlock) {
@@ -95,16 +96,18 @@ TEST_FOR_EACH_BLOCK_TYPE(CanSplitBlock) {
   ASSERT_TRUE(result.has_value());
   auto *block1 = *result;
 
-  result = block1->split(kSplitN);
+  result = BlockType::split(block1, kSplitN);
   ASSERT_TRUE(result.has_value());
 
   auto *block2 = *result;
 
   EXPECT_EQ(block1->inner_size(), kSplitN);
   EXPECT_EQ(block1->outer_size(), kSplitN + BlockType::BLOCK_OVERHEAD);
+  EXPECT_FALSE(block1->last());
 
   EXPECT_EQ(block2->outer_size(), kN - kSplitN - BlockType::BLOCK_OVERHEAD);
   EXPECT_FALSE(block2->used());
+  EXPECT_TRUE(block2->last());
 
   EXPECT_EQ(block1->next(), block2);
   EXPECT_EQ(block2->prev(), block1);
@@ -125,7 +128,7 @@ TEST_FOR_EACH_BLOCK_TYPE(CanSplitBlockUnaligned) {
   split_addr += alignof(BlockType) - (split_addr % alignof(BlockType));
   uintptr_t split_len = split_addr - (uintptr_t)&bytes;
 
-  result = block1->split(kSplitN);
+  result = BlockType::split(block1, kSplitN);
   ASSERT_TRUE(result.has_value());
   BlockType *block2 = *result;
 
@@ -158,11 +161,11 @@ TEST_FOR_EACH_BLOCK_TYPE(CanSplitMidBlock) {
   ASSERT_TRUE(result.has_value());
   BlockType *block1 = *result;
 
-  result = block1->split(kSplit1);
+  result = BlockType::split(block1, kSplit1);
   ASSERT_TRUE(result.has_value());
   BlockType *block2 = *result;
 
-  result = block1->split(kSplit2);
+  result = BlockType::split(block1, kSplit2);
   ASSERT_TRUE(result.has_value());
   BlockType *block3 = *result;
 
@@ -181,7 +184,7 @@ TEST_FOR_EACH_BLOCK_TYPE(CannotSplitTooSmallBlock) {
   ASSERT_TRUE(result.has_value());
   BlockType *block = *result;
 
-  result = block->split(kSplitN);
+  result = BlockType::split(block, kSplitN);
   ASSERT_FALSE(result.has_value());
 }
 
@@ -194,7 +197,13 @@ TEST_FOR_EACH_BLOCK_TYPE(CannotSplitBlockWithoutHeaderSpace) {
   ASSERT_TRUE(result.has_value());
   BlockType *block = *result;
 
-  result = block->split(kSplitN);
+  result = BlockType::split(block, kSplitN);
+  ASSERT_FALSE(result.has_value());
+}
+
+TEST_FOR_EACH_BLOCK_TYPE(CannotSplitNull) {
+  BlockType *block = nullptr;
+  auto result = BlockType::split(block, 1);
   ASSERT_FALSE(result.has_value());
 }
 
@@ -207,7 +216,7 @@ TEST_FOR_EACH_BLOCK_TYPE(CannotMakeBlockLargerInSplit) {
   ASSERT_TRUE(result.has_value());
   BlockType *block = *result;
 
-  result = block->split(block->inner_size() + 1);
+  result = BlockType::split(block, block->inner_size() + 1);
   ASSERT_FALSE(result.has_value());
 }
 
@@ -220,7 +229,8 @@ TEST_FOR_EACH_BLOCK_TYPE(CannotMakeSecondBlockLargerInSplit) {
   ASSERT_TRUE(result.has_value());
   BlockType *block = *result;
 
-  result = block->split(block->inner_size() - BlockType::BLOCK_OVERHEAD + 1);
+  result = BlockType::split(block, block->inner_size() -
+                                       BlockType::BLOCK_OVERHEAD + 1);
   ASSERT_FALSE(result.has_value());
 }
 
@@ -233,7 +243,7 @@ TEST_FOR_EACH_BLOCK_TYPE(CanMakeZeroSizeFirstBlock) {
   ASSERT_TRUE(result.has_value());
   BlockType *block = *result;
 
-  result = block->split(0);
+  result = BlockType::split(block, 0);
   ASSERT_TRUE(result.has_value());
   EXPECT_EQ(block->inner_size(), static_cast<size_t>(0));
 }
@@ -247,7 +257,8 @@ TEST_FOR_EACH_BLOCK_TYPE(CanMakeZeroSizeSecondBlock) {
   ASSERT_TRUE(result.has_value());
   BlockType *block1 = *result;
 
-  result = block1->split(block1->inner_size() - BlockType::BLOCK_OVERHEAD);
+  result = BlockType::split(block1,
+                            block1->inner_size() - BlockType::BLOCK_OVERHEAD);
   ASSERT_TRUE(result.has_value());
   BlockType *block2 = *result;
 
@@ -282,7 +293,7 @@ TEST_FOR_EACH_BLOCK_TYPE(CannotSplitUsedBlock) {
   BlockType *block = *result;
 
   block->mark_used();
-  result = block->split(kSplitN);
+  result = BlockType::split(block, kSplitN);
   ASSERT_FALSE(result.has_value());
 }
 
@@ -298,14 +309,14 @@ TEST_FOR_EACH_BLOCK_TYPE(CanMergeWithNextBlock) {
   ASSERT_TRUE(result.has_value());
   BlockType *block1 = *result;
 
-  result = block1->split(kSplit1);
+  result = BlockType::split(block1, kSplit1);
   ASSERT_TRUE(result.has_value());
 
-  result = block1->split(kSplit2);
+  result = BlockType::split(block1, kSplit2);
   ASSERT_TRUE(result.has_value());
   BlockType *block3 = *result;
 
-  EXPECT_TRUE(block3->merge_next());
+  EXPECT_TRUE(BlockType::merge_next(block3));
 
   EXPECT_EQ(block1->next(), block3);
   EXPECT_EQ(block3->prev(), block1);
@@ -323,11 +334,16 @@ TEST_FOR_EACH_BLOCK_TYPE(CannotMergeWithFirstOrLastBlock) {
   BlockType *block1 = *result;
 
   // Do a split, just to check that the checks on next/prev are different...
-  result = block1->split(kSplitN);
+  result = BlockType::split(block1, kSplitN);
   ASSERT_TRUE(result.has_value());
   BlockType *block2 = *result;
 
-  EXPECT_FALSE(block2->merge_next());
+  EXPECT_FALSE(BlockType::merge_next(block2));
+}
+
+TEST_FOR_EACH_BLOCK_TYPE(CannotMergeNull) {
+  BlockType *block = nullptr;
+  EXPECT_FALSE(BlockType::merge_next(block));
 }
 
 TEST_FOR_EACH_BLOCK_TYPE(CannotMergeUsedBlock) {
@@ -340,11 +356,131 @@ TEST_FOR_EACH_BLOCK_TYPE(CannotMergeUsedBlock) {
   BlockType *block = *result;
 
   // Do a split, just to check that the checks on next/prev are different...
-  result = block->split(kSplitN);
+  result = BlockType::split(block, kSplitN);
   ASSERT_TRUE(result.has_value());
 
   block->mark_used();
-  EXPECT_FALSE(block->merge_next());
+  EXPECT_FALSE(BlockType::merge_next(block));
+}
+
+TEST_FOR_EACH_BLOCK_TYPE(CanFreeSingleBlock) {
+  constexpr size_t kN = 1024;
+  alignas(BlockType::ALIGNMENT) array<byte, kN> bytes;
+
+  auto result = BlockType::init(bytes);
+  ASSERT_TRUE(result.has_value());
+  BlockType *block = *result;
+
+  block->mark_used();
+  BlockType::free(block);
+  EXPECT_FALSE(block->used());
+  EXPECT_EQ(block->outer_size(), kN);
+}
+
+TEST_FOR_EACH_BLOCK_TYPE(CanFreeBlockWithoutMerging) {
+  constexpr size_t kN = 1024;
+  constexpr size_t kSplit1 = 512;
+  constexpr size_t kSplit2 = 256;
+
+  alignas(BlockType::ALIGNMENT) array<byte, kN> bytes;
+  auto result = BlockType::init(bytes);
+  ASSERT_TRUE(result.has_value());
+  BlockType *block1 = *result;
+
+  result = BlockType::split(block1, kSplit1);
+  ASSERT_TRUE(result.has_value());
+  BlockType *block2 = *result;
+
+  result = BlockType::split(block2, kSplit2);
+  ASSERT_TRUE(result.has_value());
+  BlockType *block3 = *result;
+
+  block1->mark_used();
+  block2->mark_used();
+  block3->mark_used();
+
+  BlockType::free(block2);
+  EXPECT_FALSE(block2->used());
+  EXPECT_NE(block2->prev(), static_cast<BlockType *>(nullptr));
+  EXPECT_FALSE(block2->last());
+}
+
+TEST_FOR_EACH_BLOCK_TYPE(CanFreeBlockAndMergeWithPrev) {
+  constexpr size_t kN = 1024;
+  constexpr size_t kSplit1 = 512;
+  constexpr size_t kSplit2 = 256;
+
+  alignas(BlockType::ALIGNMENT) array<byte, kN> bytes;
+  auto result = BlockType::init(bytes);
+  ASSERT_TRUE(result.has_value());
+  BlockType *block1 = *result;
+
+  result = BlockType::split(block1, kSplit1);
+  ASSERT_TRUE(result.has_value());
+  BlockType *block2 = *result;
+
+  result = BlockType::split(block2, kSplit2);
+  ASSERT_TRUE(result.has_value());
+  BlockType *block3 = *result;
+
+  block2->mark_used();
+  block3->mark_used();
+
+  BlockType::free(block2);
+  EXPECT_FALSE(block2->used());
+  EXPECT_EQ(block2->prev(), static_cast<BlockType *>(nullptr));
+  EXPECT_FALSE(block2->last());
+}
+
+TEST_FOR_EACH_BLOCK_TYPE(CanFreeBlockAndMergeWithNext) {
+  constexpr size_t kN = 1024;
+  constexpr size_t kSplit1 = 512;
+  constexpr size_t kSplit2 = 256;
+
+  alignas(BlockType::ALIGNMENT) array<byte, kN> bytes;
+  auto result = BlockType::init(bytes);
+  ASSERT_TRUE(result.has_value());
+  BlockType *block1 = *result;
+
+  result = BlockType::split(block1, kSplit1);
+  ASSERT_TRUE(result.has_value());
+  BlockType *block2 = *result;
+
+  result = BlockType::split(block2, kSplit2);
+  ASSERT_TRUE(result.has_value());
+
+  block1->mark_used();
+  block2->mark_used();
+
+  BlockType::free(block2);
+  EXPECT_FALSE(block2->used());
+  EXPECT_NE(block2->prev(), static_cast<BlockType *>(nullptr));
+  EXPECT_TRUE(block2->last());
+}
+
+TEST_FOR_EACH_BLOCK_TYPE(CanFreeUsedBlockAndMergeWithBoth) {
+  constexpr size_t kN = 1024;
+  constexpr size_t kSplit1 = 512;
+  constexpr size_t kSplit2 = 256;
+
+  alignas(BlockType::ALIGNMENT) array<byte, kN> bytes;
+  auto result = BlockType::init(bytes);
+  ASSERT_TRUE(result.has_value());
+  BlockType *block1 = *result;
+
+  result = BlockType::split(block1, kSplit1);
+  ASSERT_TRUE(result.has_value());
+  BlockType *block2 = *result;
+
+  result = BlockType::split(block2, kSplit2);
+  ASSERT_TRUE(result.has_value());
+
+  block2->mark_used();
+
+  BlockType::free(block2);
+  EXPECT_FALSE(block2->used());
+  EXPECT_EQ(block2->prev(), static_cast<BlockType *>(nullptr));
+  EXPECT_TRUE(block2->last());
 }
 
 TEST_FOR_EACH_BLOCK_TYPE(CanCheckValidBlock) {
@@ -357,11 +493,11 @@ TEST_FOR_EACH_BLOCK_TYPE(CanCheckValidBlock) {
   ASSERT_TRUE(result.has_value());
   BlockType *block1 = *result;
 
-  result = block1->split(kSplit1);
+  result = BlockType::split(block1, kSplit1);
   ASSERT_TRUE(result.has_value());
   BlockType *block2 = *result;
 
-  result = block2->split(kSplit2);
+  result = BlockType::split(block2, kSplit2);
   ASSERT_TRUE(result.has_value());
   BlockType *block3 = *result;
 
@@ -381,15 +517,15 @@ TEST_FOR_EACH_BLOCK_TYPE(CanCheckInvalidBlock) {
   ASSERT_TRUE(result.has_value());
   BlockType *block1 = *result;
 
-  result = block1->split(kSplit1);
+  result = BlockType::split(block1, kSplit1);
   ASSERT_TRUE(result.has_value());
   BlockType *block2 = *result;
 
-  result = block2->split(kSplit2);
+  result = BlockType::split(block2, kSplit2);
   ASSERT_TRUE(result.has_value());
   BlockType *block3 = *result;
 
-  result = block3->split(kSplit3);
+  result = BlockType::split(block3, kSplit3);
   ASSERT_TRUE(result.has_value());
 
   // Corrupt a Block header.
@@ -494,6 +630,7 @@ TEST_FOR_EACH_BLOCK_TYPE(AllocateAlreadyAligned) {
   // Check the next block.
   EXPECT_NE(next, static_cast<BlockType *>(nullptr));
   EXPECT_EQ(aligned_block->next(), next);
+  EXPECT_EQ(next->next(), static_cast<BlockType *>(nullptr));
   EXPECT_EQ(reinterpret_cast<byte *>(next) + next->outer_size(),
             bytes.data() + bytes.size());
 }
@@ -537,6 +674,7 @@ TEST_FOR_EACH_BLOCK_TYPE(AllocateNeedsAlignment) {
   // Check the next block.
   EXPECT_NE(next, static_cast<BlockType *>(nullptr));
   EXPECT_EQ(aligned_block->next(), next);
+  EXPECT_EQ(next->next(), static_cast<BlockType *>(nullptr));
   EXPECT_EQ(reinterpret_cast<byte *>(next) + next->outer_size(), &*bytes.end());
 }
 
@@ -549,7 +687,7 @@ TEST_FOR_EACH_BLOCK_TYPE(PreviousBlockMergedIfNotFirst) {
   BlockType *block = *result;
 
   // Split the block roughly halfway and work on the second half.
-  auto result2 = block->split(kN / 2);
+  auto result2 = BlockType::split(block, kN / 2);
   ASSERT_TRUE(result2.has_value());
   BlockType *newblock = *result2;
   ASSERT_EQ(newblock->prev(), block);
@@ -606,17 +744,20 @@ TEST_FOR_EACH_BLOCK_TYPE(CanRemergeBlockAllocations) {
 
   // Check we have the appropriate blocks.
   ASSERT_NE(prev, static_cast<BlockType *>(nullptr));
+  ASSERT_FALSE(prev->last());
   ASSERT_EQ(aligned_block->prev(), prev);
   EXPECT_NE(next, static_cast<BlockType *>(nullptr));
   EXPECT_NE(next, static_cast<BlockType *>(nullptr));
   EXPECT_EQ(aligned_block->next(), next);
   EXPECT_EQ(next->next(), static_cast<BlockType *>(nullptr));
+  ASSERT_TRUE(next->last());
 
   // Now check for successful merges.
-  EXPECT_TRUE(prev->merge_next());
+  EXPECT_TRUE(BlockType::merge_next(prev));
   EXPECT_EQ(prev->next(), next);
-  EXPECT_TRUE(prev->merge_next());
+  EXPECT_TRUE(BlockType::merge_next(prev));
   EXPECT_EQ(prev->next(), static_cast<BlockType *>(nullptr));
+  EXPECT_TRUE(prev->last());
 
   // We should have the original buffer.
   EXPECT_EQ(reinterpret_cast<byte *>(prev), &*bytes.begin());

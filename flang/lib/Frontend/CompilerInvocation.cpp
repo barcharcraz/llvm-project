@@ -431,10 +431,6 @@ static void parseTargetArgs(TargetOptions &opts, llvm::opt::ArgList &args) {
           args.getLastArg(clang::driver::options::OPT_target_cpu))
     opts.cpu = a->getValue();
 
-  if (const llvm::opt::Arg *a =
-          args.getLastArg(clang::driver::options::OPT_tune_cpu))
-    opts.cpuToTuneFor = a->getValue();
-
   for (const llvm::opt::Arg *currentArg :
        args.filtered(clang::driver::options::OPT_target_feature))
     opts.featuresAsWritten.emplace_back(currentArg->getValue());
@@ -837,11 +833,6 @@ static bool parseSemaArgs(CompilerInvocation &res, llvm::opt::ArgList &args,
     res.setDebugModuleDir(true);
   }
 
-  // -fhermetic-module-files option
-  if (args.hasArg(clang::driver::options::OPT_fhermetic_module_files)) {
-    res.setHermeticModuleFileOutput(true);
-  }
-
   // -module-suffix
   if (const auto *moduleSuffix =
           args.getLastArg(clang::driver::options::OPT_module_suffix)) {
@@ -1072,7 +1063,7 @@ static bool parseFloatingPointArgs(CompilerInvocation &invoc,
     opts.setFPContractMode(fpContractMode);
   }
 
-  if (args.getLastArg(clang::driver::options::OPT_menable_no_infs)) {
+  if (args.getLastArg(clang::driver::options::OPT_menable_no_infinities)) {
     opts.NoHonorInfs = true;
   }
 

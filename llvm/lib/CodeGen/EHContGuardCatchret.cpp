@@ -62,7 +62,7 @@ FunctionPass *llvm::createEHContGuardCatchretPass() {
 bool EHContGuardCatchret::runOnMachineFunction(MachineFunction &MF) {
 
   // Skip modules for which the ehcontguard flag is not set.
-  if (!MF.getFunction().getParent()->getModuleFlag("ehcontguard"))
+  if (!MF.getMMI().getModule()->getModuleFlag("ehcontguard"))
     return false;
 
   // Skip functions that do not have catchret

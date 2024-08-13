@@ -356,9 +356,6 @@ int main(int argc, char **argv) {
   cl::ParseCommandLineOptions(argc, argv, "llvm machine code playground\n");
   MCTargetOptions MCOptions = mc::InitMCTargetOptionsFromFlags();
   MCOptions.CompressDebugSections = CompressDebugSections.getValue();
-  MCOptions.ShowMCInst = ShowInst;
-  MCOptions.AsmVerbose = true;
-  MCOptions.MCUseDwarfDirectory = MCTargetOptions::EnableDwarfDirectory;
 
   setDwarfDebugFlags(argc, argv);
   setDwarfDebugProducer();
@@ -537,8 +534,10 @@ int main(int argc, char **argv) {
     std::unique_ptr<MCAsmBackend> MAB(
         TheTarget->createMCAsmBackend(*STI, *MRI, MCOptions));
     auto FOut = std::make_unique<formatted_raw_ostream>(*OS);
-    Str.reset(TheTarget->createAsmStreamer(Ctx, std::move(FOut), IP,
-                                           std::move(CE), std::move(MAB)));
+    Str.reset(
+        TheTarget->createAsmStreamer(Ctx, std::move(FOut), /*asmverbose*/ true,
+                                     /*useDwarfDirectory*/ true, IP,
+                                     std::move(CE), std::move(MAB), ShowInst));
 
   } else if (FileType == OFT_Null) {
     Str.reset(TheTarget->createNullStreamer(Ctx));
@@ -556,7 +555,9 @@ int main(int argc, char **argv) {
         TheTriple, Ctx, std::unique_ptr<MCAsmBackend>(MAB),
         DwoOut ? MAB->createDwoObjectWriter(*OS, DwoOut->os())
                : MAB->createObjectWriter(*OS),
-        std::unique_ptr<MCCodeEmitter>(CE), *STI));
+        std::unique_ptr<MCCodeEmitter>(CE), *STI, MCOptions.MCRelaxAll,
+        MCOptions.MCIncrementalLinkerCompatible,
+        /*DWARFMustBeAtTheEnd*/ false));
     if (NoExecStack)
       Str->initSections(true, *STI);
   }

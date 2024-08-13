@@ -135,7 +135,6 @@ std::unique_ptr<MachineFunction> createMachineFunction(LLVMContext &Ctx,
   MachineModuleInfo MMI(TM);
   const TargetSubtargetInfo &STI = *TM->getSubtargetImpl(*F);
 
-  return std::make_unique<MachineFunction>(*F, *TM, STI, MMI.getContext(),
-                                           FunctionNum);
+  return std::make_unique<MachineFunction>(*F, *TM, STI, FunctionNum, MMI);
 }
 

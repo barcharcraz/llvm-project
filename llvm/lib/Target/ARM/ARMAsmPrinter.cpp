@@ -1447,10 +1447,8 @@ void ARMAsmPrinter::emitInstruction(const MachineInstr *MI) {
     EmitUnwindingInstruction(MI);
 
   // Do any auto-generated pseudo lowerings.
-  if (MCInst OutInst; lowerPseudoInstExpansion(MI, OutInst)) {
-    EmitToStreamer(*OutStreamer, OutInst);
+  if (emitPseudoExpansionLowering(*OutStreamer, MI))
     return;
-  }
 
   assert(!convertAddSubFlagsOpcode(MI->getOpcode()) &&
          "Pseudo flag setting opcode should be expanded early");

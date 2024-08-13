@@ -186,7 +186,8 @@ public:
     if (PredI != PredJ)
       return false;
     if (SUJ->isSucc(SUI)) {
-      for (const SDep &Dep : SUJ->Succs) {
+      for (unsigned i = 0, e = SUJ->Succs.size(); i < e; ++i) {
+        const SDep &Dep = SUJ->Succs[i];
         if (Dep.getSUnit() != SUI)
           continue;
         if (Dep.getKind() == SDep::Anti)

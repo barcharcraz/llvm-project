@@ -211,7 +211,7 @@ void RISCVTargetInfo::getTargetDefines(const LangOptions &Opts,
     Builder.defineMacro("__riscv_v_fixed_vlen",
                         Twine(VScale->first * llvm::RISCV::RVVBitsPerBlock));
 
-  if (FastScalarUnalignedAccess)
+  if (FastUnalignedAccess)
     Builder.defineMacro("__riscv_misaligned_fast");
   else
     Builder.defineMacro("__riscv_misaligned_avoid");
@@ -353,8 +353,8 @@ bool RISCVTargetInfo::handleTargetFeatures(std::vector<std::string> &Features,
   if (ISAInfo->hasExtension("zfh") || ISAInfo->hasExtension("zhinx"))
     HasLegalHalfType = true;
 
-  FastScalarUnalignedAccess =
-      llvm::is_contained(Features, "+unaligned-scalar-mem");
+  FastUnalignedAccess = llvm::is_contained(Features, "+unaligned-scalar-mem") &&
+                        llvm::is_contained(Features, "+unaligned-vector-mem");
 
   if (llvm::is_contained(Features, "+experimental"))
     HasExperimental = true;
@@ -478,10 +478,4 @@ RISCVTargetInfo::checkCallingConvention(CallingConv CC) const {
   case CC_RISCVVectorCall:
     return CCCR_OK;
   }
-}
-
-bool RISCVTargetInfo::validateCpuSupports(StringRef Feature) const {
-  // Only allow extensions we have a known bit position for in the
-  // __riscv_feature_bits structure.
-  return -1 != llvm::RISCVISAInfo::getRISCVFeaturesBitPosition(Feature);
 }

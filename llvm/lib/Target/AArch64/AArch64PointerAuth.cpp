@@ -100,7 +100,6 @@ void AArch64PointerAuth::signLR(MachineFunction &MF,
   auto &MFnI = *MF.getInfo<AArch64FunctionInfo>();
   bool UseBKey = MFnI.shouldSignWithBKey();
   bool EmitCFI = MFnI.needsDwarfUnwindInfo(MF);
-  bool EmitAsyncCFI = MFnI.needsAsyncDwarfUnwindInfo(MF);
   bool NeedsWinCFI = MF.hasWinCFI();
 
   MachineBasicBlock &MBB = *MBBI->getParent();
@@ -116,7 +115,7 @@ void AArch64PointerAuth::signLR(MachineFunction &MF,
   // PAuthLR authentication instructions need to know the value of PC at the
   // point of signing (PACI*).
   if (MFnI.branchProtectionPAuthLR()) {
-    MCSymbol *PACSym = MF.getContext().createTempSymbol();
+    MCSymbol *PACSym = MF.getMMI().getContext().createTempSymbol();
     MFnI.setSigningInstrLabel(PACSym);
   }
 
@@ -138,18 +137,6 @@ void AArch64PointerAuth::signLR(MachineFunction &MF,
   }
 
   if (EmitCFI) {
-    if (!EmitAsyncCFI) {
-      // Reduce the size of the generated call frame information for synchronous
-      // CFI by bundling the new CFI instruction with others in the prolog, so
-      // that no additional DW_CFA_advance_loc is needed.
-      for (auto I = MBBI; I != MBB.end(); ++I) {
-        if (I->getOpcode() == TargetOpcode::CFI_INSTRUCTION &&
-            I->getFlag(MachineInstr::FrameSetup)) {
-          MBBI = I;
-          break;
-        }
-      }
-    }
     unsigned CFIIndex =
         MF.addFrameInst(MCCFIInstruction::createNegateRAState(nullptr));
     BuildMI(MBB, MBBI, DL, TII->get(TargetOpcode::CFI_INSTRUCTION))
@@ -341,8 +328,7 @@ bool AArch64PointerAuth::checkAuthenticatedLR(
   AArch64PACKey::ID KeyId =
       MFnI->shouldSignWithBKey() ? AArch64PACKey::IB : AArch64PACKey::IA;
 
-  AuthCheckMethod Method =
-      Subtarget->getAuthenticatedLRCheckMethod(*TI->getMF());
+  AuthCheckMethod Method = Subtarget->getAuthenticatedLRCheckMethod();
 
   if (Method == AuthCheckMethod::None)
     return false;

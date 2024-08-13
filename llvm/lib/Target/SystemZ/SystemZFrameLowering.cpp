@@ -517,7 +517,8 @@ static void buildDefCFAReg(MachineBasicBlock &MBB,
                            const DebugLoc &DL, unsigned Reg,
                            const SystemZInstrInfo *ZII) {
   MachineFunction &MF = *MBB.getParent();
-  const MCRegisterInfo *MRI = MF.getContext().getRegisterInfo();
+  MachineModuleInfo &MMI = MF.getMMI();
+  const MCRegisterInfo *MRI = MMI.getContext().getRegisterInfo();
   unsigned RegNum = MRI->getDwarfRegNum(Reg, true);
   unsigned CFIIndex = MF.addFrameInst(
                         MCCFIInstruction::createDefCfaRegister(nullptr, RegNum));
@@ -534,7 +535,8 @@ void SystemZELFFrameLowering::emitPrologue(MachineFunction &MF,
   auto *ZII = static_cast<const SystemZInstrInfo *>(STI.getInstrInfo());
   SystemZMachineFunctionInfo *ZFI = MF.getInfo<SystemZMachineFunctionInfo>();
   MachineBasicBlock::iterator MBBI = MBB.begin();
-  const MCRegisterInfo *MRI = MF.getContext().getRegisterInfo();
+  MachineModuleInfo &MMI = MF.getMMI();
+  const MCRegisterInfo *MRI = MMI.getContext().getRegisterInfo();
   const std::vector<CalleeSavedInfo> &CSI = MFFrame.getCalleeSavedInfo();
   bool HasFP = hasFP(MF);
 

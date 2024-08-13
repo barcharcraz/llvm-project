@@ -21,7 +21,7 @@ namespace scudo {
 // implementation supports only POD types.
 //
 // NOTE: This class is not meant to be used directly, use Vector<T> instead.
-template <typename T, size_t StaticNumEntries> class VectorNoCtor {
+template <typename T> class VectorNoCtor {
 public:
   T &operator[](uptr I) {
     DCHECK_LT(I, Size);
@@ -116,21 +116,18 @@ private:
   uptr CapacityBytes = 0;
   uptr Size = 0;
 
-  T LocalData[StaticNumEntries] = {};
+  T LocalData[256 / sizeof(T)] = {};
   MemMapT ExternalBuffer;
 };
 
-template <typename T, size_t StaticNumEntries>
-class Vector : public VectorNoCtor<T, StaticNumEntries> {
+template <typename T> class Vector : public VectorNoCtor<T> {
 public:
-  static_assert(StaticNumEntries > 0U,
-                "Vector must have a non-zero number of static entries.");
-  constexpr Vector() { VectorNoCtor<T, StaticNumEntries>::init(); }
+  constexpr Vector() { VectorNoCtor<T>::init(); }
   explicit Vector(uptr Count) {
-    VectorNoCtor<T, StaticNumEntries>::init(Count);
+    VectorNoCtor<T>::init(Count);
     this->resize(Count);
   }
-  ~Vector() { VectorNoCtor<T, StaticNumEntries>::destroy(); }
+  ~Vector() { VectorNoCtor<T>::destroy(); }
   // Disallow copies and moves.
   Vector(const Vector &) = delete;
   Vector &operator=(const Vector &) = delete;

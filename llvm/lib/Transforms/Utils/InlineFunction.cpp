@@ -1815,9 +1815,10 @@ static void fixupLineNumbers(Function *Fn, Function::iterator FI,
 
   // Iterate over all instructions, updating metadata and debug-info records.
   for (; FI != Fn->end(); ++FI) {
-    for (Instruction &I : *FI) {
-      UpdateInst(I);
-      for (DbgRecord &DVR : I.getDbgRecordRange()) {
+    for (BasicBlock::iterator BI = FI->begin(), BE = FI->end(); BI != BE;
+         ++BI) {
+      UpdateInst(*BI);
+      for (DbgRecord &DVR : BI->getDbgRecordRange()) {
         UpdateDVR(&DVR);
       }
     }

@@ -117,7 +117,8 @@ static MCStreamer *createMCStreamer(const Triple &T, MCContext &Context,
 
 static MCTargetStreamer *createMipsAsmTargetStreamer(MCStreamer &S,
                                                      formatted_raw_ostream &OS,
-                                                     MCInstPrinter *InstPrint) {
+                                                     MCInstPrinter *InstPrint,
+                                                     bool isVerboseAsm) {
   return new MipsTargetAsmStreamer(S, OS);
 }
 

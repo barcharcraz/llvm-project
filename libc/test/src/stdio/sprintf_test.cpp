@@ -6,7 +6,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "src/__support/macros/config.h"
 #include "src/stdio/sprintf.h"
 
 #include "src/__support/FPUtil/FPBits.h"
@@ -17,7 +16,7 @@
 // TODO: Add a comment here explaining the printf format string.
 
 // #include <stdio.h>
-// namespace LIBC_NAMESPACE_DECL {
+// namespace LIBC_NAMESPACE {
 // using ::sprintf;
 // }
 
@@ -630,7 +629,7 @@ TEST(LlvmLibcSPrintfTest, PointerConv) {
     ASSERT_STREQ(buff, "0x1a2b3c4d5e6f7081");
   }
 
-  written = LIBC_NAMESPACE::sprintf(buff, "%p", &written);
+  written = LIBC_NAMESPACE::sprintf(buff, "%p", buff);
   EXPECT_GT(written, 0);
 
   // Width tests:
@@ -1687,6 +1686,9 @@ TEST_F(LlvmLibcSPrintfTest, FloatDecimalConv) {
 TEST_F(LlvmLibcSPrintfTest, FloatDecimalLongDoubleConv) {
   ForceRoundingMode r(RoundingMode::Nearest);
 
+  char big_buff[10000]; // Used for long doubles and other extremely wide
+                        // numbers.
+
   // Length Modifier Tests.
 
   // TODO(michaelrj): Add tests for LIBC_TYPES_LONG_DOUBLE_IS_FLOAT64 and 128
@@ -1737,8 +1739,6 @@ TEST_F(LlvmLibcSPrintfTest, FloatDecimalLongDoubleConv) {
       "000000000000000000000000000000000000000000000000000000000000000000000000"
       "000000000000000000000000000000000000000000000000000000000000000000000000"
       "00000000000000000000000000000000000000000000000000000000000000000000");
-
-  char big_buff[10000]; // Used for extremely wide numbers.
 
   written = LIBC_NAMESPACE::sprintf(big_buff, "%Lf", 1e1000L);
   ASSERT_STREQ_LEN(

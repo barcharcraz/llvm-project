@@ -631,7 +631,8 @@ MachineInstr *SystemZInstrInfo::optimizeLoadInstr(MachineInstr &MI,
   DefMI = MRI->getVRegDef(FoldAsLoadDefReg);
   assert(DefMI);
   bool SawStore = false;
-  if (!DefMI->isSafeToMove(SawStore) || !MRI->hasOneNonDBGUse(FoldAsLoadDefReg))
+  if (!DefMI->isSafeToMove(nullptr, SawStore) ||
+      !MRI->hasOneNonDBGUse(FoldAsLoadDefReg))
     return nullptr;
 
   int UseOpIdx =

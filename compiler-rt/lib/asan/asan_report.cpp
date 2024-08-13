@@ -35,8 +35,8 @@ namespace __asan {
 // -------------------- User-specified callbacks ----------------- {{{1
 static void (*error_report_callback)(const char*);
 using ErrorMessageBuffer = InternalMmapVectorNoCtor<char, true>;
-alignas(
-    alignof(ErrorMessageBuffer)) static char error_message_buffer_placeholder
+static ALIGNED(
+    alignof(ErrorMessageBuffer)) char error_message_buffer_placeholder
     [sizeof(ErrorMessageBuffer)];
 static ErrorMessageBuffer *error_message_buffer = nullptr;
 static Mutex error_message_buf_mutex;

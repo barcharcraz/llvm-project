@@ -35,6 +35,7 @@
 #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
 #include "mlir/Conversion/MathToLibm/MathToLibm.h"
 #include "mlir/Conversion/OpenMPToLLVM/ConvertOpenMPToLLVM.h"
+#include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/DLTI/DLTI.h"
@@ -1431,8 +1432,8 @@ struct EmboxCommonConversion : public fir::FIROpConversion<OP> {
             fir::unwrapPassByRefType(memref.getType()))))
       TODO(xbox.getLoc(),
            "fir.embox codegen dynamic size component in derived type");
-    indices.append(operands.begin() + xbox.getSubcomponentOperandIndex(),
-                   operands.begin() + xbox.getSubcomponentOperandIndex() +
+    indices.append(operands.begin() + xbox.subcomponentOffset(),
+                   operands.begin() + xbox.subcomponentOffset() +
                        xbox.getSubcomponent().size());
   }
 
@@ -1487,7 +1488,7 @@ struct EmboxOpConversion : public EmboxCommonConversion<fir::EmboxOp> {
     mlir::Value sourceBox;
     mlir::Type sourceBoxType;
     if (embox.getSourceBox()) {
-      sourceBox = operands[embox.getSourceBoxOperandIndex()];
+      sourceBox = operands[embox.getSourceBoxOffset()];
       sourceBoxType = embox.getSourceBox().getType();
     }
     assert(!embox.getShape() && "There should be no dims on this embox op");
@@ -1519,7 +1520,7 @@ struct XEmboxOpConversion : public EmboxCommonConversion<fir::cg::XEmboxOp> {
     mlir::Value sourceBox;
     mlir::Type sourceBoxType;
     if (xbox.getSourceBox()) {
-      sourceBox = operands[xbox.getSourceBoxOperandIndex()];
+      sourceBox = operands[xbox.getSourceBoxOffset()];
       sourceBoxType = xbox.getSourceBox().getType();
     }
     auto [boxTy, dest, resultEleSize] = consDescriptorPrefix(
@@ -1529,11 +1530,11 @@ struct XEmboxOpConversion : public EmboxCommonConversion<fir::cg::XEmboxOp> {
     // Generate the triples in the dims field of the descriptor
     auto i64Ty = mlir::IntegerType::get(xbox.getContext(), 64);
     assert(!xbox.getShape().empty() && "must have a shape");
-    unsigned shapeOffset = xbox.getShapeOperandIndex();
+    unsigned shapeOffset = xbox.shapeOffset();
     bool hasShift = !xbox.getShift().empty();
-    unsigned shiftOffset = xbox.getShiftOperandIndex();
+    unsigned shiftOffset = xbox.shiftOffset();
     bool hasSlice = !xbox.getSlice().empty();
-    unsigned sliceOffset = xbox.getSliceOperandIndex();
+    unsigned sliceOffset = xbox.sliceOffset();
     mlir::Location loc = xbox.getLoc();
     mlir::Value zero = genConstantIndex(loc, i64Ty, rewriter, 0);
     mlir::Value one = genConstantIndex(loc, i64Ty, rewriter, 1);
@@ -1682,7 +1683,7 @@ struct XEmboxOpConversion : public EmboxCommonConversion<fir::cg::XEmboxOp> {
       if (hasSubcomp)
         getSubcomponentIndices(xbox, xbox.getMemref(), operands, fieldIndices);
       if (hasSubstr)
-        substringOffset = operands[xbox.getSubstrOperandIndex()];
+        substringOffset = operands[xbox.substrOffset()];
       mlir::Type llvmBaseType =
           convertType(fir::unwrapRefType(xbox.getMemref().getType()));
       base = genBoxOffsetGep(rewriter, loc, base, llvmBaseType, ptrOffset,
@@ -1843,7 +1844,7 @@ private:
       if (!rebox.getSubcomponent().empty())
         getSubcomponentIndices(rebox, rebox.getBox(), operands, fieldIndices);
       if (!rebox.getSubstr().empty())
-        substringOffset = operands[rebox.getSubstrOperandIndex()];
+        substringOffset = operands[rebox.substrOffset()];
       base = genBoxOffsetGep(rewriter, loc, base, llvmBaseObjectType, zero,
                              /*cstInteriorIndices=*/std::nullopt, fieldIndices,
                              substringOffset);
@@ -1862,8 +1863,8 @@ private:
     llvm::SmallVector<mlir::Value> slicedStrides;
     mlir::Value one = genConstantIndex(loc, idxTy, rewriter, 1);
     const bool sliceHasOrigins = !rebox.getShift().empty();
-    unsigned sliceOps = rebox.getSliceOperandIndex();
-    unsigned shiftOps = rebox.getShiftOperandIndex();
+    unsigned sliceOps = rebox.sliceOffset();
+    unsigned shiftOps = rebox.shiftOffset();
     auto strideOps = inputStrides.begin();
     const unsigned inputRank = inputStrides.size();
     for (unsigned i = 0; i < inputRank;
@@ -1912,10 +1913,9 @@ private:
              mlir::Value base, mlir::ValueRange inputExtents,
              mlir::ValueRange inputStrides, mlir::ValueRange operands,
              mlir::ConversionPatternRewriter &rewriter) const {
-    mlir::ValueRange reboxShifts{
-        operands.begin() + rebox.getShiftOperandIndex(),
-        operands.begin() + rebox.getShiftOperandIndex() +
-            rebox.getShift().size()};
+    mlir::ValueRange reboxShifts{operands.begin() + rebox.shiftOffset(),
+                                 operands.begin() + rebox.shiftOffset() +
+                                     rebox.getShift().size()};
     if (rebox.getShape().empty()) {
       // Only setting new lower bounds.
       return finalizeRebox(rebox, destBoxTy, dest, base, reboxShifts,
@@ -1935,7 +1935,7 @@ private:
                              ? genConstantIndex(loc, idxTy, rewriter, 1)
                              : inputStrides[0];
     for (unsigned i = 0; i < rebox.getShape().size(); ++i) {
-      mlir::Value rawExtent = operands[rebox.getShapeOperandIndex() + i];
+      mlir::Value rawExtent = operands[rebox.shapeOffset() + i];
       mlir::Value extent = integerCast(loc, rewriter, idxTy, rawExtent);
       newExtents.emplace_back(extent);
       newStrides.emplace_back(stride);
@@ -2042,13 +2042,13 @@ struct ExtractValueOpConversion
 /// InsertValue is the generalized instruction for the composition of new
 /// aggregate type values.
 struct InsertValueOpConversion
-    : public mlir::OpConversionPattern<fir::InsertValueOp>,
+    : public fir::FIROpAndTypeConversion<fir::InsertValueOp>,
       public ValueOpCommon {
-  using OpConversionPattern::OpConversionPattern;
+  using FIROpAndTypeConversion::FIROpAndTypeConversion;
 
   llvm::LogicalResult
-  matchAndRewrite(fir::InsertValueOp insertVal, OpAdaptor adaptor,
-                  mlir::ConversionPatternRewriter &rewriter) const override {
+  doRewrite(fir::InsertValueOp insertVal, mlir::Type ty, OpAdaptor adaptor,
+            mlir::ConversionPatternRewriter &rewriter) const override {
     mlir::ValueRange operands = adaptor.getOperands();
     auto indices = collectIndices(rewriter, insertVal.getCoor());
     toRowMajor(indices, operands[0].getType());
@@ -2138,10 +2138,10 @@ struct XArrayCoorOpConversion
     assert(coor.getShift().empty() || coor.getShift().size() == rank);
     assert(coor.getSlice().empty() || coor.getSlice().size() == 3 * rank);
     mlir::Type idxTy = lowerTy().indexType();
-    unsigned indexOffset = coor.getIndicesOperandIndex();
-    unsigned shapeOffset = coor.getShapeOperandIndex();
-    unsigned shiftOffset = coor.getShiftOperandIndex();
-    unsigned sliceOffset = coor.getSliceOperandIndex();
+    unsigned indexOffset = coor.indicesOffset();
+    unsigned shapeOffset = coor.shapeOffset();
+    unsigned shiftOffset = coor.shiftOffset();
+    unsigned sliceOffset = coor.sliceOffset();
     auto sliceOps = coor.getSlice().begin();
     mlir::Value one = genConstantIndex(loc, idxTy, rewriter, 1);
     mlir::Value prevExt = one;
@@ -2239,7 +2239,7 @@ struct XArrayCoorOpConversion
       }
       llvm::SmallVector<mlir::Value> indices = convertSubcomponentIndices(
           loc, elementType,
-          operands.slice(coor.getSubcomponentOperandIndex(),
+          operands.slice(coor.subcomponentOffset(),
                          coor.getSubcomponent().size()));
       args.append(indices.begin(), indices.end());
       rewriter.replaceOpWithNewOp<mlir::LLVM::GEPOp>(coor, llvmPtrTy,
@@ -2263,7 +2263,7 @@ struct XArrayCoorOpConversion
         if (fir::characterWithDynamicLen(eleTy)) {
           assert(coor.getLenParams().size() == 1);
           auto length = integerCast(loc, rewriter, idxTy,
-                                    operands[coor.getLenParamsOperandIndex()]);
+                                    operands[coor.lenParamsOffset()]);
           offset = rewriter.create<mlir::LLVM::MulOp>(loc, idxTy, offset,
                                                       length, nsw);
         } else {
@@ -2276,7 +2276,7 @@ struct XArrayCoorOpConversion
       args.push_back(offset);
       llvm::SmallVector<mlir::Value> indices = convertSubcomponentIndices(
           loc, gepObjectType,
-          operands.slice(coor.getSubcomponentOperandIndex(),
+          operands.slice(coor.subcomponentOffset(),
                          coor.getSubcomponent().size()));
       args.append(indices.begin(), indices.end());
     }
@@ -2669,9 +2669,8 @@ struct TypeDescOpConversion : public fir::FIROpConversion<fir::TypeDescOp> {
 };
 
 /// Lower `fir.has_value` operation to `llvm.return` operation.
-struct HasValueOpConversion
-    : public mlir::OpConversionPattern<fir::HasValueOp> {
-  using OpConversionPattern::OpConversionPattern;
+struct HasValueOpConversion : public fir::FIROpConversion<fir::HasValueOp> {
+  using FIROpConversion::FIROpConversion;
 
   llvm::LogicalResult
   matchAndRewrite(fir::HasValueOp op, OpAdaptor adaptor,
@@ -3516,6 +3515,29 @@ struct MustBeDeadConversion : public fir::FIROpConversion<FromOp> {
   }
 };
 
+struct UnrealizedConversionCastOpConversion
+    : public fir::FIROpConversion<mlir::UnrealizedConversionCastOp> {
+  using FIROpConversion::FIROpConversion;
+
+  llvm::LogicalResult
+  matchAndRewrite(mlir::UnrealizedConversionCastOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const override {
+    assert(op.getOutputs().getTypes().size() == 1 && "expect a single type");
+    mlir::Type convertedType = convertType(op.getOutputs().getTypes()[0]);
+    if (convertedType == adaptor.getInputs().getTypes()[0]) {
+      rewriter.replaceOp(op, adaptor.getInputs());
+      return mlir::success();
+    }
+
+    convertedType = adaptor.getInputs().getTypes()[0];
+    if (convertedType == op.getOutputs().getType()[0]) {
+      rewriter.replaceOp(op, adaptor.getInputs());
+      return mlir::success();
+    }
+    return mlir::failure();
+  }
+};
+
 struct ShapeOpConversion : public MustBeDeadConversion<fir::ShapeOp> {
   using MustBeDeadConversion::MustBeDeadConversion;
 };
@@ -3595,9 +3617,6 @@ public:
 
     if (!forcedTargetCPU.empty())
       fir::setTargetCPU(mod, forcedTargetCPU);
-
-    if (!forcedTuneCPU.empty())
-      fir::setTuneCPU(mod, forcedTuneCPU);
 
     if (!forcedTargetFeatures.empty())
       fir::setTargetFeatures(mod, forcedTargetFeatures);
@@ -3695,8 +3714,7 @@ public:
       signalPassFailure();
     }
 
-    // Run pass to add comdats to functions that have weak linkage on relevant
-    // platforms
+    // Run pass to add comdats to functions that have weak linkage on relevant platforms
     if (fir::getTargetTriple(mod).supportsCOMDAT()) {
       mlir::OpPassManager comdatPM("builtin.module");
       comdatPM.addPass(mlir::LLVM::createLLVMAddComdats());
@@ -3771,19 +3789,16 @@ void fir::populateFIRToLLVMConversionPatterns(
       DivcOpConversion, EmboxOpConversion, EmboxCharOpConversion,
       EmboxProcOpConversion, ExtractValueOpConversion, FieldIndexOpConversion,
       FirEndOpConversion, FreeMemOpConversion, GlobalLenOpConversion,
-      GlobalOpConversion, InsertOnRangeOpConversion, IsPresentOpConversion,
-      LenParamIndexOpConversion, LoadOpConversion, MulcOpConversion,
-      NegcOpConversion, NoReassocOpConversion, SelectCaseOpConversion,
-      SelectOpConversion, SelectRankOpConversion, SelectTypeOpConversion,
-      ShapeOpConversion, ShapeShiftOpConversion, ShiftOpConversion,
-      SliceOpConversion, StoreOpConversion, StringLitOpConversion,
-      SubcOpConversion, TypeDescOpConversion, TypeInfoOpConversion,
-      UnboxCharOpConversion, UnboxProcOpConversion, UndefOpConversion,
-      UnreachableOpConversion, XArrayCoorOpConversion, XEmboxOpConversion,
-      XReboxOpConversion, ZeroOpConversion>(converter, options);
-
-  // Patterns that are populated without a type converter do not trigger
-  // target materializations for the operands of the root op.
-  patterns.insert<HasValueOpConversion, InsertValueOpConversion>(
-      patterns.getContext());
+      GlobalOpConversion, HasValueOpConversion, InsertOnRangeOpConversion,
+      InsertValueOpConversion, IsPresentOpConversion, LenParamIndexOpConversion,
+      LoadOpConversion, MulcOpConversion, NegcOpConversion,
+      NoReassocOpConversion, SelectCaseOpConversion, SelectOpConversion,
+      SelectRankOpConversion, SelectTypeOpConversion, ShapeOpConversion,
+      ShapeShiftOpConversion, ShiftOpConversion, SliceOpConversion,
+      StoreOpConversion, StringLitOpConversion, SubcOpConversion,
+      TypeDescOpConversion, TypeInfoOpConversion, UnboxCharOpConversion,
+      UnboxProcOpConversion, UndefOpConversion, UnreachableOpConversion,
+      UnrealizedConversionCastOpConversion, XArrayCoorOpConversion,
+      XEmboxOpConversion, XReboxOpConversion, ZeroOpConversion>(converter,
+                                                                options);
 }

@@ -88,12 +88,14 @@ static MCInstPrinter *createAMDGPUMCInstPrinter(const Triple &T,
                                                 const MCRegisterInfo &MRI) {
   if (T.getArch() == Triple::r600)
     return new R600InstPrinter(MAI, MII, MRI);
-  return new AMDGPUInstPrinter(MAI, MII, MRI);
+  else
+    return new AMDGPUInstPrinter(MAI, MII, MRI);
 }
 
-static MCTargetStreamer *
-createAMDGPUAsmTargetStreamer(MCStreamer &S, formatted_raw_ostream &OS,
-                              MCInstPrinter *InstPrint) {
+static MCTargetStreamer *createAMDGPUAsmTargetStreamer(MCStreamer &S,
+                                                      formatted_raw_ostream &OS,
+                                                      MCInstPrinter *InstPrint,
+                                                      bool isVerboseAsm) {
   return new AMDGPUTargetAsmStreamer(S, OS);
 }
 

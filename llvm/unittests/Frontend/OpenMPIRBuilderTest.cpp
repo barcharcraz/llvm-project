@@ -6902,8 +6902,8 @@ TEST_F(OpenMPIRBuilderTest, EmitOffloadingArraysArguments) {
   Info.RTArgs.MappersArray =
       ConstantPointerNull::get(Array4VoidPtrTy->getPointerTo());
   Info.NumberOfPtrs = 4;
-  Info.EmitDebug = false;
-  OMPBuilder.emitOffloadingArraysArgument(Builder, RTArgs, Info, false);
+
+  OMPBuilder.emitOffloadingArraysArgument(Builder, RTArgs, Info, false, false);
 
   EXPECT_NE(RTArgs.BasePointersArray, nullptr);
   EXPECT_NE(RTArgs.PointersArray, nullptr);

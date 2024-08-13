@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -verify -std=c++11 -Wdangling-assignment-gsl %s
+// RUN: %clang_cc1 -verify -std=c++11 %s
 
 using T = int[];
 
@@ -34,6 +34,6 @@ struct basic_string {
 };
 }  // namespace std
 void test(const char* a) {
-  // verify we're emitting the `-Wdangling-assignment-gsl` warning.
+  // verify we're emitting the `-Wdangling-assignment` warning.
   a = std::basic_string().c_str(); // expected-warning {{object backing the pointer a will be destroyed at the end of the full-expression}}
 }

@@ -34,7 +34,7 @@
 using namespace llvm;
 
 #define DEBUG_TYPE "printfToRuntime"
-enum { DWORD_ALIGN = 4 };
+#define DWORD_ALIGN 4
 
 namespace {
 class AMDGPUPrintfRuntimeBinding final : public ModulePass {
@@ -50,7 +50,7 @@ private:
 
 class AMDGPUPrintfRuntimeBindingImpl {
 public:
-  AMDGPUPrintfRuntimeBindingImpl() = default;
+  AMDGPUPrintfRuntimeBindingImpl() {}
   bool run(Module &M);
 
 private:
@@ -437,8 +437,7 @@ bool AMDGPUPrintfRuntimeBindingImpl::run(Module &M) {
     return false;
 
   auto PrintfFunction = M.getFunction("printf");
-  if (!PrintfFunction || !PrintfFunction->isDeclaration() ||
-      M.getModuleFlag("openmp"))
+  if (!PrintfFunction || !PrintfFunction->isDeclaration())
     return false;
 
   for (auto &U : PrintfFunction->uses()) {

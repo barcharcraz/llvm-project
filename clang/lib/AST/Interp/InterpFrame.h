@@ -15,6 +15,8 @@
 
 #include "Frame.h"
 #include "Program.h"
+#include <cstdint>
+#include <vector>
 
 namespace clang {
 namespace interp {
@@ -83,9 +85,11 @@ public:
   /// Returns the value of an argument.
   template <typename T> const T &getParam(unsigned Offset) const {
     auto Pt = Params.find(Offset);
-    if (Pt == Params.end())
+    if (Pt == Params.end()) {
       return stackRef<T>(Offset);
-    return Pointer(reinterpret_cast<Block *>(Pt->second.get())).deref<T>();
+    } else {
+      return Pointer(reinterpret_cast<Block *>(Pt->second.get())).deref<T>();
+    }
   }
 
   /// Mutates a local copy of a parameter.

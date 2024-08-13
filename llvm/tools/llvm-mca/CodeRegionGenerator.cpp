@@ -41,7 +41,8 @@ Expected<const CodeRegions &> AsmCodeRegionGenerator::parseCodeRegions(
   // doesn't show up in the llvm-mca output.
   raw_ostream &OSRef = nulls();
   formatted_raw_ostream FOSRef(OSRef);
-  TheTarget.createAsmTargetStreamer(*Str, FOSRef, IP.get());
+  TheTarget.createAsmTargetStreamer(*Str, FOSRef, IP.get(),
+                                    /*IsVerboseAsm=*/true);
 
   // Create a MCAsmParser and setup the lexer to recognize llvm-mca ASM
   // comments.

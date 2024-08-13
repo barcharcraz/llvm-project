@@ -11,7 +11,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "CGOpenMPRuntime.h"
-#include "ABIInfoImpl.h"
 #include "CGCXXABI.h"
 #include "CGCleanup.h"
 #include "CGRecordLayout.h"
@@ -3861,7 +3860,7 @@ CGOpenMPRuntime::emitTaskInit(CodeGenFunction &CGF, SourceLocation Loc,
         HasIterator = true;
         continue;
       }
-      for (const Expr *E : C->varlist()) {
+      for (const Expr *E : C->varlists()) {
         llvm::Value *Addr;
         llvm::Value *Size;
         std::tie(Addr, Size) = getPointerAndSize(CGF, E);
@@ -3894,7 +3893,7 @@ CGOpenMPRuntime::emitTaskInit(CodeGenFunction &CGF, SourceLocation Loc,
         continue;
       OMPIteratorGeneratorScope IteratorScope(
           CGF, cast_or_null<OMPIteratorExpr>(Modifier->IgnoreParenImpCasts()));
-      for (const Expr *E : C->varlist()) {
+      for (const Expr *E : C->varlists()) {
         llvm::Value *Addr;
         llvm::Value *Size;
         std::tie(Addr, Size) = getPointerAndSize(CGF, E);
@@ -4259,18 +4258,14 @@ std::pair<llvm::Value *, Address> CGOpenMPRuntime::emitDependClause(
     // Include number of iterations, if any.
 
     if (const auto *IE = cast_or_null<OMPIteratorExpr>(D.IteratorExpr)) {
-      llvm::Value *ClauseIteratorSpace =
-          llvm::ConstantInt::get(CGF.IntPtrTy, 1);
       for (unsigned I = 0, E = IE->numOfIterators(); I < E; ++I) {
         llvm::Value *Sz = CGF.EmitScalarExpr(IE->getHelper(I).Upper);
         Sz = CGF.Builder.CreateIntCast(Sz, CGF.IntPtrTy, /*isSigned=*/false);
-        ClauseIteratorSpace = CGF.Builder.CreateNUWMul(Sz, ClauseIteratorSpace);
+        llvm::Value *NumClauseDeps = CGF.Builder.CreateNUWMul(
+            Sz, llvm::ConstantInt::get(CGF.IntPtrTy, D.DepExprs.size()));
+        NumOfRegularWithIterators =
+            CGF.Builder.CreateNUWAdd(NumOfRegularWithIterators, NumClauseDeps);
       }
-      llvm::Value *NumClauseDeps = CGF.Builder.CreateNUWMul(
-          ClauseIteratorSpace,
-          llvm::ConstantInt::get(CGF.IntPtrTy, D.DepExprs.size()));
-      NumOfRegularWithIterators =
-          CGF.Builder.CreateNUWAdd(NumOfRegularWithIterators, NumClauseDeps);
       HasRegularWithIterators = true;
       continue;
     }
@@ -6047,6 +6042,11 @@ const Expr *CGOpenMPRuntime::getNumTeamsExprForTargetDirective(
         MinTeamsVal = MaxTeamsVal = 0;
         return nullptr;
       }
+      if (isOpenMPParallelDirective(NestedDir->getDirectiveKind()) ||
+          isOpenMPSimdDirective(NestedDir->getDirectiveKind())) {
+        MinTeamsVal = MaxTeamsVal = 1;
+        return nullptr;
+      }
       MinTeamsVal = MaxTeamsVal = 1;
       return nullptr;
     }
@@ -7729,15 +7729,12 @@ private:
     for (const auto &I : RD->bases()) {
       if (I.isVirtual())
         continue;
-
-      QualType BaseTy = I.getType();
-      const auto *Base = BaseTy->getAsCXXRecordDecl();
+      const auto *Base = I.getType()->getAsCXXRecordDecl();
       // Ignore empty bases.
-      if (isEmptyRecordForLayout(CGF.getContext(), BaseTy) ||
-          CGF.getContext()
-              .getASTRecordLayout(Base)
-              .getNonVirtualSize()
-              .isZero())
+      if (Base->isEmpty() || CGF.getContext()
+                                 .getASTRecordLayout(Base)
+                                 .getNonVirtualSize()
+                                 .isZero())
         continue;
 
       unsigned FieldIndex = RL.getNonVirtualBaseLLVMFieldNo(Base);
@@ -7745,12 +7742,10 @@ private:
     }
     // Fill in virtual bases.
     for (const auto &I : RD->vbases()) {
-      QualType BaseTy = I.getType();
+      const auto *Base = I.getType()->getAsCXXRecordDecl();
       // Ignore empty bases.
-      if (isEmptyRecordForLayout(CGF.getContext(), BaseTy))
+      if (Base->isEmpty())
         continue;
-
-      const auto *Base = BaseTy->getAsCXXRecordDecl();
       unsigned FieldIndex = RL.getVirtualBaseIndex(Base);
       if (RecordLayout[FieldIndex])
         continue;
@@ -7761,8 +7756,7 @@ private:
     for (const auto *Field : RD->fields()) {
       // Fill in non-bitfields. (Bitfields always use a zero pattern, which we
       // will fill in later.)
-      if (!Field->isBitField() &&
-          !isEmptyFieldForLayout(CGF.getContext(), Field)) {
+      if (!Field->isBitField() && !Field->isZeroSize(CGF.getContext())) {
         unsigned FieldIndex = RL.getLLVMFieldNo(Field);
         RecordLayout[FieldIndex] = Field;
       }
@@ -8187,7 +8181,7 @@ public:
       : CurDir(&Dir), CGF(CGF) {
     // Extract firstprivate clause information.
     for (const auto *C : Dir.getClausesOfKind<OMPFirstprivateClause>())
-      for (const auto *D : C->varlist())
+      for (const auto *D : C->varlists())
         FirstPrivateDecls.try_emplace(
             cast<VarDecl>(cast<DeclRefExpr>(D)->getDecl()), C->isImplicit());
     // Extract implicit firstprivates from uses_allocators clauses.
@@ -8867,20 +8861,35 @@ emitMappingInformation(CodeGenFunction &CGF, llvm::OpenMPIRBuilder &OMPBuilder,
                                          PLoc.getLine(), PLoc.getColumn(),
                                          SrcLocStrSize);
 }
+
 /// Emit the arrays used to pass the captures and map information to the
 /// offloading runtime library. If there is no map or capture information,
 /// return nullptr by reference.
-static void emitOffloadingArraysAndArgs(
+static void emitOffloadingArrays(
     CodeGenFunction &CGF, MappableExprsHandler::MapCombinedInfoTy &CombinedInfo,
     CGOpenMPRuntime::TargetDataInfo &Info, llvm::OpenMPIRBuilder &OMPBuilder,
-    bool IsNonContiguous = false, bool ForEndCall = false) {
+    bool IsNonContiguous = false) {
   CodeGenModule &CGM = CGF.CGM;
+
+  // Reset the array information.
+  Info.clearArrayInfo();
+  Info.NumberOfPtrs = CombinedInfo.BasePointers.size();
 
   using InsertPointTy = llvm::OpenMPIRBuilder::InsertPointTy;
   InsertPointTy AllocaIP(CGF.AllocaInsertPt->getParent(),
                          CGF.AllocaInsertPt->getIterator());
   InsertPointTy CodeGenIP(CGF.Builder.GetInsertBlock(),
                           CGF.Builder.GetInsertPoint());
+
+  auto FillInfoMap = [&](MappableExprsHandler::MappingExprInfo &MapExpr) {
+    return emitMappingInformation(CGF, OMPBuilder, MapExpr);
+  };
+  if (CGM.getCodeGenOpts().getDebugInfo() !=
+      llvm::codegenoptions::NoDebugInfo) {
+    CombinedInfo.Names.resize(CombinedInfo.Exprs.size());
+    llvm::transform(CombinedInfo.Exprs, CombinedInfo.Names.begin(),
+                    FillInfoMap);
+  }
 
   auto DeviceAddrCB = [&](unsigned int I, llvm::Value *NewDecl) {
     if (const ValueDecl *DevVD = CombinedInfo.DevicePtrDecls[I]) {
@@ -8892,14 +8901,14 @@ static void emitOffloadingArraysAndArgs(
     llvm::Value *MFunc = nullptr;
     if (CombinedInfo.Mappers[I]) {
       Info.HasMapper = true;
-      MFunc = CGM.getOpenMPRuntime().getOrCreateUserDefinedMapperFunc(
+      MFunc = CGF.CGM.getOpenMPRuntime().getOrCreateUserDefinedMapperFunc(
           cast<OMPDeclareMapperDecl>(CombinedInfo.Mappers[I]));
     }
     return MFunc;
   };
-  OMPBuilder.emitOffloadingArraysAndArgs(
-      AllocaIP, CodeGenIP, Info, Info.RTArgs, CombinedInfo, IsNonContiguous,
-      ForEndCall, DeviceAddrCB, CustomMapperCB);
+  OMPBuilder.emitOffloadingArrays(AllocaIP, CodeGenIP, CombinedInfo, Info,
+                                  /*IsNonContiguous=*/true, DeviceAddrCB,
+                                  CustomMapperCB);
 }
 
 /// Check for inner distribute directive.
@@ -9464,14 +9473,29 @@ llvm::Value *emitDynCGGroupMem(const OMPExecutableDirective &D,
   }
   return DynCGroupMem;
 }
-static void genMapInfoForCaptures(
-    MappableExprsHandler &MEHandler, CodeGenFunction &CGF,
-    const CapturedStmt &CS, llvm::SmallVectorImpl<llvm::Value *> &CapturedVars,
-    llvm::OpenMPIRBuilder &OMPBuilder,
-    llvm::DenseSet<CanonicalDeclPtr<const Decl>> &MappedVarSet,
-    MappableExprsHandler::MapCombinedInfoTy &CombinedInfo) {
 
+static void emitTargetCallKernelLaunch(
+    CGOpenMPRuntime *OMPRuntime, llvm::Function *OutlinedFn,
+    const OMPExecutableDirective &D,
+    llvm::SmallVectorImpl<llvm::Value *> &CapturedVars, bool RequiresOuterTask,
+    const CapturedStmt &CS, bool OffloadingMandatory,
+    llvm::PointerIntPair<const Expr *, 2, OpenMPDeviceClauseModifier> Device,
+    llvm::Value *OutlinedFnID, CodeGenFunction::OMPTargetDataInfo &InputInfo,
+    llvm::Value *&MapTypesArray, llvm::Value *&MapNamesArray,
+    llvm::function_ref<llvm::Value *(CodeGenFunction &CGF,
+                                     const OMPLoopDirective &D)>
+        SizeEmitter,
+    CodeGenFunction &CGF, CodeGenModule &CGM) {
+  llvm::OpenMPIRBuilder &OMPBuilder = OMPRuntime->getOMPBuilder();
+
+  // Fill up the arrays with all the captured variables.
+  MappableExprsHandler::MapCombinedInfoTy CombinedInfo;
+
+  // Get mappable expression information.
+  MappableExprsHandler MEHandler(D, CGF);
   llvm::DenseMap<llvm::Value *, llvm::Value *> LambdaPointers;
+  llvm::DenseSet<CanonicalDeclPtr<const Decl>> MappedVarSet;
+
   auto RI = CS.getCapturedRecordDecl()->field_begin();
   auto *CV = CapturedVars.begin();
   for (CapturedStmt::const_capture_iterator CI = CS.capture_begin(),
@@ -9538,64 +9562,18 @@ static void genMapInfoForCaptures(
   MEHandler.adjustMemberOfForLambdaCaptures(
       OMPBuilder, LambdaPointers, CombinedInfo.BasePointers,
       CombinedInfo.Pointers, CombinedInfo.Types);
-}
-static void
-genMapInfo(MappableExprsHandler &MEHandler, CodeGenFunction &CGF,
-           MappableExprsHandler::MapCombinedInfoTy &CombinedInfo,
-           llvm::OpenMPIRBuilder &OMPBuilder,
-           const llvm::DenseSet<CanonicalDeclPtr<const Decl>> &SkippedVarSet =
-               llvm::DenseSet<CanonicalDeclPtr<const Decl>>()) {
-
-  CodeGenModule &CGM = CGF.CGM;
   // Map any list items in a map clause that were not captures because they
   // weren't referenced within the construct.
-  MEHandler.generateAllInfo(CombinedInfo, OMPBuilder, SkippedVarSet);
+  MEHandler.generateAllInfo(CombinedInfo, OMPBuilder, MappedVarSet);
 
-  auto FillInfoMap = [&](MappableExprsHandler::MappingExprInfo &MapExpr) {
-    return emitMappingInformation(CGF, OMPBuilder, MapExpr);
-  };
-  if (CGM.getCodeGenOpts().getDebugInfo() !=
-      llvm::codegenoptions::NoDebugInfo) {
-    CombinedInfo.Names.resize(CombinedInfo.Exprs.size());
-    llvm::transform(CombinedInfo.Exprs, CombinedInfo.Names.begin(),
-                    FillInfoMap);
-  }
-}
-
-static void genMapInfo(const OMPExecutableDirective &D, CodeGenFunction &CGF,
-                       const CapturedStmt &CS,
-                       llvm::SmallVectorImpl<llvm::Value *> &CapturedVars,
-                       llvm::OpenMPIRBuilder &OMPBuilder,
-                       MappableExprsHandler::MapCombinedInfoTy &CombinedInfo) {
-  // Get mappable expression information.
-  MappableExprsHandler MEHandler(D, CGF);
-  llvm::DenseSet<CanonicalDeclPtr<const Decl>> MappedVarSet;
-
-  genMapInfoForCaptures(MEHandler, CGF, CS, CapturedVars, OMPBuilder,
-                        MappedVarSet, CombinedInfo);
-  genMapInfo(MEHandler, CGF, CombinedInfo, OMPBuilder, MappedVarSet);
-}
-static void emitTargetCallKernelLaunch(
-    CGOpenMPRuntime *OMPRuntime, llvm::Function *OutlinedFn,
-    const OMPExecutableDirective &D,
-    llvm::SmallVectorImpl<llvm::Value *> &CapturedVars, bool RequiresOuterTask,
-    const CapturedStmt &CS, bool OffloadingMandatory,
-    llvm::PointerIntPair<const Expr *, 2, OpenMPDeviceClauseModifier> Device,
-    llvm::Value *OutlinedFnID, CodeGenFunction::OMPTargetDataInfo &InputInfo,
-    llvm::Value *&MapTypesArray, llvm::Value *&MapNamesArray,
-    llvm::function_ref<llvm::Value *(CodeGenFunction &CGF,
-                                     const OMPLoopDirective &D)>
-        SizeEmitter,
-    CodeGenFunction &CGF, CodeGenModule &CGM) {
-  llvm::OpenMPIRBuilder &OMPBuilder = OMPRuntime->getOMPBuilder();
-
-  // Fill up the arrays with all the captured variables.
-  MappableExprsHandler::MapCombinedInfoTy CombinedInfo;
   CGOpenMPRuntime::TargetDataInfo Info;
-  genMapInfo(D, CGF, CS, CapturedVars, OMPBuilder, CombinedInfo);
-
-  emitOffloadingArraysAndArgs(CGF, CombinedInfo, Info, OMPBuilder,
-                              /*IsNonContiguous=*/true, /*ForEndCall=*/false);
+  // Fill up the arrays and create the arguments.
+  emitOffloadingArrays(CGF, CombinedInfo, Info, OMPBuilder);
+  bool EmitDebug = CGF.CGM.getCodeGenOpts().getDebugInfo() !=
+                   llvm::codegenoptions::NoDebugInfo;
+  OMPBuilder.emitOffloadingArraysArgument(CGF.Builder, Info.RTArgs, Info,
+                                          EmitDebug,
+                                          /*ForEndCall=*/false);
 
   InputInfo.NumberOfTargetItems = Info.NumberOfPtrs;
   InputInfo.BasePointersArray = Address(Info.RTArgs.BasePointersArray,
@@ -10490,15 +10468,22 @@ void CGOpenMPRuntime::emitTargetDataStandAloneCall(
                                           PrePostActionTy &) {
     // Fill up the arrays with all the mapped variables.
     MappableExprsHandler::MapCombinedInfoTy CombinedInfo;
-    CGOpenMPRuntime::TargetDataInfo Info;
-    MappableExprsHandler MEHandler(D, CGF);
-    genMapInfo(MEHandler, CGF, CombinedInfo, OMPBuilder);
-    emitOffloadingArraysAndArgs(CGF, CombinedInfo, Info, OMPBuilder,
-                                /*IsNonContiguous=*/true, /*ForEndCall=*/false);
 
+    // Get map clause information.
+    MappableExprsHandler MEHandler(D, CGF);
+    MEHandler.generateAllInfo(CombinedInfo, OMPBuilder);
+
+    CGOpenMPRuntime::TargetDataInfo Info;
+    // Fill up the arrays and create the arguments.
+    emitOffloadingArrays(CGF, CombinedInfo, Info, OMPBuilder,
+                         /*IsNonContiguous=*/true);
     bool RequiresOuterTask = D.hasClausesOfKind<OMPDependClause>() ||
                              D.hasClausesOfKind<OMPNowaitClause>();
-
+    bool EmitDebug = CGF.CGM.getCodeGenOpts().getDebugInfo() !=
+                     llvm::codegenoptions::NoDebugInfo;
+    OMPBuilder.emitOffloadingArraysArgument(CGF.Builder, Info.RTArgs, Info,
+                                            EmitDebug,
+                                            /*ForEndCall=*/false);
     InputInfo.NumberOfTargetItems = Info.NumberOfPtrs;
     InputInfo.BasePointersArray = Address(Info.RTArgs.BasePointersArray,
                                           CGF.VoidPtrTy, CGM.getPointerAlign());
@@ -11506,7 +11491,7 @@ void CGOpenMPRuntime::LastprivateConditionalRAII::tryToDisableInnerAnalysis(
   }
   // Exclude vars in private clauses.
   for (const auto *C : S.getClausesOfKind<OMPPrivateClause>()) {
-    for (const Expr *Ref : C->varlist()) {
+    for (const Expr *Ref : C->varlists()) {
       if (!Ref->getType()->isScalarType())
         continue;
       const auto *DRE = dyn_cast<DeclRefExpr>(Ref->IgnoreParenImpCasts());
@@ -11516,7 +11501,7 @@ void CGOpenMPRuntime::LastprivateConditionalRAII::tryToDisableInnerAnalysis(
     }
   }
   for (const auto *C : S.getClausesOfKind<OMPFirstprivateClause>()) {
-    for (const Expr *Ref : C->varlist()) {
+    for (const Expr *Ref : C->varlists()) {
       if (!Ref->getType()->isScalarType())
         continue;
       const auto *DRE = dyn_cast<DeclRefExpr>(Ref->IgnoreParenImpCasts());
@@ -11526,7 +11511,7 @@ void CGOpenMPRuntime::LastprivateConditionalRAII::tryToDisableInnerAnalysis(
     }
   }
   for (const auto *C : S.getClausesOfKind<OMPLastprivateClause>()) {
-    for (const Expr *Ref : C->varlist()) {
+    for (const Expr *Ref : C->varlists()) {
       if (!Ref->getType()->isScalarType())
         continue;
       const auto *DRE = dyn_cast<DeclRefExpr>(Ref->IgnoreParenImpCasts());
@@ -11536,7 +11521,7 @@ void CGOpenMPRuntime::LastprivateConditionalRAII::tryToDisableInnerAnalysis(
     }
   }
   for (const auto *C : S.getClausesOfKind<OMPReductionClause>()) {
-    for (const Expr *Ref : C->varlist()) {
+    for (const Expr *Ref : C->varlists()) {
       if (!Ref->getType()->isScalarType())
         continue;
       const auto *DRE = dyn_cast<DeclRefExpr>(Ref->IgnoreParenImpCasts());
@@ -11546,7 +11531,7 @@ void CGOpenMPRuntime::LastprivateConditionalRAII::tryToDisableInnerAnalysis(
     }
   }
   for (const auto *C : S.getClausesOfKind<OMPLinearClause>()) {
-    for (const Expr *Ref : C->varlist()) {
+    for (const Expr *Ref : C->varlists()) {
       if (!Ref->getType()->isScalarType())
         continue;
       const auto *DRE = dyn_cast<DeclRefExpr>(Ref->IgnoreParenImpCasts());
@@ -11589,7 +11574,7 @@ CGOpenMPRuntime::LastprivateConditionalRAII::LastprivateConditionalRAII(
     if (C->getKind() != OMPC_LASTPRIVATE_conditional)
       continue;
 
-    for (const Expr *Ref : C->varlist()) {
+    for (const Expr *Ref : C->varlists()) {
       Data.DeclToUniqueName.insert(std::make_pair(
           cast<DeclRefExpr>(Ref->IgnoreParenImpCasts())->getDecl(),
           SmallString<16>(generateUniqueName(CGM, "pl_cond", Ref))));

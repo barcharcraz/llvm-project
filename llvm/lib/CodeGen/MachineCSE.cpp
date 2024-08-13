@@ -94,8 +94,8 @@ namespace {
       AU.addPreservedID(MachineLoopInfoID);
       AU.addRequired<MachineDominatorTreeWrapperPass>();
       AU.addPreserved<MachineDominatorTreeWrapperPass>();
-      AU.addRequired<MachineBlockFrequencyInfoWrapperPass>();
-      AU.addPreserved<MachineBlockFrequencyInfoWrapperPass>();
+      AU.addRequired<MachineBlockFrequencyInfo>();
+      AU.addPreserved<MachineBlockFrequencyInfo>();
     }
 
     MachineFunctionProperties getRequiredProperties() const override {
@@ -184,7 +184,7 @@ bool MachineCSE::PerformTrivialCopyPropagation(MachineInstr *MI,
       continue;
     bool OnlyOneUse = MRI->hasOneNonDBGUse(Reg);
     MachineInstr *DefMI = MRI->getVRegDef(Reg);
-    if (!DefMI || !DefMI->isCopy())
+    if (!DefMI->isCopy())
       continue;
     Register SrcReg = DefMI->getOperand(1).getReg();
     if (!SrcReg.isVirtual())
@@ -944,7 +944,7 @@ bool MachineCSE::runOnMachineFunction(MachineFunction &MF) {
   MRI = &MF.getRegInfo();
   AA = &getAnalysis<AAResultsWrapperPass>().getAAResults();
   DT = &getAnalysis<MachineDominatorTreeWrapperPass>().getDomTree();
-  MBFI = &getAnalysis<MachineBlockFrequencyInfoWrapperPass>().getMBFI();
+  MBFI = &getAnalysis<MachineBlockFrequencyInfo>();
   LookAheadLimit = TII->getMachineCSELookAheadLimit();
   bool ChangedPRE, ChangedCSE;
   ChangedPRE = PerformSimplePRE(DT);

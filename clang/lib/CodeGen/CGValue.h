@@ -15,7 +15,6 @@
 #define LLVM_CLANG_LIB_CODEGEN_CGVALUE_H
 
 #include "Address.h"
-#include "CGPointerAuthInfo.h"
 #include "CodeGenTBAA.h"
 #include "EHScopeStack.h"
 #include "clang/AST/ASTContext.h"
@@ -234,6 +233,9 @@ class LValue {
   // this lvalue.
   bool Nontemporal : 1;
 
+  // The pointer is known not to be null.
+  bool IsKnownNonNull : 1;
+
   LValueBaseInfo BaseInfo;
   TBAAAccessInfo TBAAInfo;
 
@@ -261,6 +263,7 @@ private:
     this->ImpreciseLifetime = false;
     this->Nontemporal = false;
     this->ThreadLocalRef = false;
+    this->IsKnownNonNull = false;
     this->BaseIvarExp = nullptr;
   }
 
@@ -346,25 +349,27 @@ public:
   LValueBaseInfo getBaseInfo() const { return BaseInfo; }
   void setBaseInfo(LValueBaseInfo Info) { BaseInfo = Info; }
 
-  KnownNonNull_t isKnownNonNull() const { return Addr.isKnownNonNull(); }
+  KnownNonNull_t isKnownNonNull() const {
+    return (KnownNonNull_t)IsKnownNonNull;
+  }
   LValue setKnownNonNull() {
-    Addr.setKnownNonNull();
+    IsKnownNonNull = true;
     return *this;
   }
 
   // simple lvalue
-  llvm::Value *getPointer(CodeGenFunction &CGF) const;
-  llvm::Value *emitResignedPointer(QualType PointeeTy,
-                                   CodeGenFunction &CGF) const;
-  llvm::Value *emitRawPointer(CodeGenFunction &CGF) const;
+  llvm::Value *getPointer(CodeGenFunction &CGF) const {
+    assert(isSimple());
+    return Addr.getBasePointer();
+  }
+  llvm::Value *emitRawPointer(CodeGenFunction &CGF) const {
+    assert(isSimple());
+    return Addr.isValid() ? Addr.emitRawPointer(CGF) : nullptr;
+  }
 
   Address getAddress() const { return Addr; }
 
   void setAddress(Address address) { Addr = address; }
-
-  CGPointerAuthInfo getPointerAuthInfo() const {
-    return Addr.getPointerAuthInfo();
-  }
 
   // vector elt lvalue
   Address getVectorAddress() const {

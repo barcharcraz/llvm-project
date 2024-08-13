@@ -433,7 +433,17 @@ public:
   /// convenience method for passes to do so.
   /// dropUBImplyingAttrsAndUnknownMetadata should be used instead of
   /// this API if the Instruction being modified is a call.
-  void dropUnknownNonDebugMetadata(ArrayRef<unsigned> KnownIDs = std::nullopt);
+  void dropUnknownNonDebugMetadata(ArrayRef<unsigned> KnownIDs);
+  void dropUnknownNonDebugMetadata() {
+    return dropUnknownNonDebugMetadata(std::nullopt);
+  }
+  void dropUnknownNonDebugMetadata(unsigned ID1) {
+    return dropUnknownNonDebugMetadata(ArrayRef(ID1));
+  }
+  void dropUnknownNonDebugMetadata(unsigned ID1, unsigned ID2) {
+    unsigned IDs[] = {ID1, ID2};
+    return dropUnknownNonDebugMetadata(IDs);
+  }
   /// @}
 
   /// Adds an !annotation metadata node with \p Annotation to this instruction.

@@ -78,7 +78,7 @@ static void addStringHelper(DebugStrOffsetsWriter &StrOffstsWriter,
   uint32_t NewOffset = StrWriter.addString(Str);
   if (Unit.getVersion() >= 5) {
     StrOffstsWriter.updateAddressMap(DIEAttrInfo.getDIEInteger().getValue(),
-                                     NewOffset, Unit);
+                                     NewOffset);
     return;
   }
   DIEBldr.replaceValue(&Die, DIEAttrInfo.getAttribute(), DIEAttrInfo.getForm(),
@@ -552,6 +552,15 @@ void DIEBuilder::finish() {
 }
 
 DWARFDie DIEBuilder::resolveDIEReference(
+    const DWARFFormValue &RefValue,
+    const DWARFAbbreviationDeclaration::AttributeSpec AttrSpec,
+    DWARFUnit *&RefCU, DWARFDebugInfoEntry &DwarfDebugInfoEntry) {
+  assert(RefValue.isFormClass(DWARFFormValue::FC_Reference));
+  uint64_t RefOffset = *RefValue.getAsReference();
+  return resolveDIEReference(AttrSpec, RefOffset, RefCU, DwarfDebugInfoEntry);
+}
+
+DWARFDie DIEBuilder::resolveDIEReference(
     const DWARFAbbreviationDeclaration::AttributeSpec AttrSpec,
     const uint64_t RefOffset, DWARFUnit *&RefCU,
     DWARFDebugInfoEntry &DwarfDebugInfoEntry) {
@@ -594,14 +603,17 @@ DWARFDie DIEBuilder::resolveDIEReference(
   return DWARFDie();
 }
 
-void DIEBuilder::cloneDieOffsetReferenceAttribute(
+void DIEBuilder::cloneDieReferenceAttribute(
     DIE &Die, const DWARFUnit &U, const DWARFDie &InputDIE,
-    const DWARFAbbreviationDeclaration::AttributeSpec AttrSpec, uint64_t Ref) {
+    const DWARFAbbreviationDeclaration::AttributeSpec AttrSpec,
+    const DWARFFormValue &Val) {
+  const uint64_t Ref = *Val.getAsReference();
+
   DIE *NewRefDie = nullptr;
   DWARFUnit *RefUnit = nullptr;
 
   DWARFDebugInfoEntry DDIEntry;
-  const DWARFDie RefDie = resolveDIEReference(AttrSpec, Ref, RefUnit, DDIEntry);
+  const DWARFDie RefDie = resolveDIEReference(Val, AttrSpec, RefUnit, DDIEntry);
 
   if (!RefDie)
     return;
@@ -806,7 +818,7 @@ void DIEBuilder::cloneAddressAttribute(
 void DIEBuilder::cloneRefsigAttribute(
     DIE &Die, DWARFAbbreviationDeclaration::AttributeSpec AttrSpec,
     const DWARFFormValue &Val) {
-  const std::optional<uint64_t> SigVal = Val.getAsSignatureReference();
+  const std::optional<uint64_t> SigVal = Val.getRawUValue();
   Die.addValue(getState().DIEAlloc, AttrSpec.Attr, dwarf::DW_FORM_ref_sig8,
                DIEInteger(*SigVal));
 }
@@ -874,16 +886,11 @@ void DIEBuilder::cloneAttribute(
     cloneStringAttribute(Die, U, AttrSpec, Val);
     break;
   case dwarf::DW_FORM_ref_addr:
-    cloneDieOffsetReferenceAttribute(Die, U, InputDIE, AttrSpec,
-                                     *Val.getAsDebugInfoReference());
-    break;
   case dwarf::DW_FORM_ref1:
   case dwarf::DW_FORM_ref2:
   case dwarf::DW_FORM_ref4:
   case dwarf::DW_FORM_ref8:
-    cloneDieOffsetReferenceAttribute(Die, U, InputDIE, AttrSpec,
-                                     Val.getUnit()->getOffset() +
-                                         *Val.getAsRelativeReference());
+    cloneDieReferenceAttribute(Die, U, InputDIE, AttrSpec, Val);
     break;
   case dwarf::DW_FORM_block:
   case dwarf::DW_FORM_block1:

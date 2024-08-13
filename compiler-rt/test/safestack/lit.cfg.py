@@ -3,7 +3,7 @@
 import os
 
 # Setup config name.
-config.name = "SafeStack-" + config.name_suffix
+config.name = "SafeStack"
 
 # Setup source root.
 config.test_source_root = os.path.dirname(__file__)

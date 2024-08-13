@@ -9,15 +9,14 @@
 #ifndef LLVM_LIBC_SRC_SYS_STATVFS_LINUX_STATFS_TO_STATVFS_H
 #define LLVM_LIBC_SRC_SYS_STATVFS_LINUX_STATFS_TO_STATVFS_H
 
-#include "include/llvm-libc-types/struct_statvfs.h"
+#include "llvm-libc-types/struct_statvfs.h"
 #include "src/__support/CPP/optional.h"
 #include "src/__support/OSUtil/syscall.h"
 #include "src/__support/macros/attributes.h"
-#include "src/__support/macros/config.h"
 #include "src/errno/libc_errno.h"
 #include <asm/statfs.h>
 #include <sys/syscall.h>
-namespace LIBC_NAMESPACE_DECL {
+namespace LIBC_NAMESPACE {
 
 namespace statfs_utils {
 #ifdef SYS_statfs64
@@ -92,6 +91,6 @@ LIBC_INLINE struct statvfs statfs_to_statvfs(const LinuxStatFs &in) {
   return out;
 }
 } // namespace statfs_utils
-} // namespace LIBC_NAMESPACE_DECL
+} // namespace LIBC_NAMESPACE
 
 #endif // LLVM_LIBC_SRC_SYS_STATVFS_LINUX_STATFS_TO_STATVFS_H

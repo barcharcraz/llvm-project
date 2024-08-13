@@ -99,8 +99,6 @@ public:
     return BranchProbability(99, 100);
   }
 
-  InstructionCost getBranchMispredictPenalty() const { return 0; }
-
   bool hasBranchDivergence(const Function *F = nullptr) const { return false; }
 
   bool isSourceOfDivergence(const Value *V) const { return false; }
@@ -839,7 +837,7 @@ public:
   Type *
   getMemcpyLoopLoweringType(LLVMContext &Context, Value *Length,
                             unsigned SrcAddrSpace, unsigned DestAddrSpace,
-                            Align SrcAlign, Align DestAlign,
+                            unsigned SrcAlign, unsigned DestAlign,
                             std::optional<uint32_t> AtomicElementSize) const {
     return AtomicElementSize ? Type::getIntNTy(Context, *AtomicElementSize * 8)
                              : Type::getInt8Ty(Context);
@@ -848,7 +846,7 @@ public:
   void getMemcpyLoopResidualLoweringType(
       SmallVectorImpl<Type *> &OpsOut, LLVMContext &Context,
       unsigned RemainingBytes, unsigned SrcAddrSpace, unsigned DestAddrSpace,
-      Align SrcAlign, Align DestAlign,
+      unsigned SrcAlign, unsigned DestAlign,
       std::optional<uint32_t> AtomicCpySize) const {
     unsigned OpSizeInBytes = AtomicCpySize ? *AtomicCpySize : 1;
     Type *OpType = Type::getIntNTy(Context, OpSizeInBytes * 8);
@@ -922,8 +920,6 @@ public:
     return VF;
   }
 
-  bool preferFixedOverScalableIfEqualCost() const { return false; }
-
   bool preferInLoopReduction(unsigned Opcode, Type *Ty,
                              TTI::ReductionFlags Flags) const {
     return false;
@@ -939,11 +935,6 @@ public:
   }
 
   bool shouldExpandReduction(const IntrinsicInst *II) const { return true; }
-
-  TTI::ReductionShuffle
-  getPreferredExpandedReductionShuffle(const IntrinsicInst *II) const {
-    return TTI::ReductionShuffle::SplitHalf;
-  }
 
   unsigned getGISelRematGlobalCost() const { return 1; }
 

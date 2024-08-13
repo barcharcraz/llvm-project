@@ -12,7 +12,6 @@
 #include "mlir/Analysis/Presburger/Matrix.h"
 #include "mlir/Analysis/Presburger/PresburgerSpace.h"
 #include "mlir/Analysis/Presburger/Utils.h"
-#include "llvm/ADT/DynamicAPInt.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/SmallVector.h"
@@ -43,20 +42,18 @@ scaleAndAddForAssert(ArrayRef<DynamicAPInt> a, const DynamicAPInt &scale,
   SmallVector<DynamicAPInt, 8> res;
   res.reserve(a.size());
   for (unsigned i = 0, e = a.size(); i < e; ++i)
-    res.emplace_back(a[i] + scale * b[i]);
+    res.push_back(a[i] + scale * b[i]);
   return res;
 }
 
 SimplexBase::SimplexBase(unsigned nVar, bool mustUseBigM)
     : usingBigM(mustUseBigM), nRedundant(0), nSymbol(0),
       tableau(0, getNumFixedCols() + nVar), empty(false) {
-  var.reserve(nVar);
-  colUnknown.reserve(nVar + 1);
   colUnknown.insert(colUnknown.begin(), getNumFixedCols(), nullIndex);
   for (unsigned i = 0; i < nVar; ++i) {
     var.emplace_back(Orientation::Column, /*restricted=*/false,
                      /*pos=*/getNumFixedCols() + i);
-    colUnknown.emplace_back(i);
+    colUnknown.push_back(i);
   }
 }
 
@@ -108,9 +105,9 @@ unsigned SimplexBase::addZeroRow(bool makeRestricted) {
   // Resize the tableau to accommodate the extra row.
   unsigned newRow = tableau.appendExtraRow();
   assert(getNumRows() == getNumRows() && "Inconsistent tableau size");
-  rowUnknown.emplace_back(~con.size());
+  rowUnknown.push_back(~con.size());
   con.emplace_back(Orientation::Row, makeRestricted, newRow);
-  undoLog.emplace_back(UndoLogEntry::RemoveLastConstraint);
+  undoLog.push_back(UndoLogEntry::RemoveLastConstraint);
   tableau(newRow, 0) = 1;
   return newRow;
 }
@@ -349,8 +346,8 @@ SymbolicLexSimplex::getSymbolicSampleNumerator(unsigned row) const {
   SmallVector<DynamicAPInt, 8> sample;
   sample.reserve(nSymbol + 1);
   for (unsigned col = 3; col < 3 + nSymbol; ++col)
-    sample.emplace_back(tableau(row, col));
-  sample.emplace_back(tableau(row, 1));
+    sample.push_back(tableau(row, col));
+  sample.push_back(tableau(row, 1));
   return sample;
 }
 
@@ -429,8 +426,8 @@ LogicalResult SymbolicLexSimplex::addSymbolicCut(unsigned row) {
   divCoeffs.reserve(nSymbol + 1);
   DynamicAPInt divDenom = d;
   for (unsigned col = 3; col < 3 + nSymbol; ++col)
-    divCoeffs.emplace_back(mod(-tableau(row, col), divDenom)); // (-a_i%d)s_i
-  divCoeffs.emplace_back(mod(-tableau(row, 1), divDenom));     // -c%d.
+    divCoeffs.push_back(mod(-tableau(row, col), divDenom)); // (-a_i%d)s_i
+  divCoeffs.push_back(mod(-tableau(row, 1), divDenom));     // -c%d.
   normalizeDiv(divCoeffs, divDenom);
 
   domainSimplex.addDivisionVariable(divCoeffs, divDenom);
@@ -622,8 +619,8 @@ SymbolicLexOpt SymbolicLexSimplex::computeSymbolicIntegerLexMin() {
         // reallocated.
         int splitIndex = rowUnknown[splitRow];
         unsigned snapshot = getSnapshot();
-        stack.emplace_back(
-            StackFrame{splitIndex, snapshot, domainSnapshot, domainPolyCounts});
+        stack.push_back(
+            {splitIndex, snapshot, domainSnapshot, domainPolyCounts});
         ++level;
         continue;
       }
@@ -1096,7 +1093,7 @@ void SimplexBase::markEmpty() {
   // non-empty when rolling back past this point.
   if (empty)
     return;
-  undoLog.emplace_back(UndoLogEntry::UnmarkEmpty);
+  undoLog.push_back(UndoLogEntry::UnmarkEmpty);
   empty = true;
 }
 
@@ -1123,7 +1120,6 @@ void Simplex::addInequality(ArrayRef<DynamicAPInt> coeffs) {
 void SimplexBase::addEquality(ArrayRef<DynamicAPInt> coeffs) {
   addInequality(coeffs);
   SmallVector<DynamicAPInt, 8> negatedCoeffs;
-  negatedCoeffs.reserve(coeffs.size());
   for (const DynamicAPInt &coeff : coeffs)
     negatedCoeffs.emplace_back(-coeff);
   addInequality(negatedCoeffs);
@@ -1138,12 +1134,11 @@ unsigned SimplexBase::getSnapshot() const { return undoLog.size(); }
 
 unsigned SimplexBase::getSnapshotBasis() {
   SmallVector<int, 8> basis;
-  basis.reserve(colUnknown.size());
   for (int index : colUnknown) {
     if (index != nullIndex)
-      basis.emplace_back(index);
+      basis.push_back(index);
   }
-  savedBases.emplace_back(std::move(basis));
+  savedBases.push_back(std::move(basis));
 
   undoLog.emplace_back(UndoLogEntry::RestoreBasis);
   return undoLog.size() - 1;
@@ -1309,7 +1304,7 @@ void SimplexBase::addDivisionVariable(ArrayRef<DynamicAPInt> coeffs,
   SmallVector<DynamicAPInt, 8> ineq(coeffs.begin(), coeffs.end());
   DynamicAPInt constTerm = ineq.back();
   ineq.back() = -denom;
-  ineq.emplace_back(constTerm);
+  ineq.push_back(constTerm);
   addInequality(ineq);
 
   for (DynamicAPInt &coeff : ineq)
@@ -1326,7 +1321,7 @@ void SimplexBase::appendVariable(unsigned count) {
   for (unsigned i = 0; i < count; ++i) {
     var.emplace_back(Orientation::Column, /*restricted=*/false,
                      /*pos=*/getNumColumns() + i);
-    colUnknown.emplace_back(var.size() - 1);
+    colUnknown.push_back(var.size() - 1);
   }
   tableau.resizeHorizontally(getNumColumns() + count);
   undoLog.insert(undoLog.end(), count, UndoLogEntry::RemoveLastVariable);
@@ -1521,12 +1516,12 @@ Simplex Simplex::makeProduct(const Simplex &a, const Simplex &b) {
 
   result.colUnknown.assign(2, nullIndex);
   for (unsigned i = 2, e = a.getNumColumns(); i < e; ++i) {
-    result.colUnknown.emplace_back(a.colUnknown[i]);
+    result.colUnknown.push_back(a.colUnknown[i]);
     result.unknownFromIndex(result.colUnknown.back()).pos =
         result.colUnknown.size() - 1;
   }
   for (unsigned i = 2, e = b.getNumColumns(); i < e; ++i) {
-    result.colUnknown.emplace_back(indexFromBIndex(b.colUnknown[i]));
+    result.colUnknown.push_back(indexFromBIndex(b.colUnknown[i]));
     result.unknownFromIndex(result.colUnknown.back()).pos =
         result.colUnknown.size() - 1;
   }
@@ -1535,7 +1530,7 @@ Simplex Simplex::makeProduct(const Simplex &a, const Simplex &b) {
     unsigned resultRow = result.tableau.appendExtraRow();
     for (unsigned col = 0, e = a.getNumColumns(); col < e; ++col)
       result.tableau(resultRow, col) = a.tableau(row, col);
-    result.rowUnknown.emplace_back(a.rowUnknown[row]);
+    result.rowUnknown.push_back(a.rowUnknown[row]);
     result.unknownFromIndex(result.rowUnknown.back()).pos =
         result.rowUnknown.size() - 1;
   };
@@ -1550,7 +1545,7 @@ Simplex Simplex::makeProduct(const Simplex &a, const Simplex &b) {
     unsigned offset = a.getNumColumns() - 2;
     for (unsigned col = 2, e = b.getNumColumns(); col < e; ++col)
       result.tableau(resultRow, offset + col) = b.tableau(row, col);
-    result.rowUnknown.emplace_back(indexFromBIndex(b.rowUnknown[row]));
+    result.rowUnknown.push_back(indexFromBIndex(b.rowUnknown[row]));
     result.unknownFromIndex(result.rowUnknown.back()).pos =
         result.rowUnknown.size() - 1;
   };
@@ -1637,7 +1632,7 @@ Simplex::getSamplePointIfIntegral() const {
     // If the sample is non-integral, return std::nullopt.
     if (coord.num % coord.den != 0)
       return {};
-    integerSample.emplace_back(coord.num / coord.den);
+    integerSample.push_back(coord.num / coord.den);
   }
   return integerSample;
 }
@@ -1666,7 +1661,7 @@ public:
   void addEqualityForDirection(ArrayRef<DynamicAPInt> dir) {
     assert(llvm::any_of(dir, [](const DynamicAPInt &x) { return x != 0; }) &&
            "Direction passed is the zero vector!");
-    snapshotStack.emplace_back(simplex.getSnapshot());
+    snapshotStack.push_back(simplex.getSnapshot());
     simplex.addEquality(getCoeffsForDirection(dir));
   }
   /// Compute max(dotProduct(dir, x - y)).
@@ -1696,7 +1691,6 @@ public:
     assert(maybeWidth.isBounded() && "Width should be bounded!");
     dualDenom = simplex.tableau(row, 0);
     dual.clear();
-    dual.reserve((conIndex - simplexConstraintOffset) / 2);
 
     // The increment is i += 2 because equalities are added as two inequalities,
     // one positive and one negative. Each iteration processes one equality.
@@ -1721,14 +1715,14 @@ public:
       // Note that it is NOT valid to perform pivots during the computation of
       // the duals. This entire dual computation must be performed on the same
       // tableau configuration.
-      assert((simplex.con[i].orientation != Orientation::Column ||
-              simplex.con[i + 1].orientation != Orientation::Column) &&
+      assert(!(simplex.con[i].orientation == Orientation::Column &&
+               simplex.con[i + 1].orientation == Orientation::Column) &&
              "Both inequalities for the equality cannot be in column "
              "orientation!");
       if (simplex.con[i].orientation == Orientation::Column)
-        dual.emplace_back(-simplex.tableau(row, simplex.con[i].pos));
+        dual.push_back(-simplex.tableau(row, simplex.con[i].pos));
       else if (simplex.con[i + 1].orientation == Orientation::Column)
-        dual.emplace_back(simplex.tableau(row, simplex.con[i + 1].pos));
+        dual.push_back(simplex.tableau(row, simplex.con[i + 1].pos));
       else
         dual.emplace_back(0);
     }
@@ -1755,9 +1749,9 @@ private:
     assert(2 * dir.size() == simplex.getNumVariables() &&
            "Direction vector has wrong dimensionality");
     SmallVector<DynamicAPInt, 8> coeffs(dir.begin(), dir.end());
-    coeffs.reserve(dir.size() + 1);
+    coeffs.reserve(2 * dir.size());
     for (const DynamicAPInt &coeff : dir)
-      coeffs.emplace_back(-coeff);
+      coeffs.push_back(-coeff);
     coeffs.emplace_back(0); // constant term
     return coeffs;
   }
@@ -1927,7 +1921,7 @@ void Simplex::reduceBasis(IntMatrix &basis, unsigned level) {
       // because this case should only occur when i is level, and there are no
       // duals in that case anyway.
       assert(i == level && "This case should only occur when i == level");
-      width.emplace_back(
+      width.push_back(
           gbrSimplex.computeWidthAndDuals(basis.getRow(i), dual, dualDenom));
     }
 
@@ -1936,8 +1930,8 @@ void Simplex::reduceBasis(IntMatrix &basis, unsigned level) {
              "We don't know dual_i but we know width_{i+1}");
       // We don't know dual for our level, so let's find it.
       gbrSimplex.addEqualityForDirection(basis.getRow(i));
-      width.emplace_back(gbrSimplex.computeWidthAndDuals(basis.getRow(i + 1),
-                                                         dual, dualDenom));
+      width.push_back(gbrSimplex.computeWidthAndDuals(basis.getRow(i + 1), dual,
+                                                      dualDenom));
       gbrSimplex.removeLastEquality();
     }
 
@@ -2062,12 +2056,12 @@ std::optional<SmallVector<DynamicAPInt, 8>> Simplex::findIntegerSample() {
             computeIntegerBounds(basisCoeffs);
       }
 
-      snapshotStack.emplace_back(getSnapshot());
+      snapshotStack.push_back(getSnapshot());
       // The smallest value in the range is the next value to try.
       // The values in the optionals are guaranteed to exist since we know the
       // polytope is bounded.
-      nextValueStack.emplace_back(*minRoundedUp);
-      upperBoundStack.emplace_back(*maxRoundedDown);
+      nextValueStack.push_back(*minRoundedUp);
+      upperBoundStack.push_back(*maxRoundedDown);
     }
 
     assert((snapshotStack.size() - 1 == level &&
@@ -2094,7 +2088,7 @@ std::optional<SmallVector<DynamicAPInt, 8>> Simplex::findIntegerSample() {
     // Try the next value in the range and "recurse" into the next level.
     SmallVector<DynamicAPInt, 8> basisCoeffs(basis.getRow(level).begin(),
                                              basis.getRow(level).end());
-    basisCoeffs.emplace_back(-nextValue);
+    basisCoeffs.push_back(-nextValue);
     addEquality(basisCoeffs);
     level++;
   }

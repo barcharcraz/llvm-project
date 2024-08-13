@@ -55,8 +55,6 @@ bool getCrel();
 
 bool getX86RelaxRelocations();
 
-bool getX86Sse2Avx();
-
 std::string getABIName();
 
 std::string getAsSecureLogFile();

@@ -1123,11 +1123,10 @@ WebAssemblyTargetLowering::LowerCall(CallLoweringInfo &CLI,
       SDValue SizeNode =
           DAG.getConstant(Out.Flags.getByValSize(), DL, MVT::i32);
       SDValue FINode = DAG.getFrameIndex(FI, getPointerTy(Layout));
-      Chain = DAG.getMemcpy(Chain, DL, FINode, OutVal, SizeNode,
-                            Out.Flags.getNonZeroByValAlign(),
-                            /*isVolatile*/ false, /*AlwaysInline=*/false,
-                            /*CI=*/nullptr, std::nullopt, MachinePointerInfo(),
-                            MachinePointerInfo());
+      Chain = DAG.getMemcpy(
+          Chain, DL, FINode, OutVal, SizeNode, Out.Flags.getNonZeroByValAlign(),
+          /*isVolatile*/ false, /*AlwaysInline=*/false,
+          /*isTailCall*/ false, MachinePointerInfo(), MachinePointerInfo());
       OutVal = FINode;
     }
     // Count the number of fixed args *after* legalization.

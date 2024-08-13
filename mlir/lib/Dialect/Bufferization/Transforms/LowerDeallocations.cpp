@@ -300,9 +300,8 @@ class DeallocOpConversion
         MemRefType::get({ShapedType::kDynamic}, rewriter.getI1Type()),
         retainCondsMemref);
 
-    Operation *symtableOp = op->getParentWithTrait<OpTrait::SymbolTable>();
     rewriter.create<func::CallOp>(
-        op.getLoc(), deallocHelperFuncMap.lookup(symtableOp),
+        op.getLoc(), deallocHelperFunc,
         SmallVector<Value>{castedDeallocMemref, castedRetainMemref,
                            castedCondsMemref, castedDeallocCondsMemref,
                            castedRetainCondsMemref});
@@ -339,11 +338,9 @@ class DeallocOpConversion
   }
 
 public:
-  DeallocOpConversion(
-      MLIRContext *context,
-      const bufferization::DeallocHelperMap &deallocHelperFuncMap)
+  DeallocOpConversion(MLIRContext *context, func::FuncOp deallocHelperFunc)
       : OpConversionPattern<bufferization::DeallocOp>(context),
-        deallocHelperFuncMap(deallocHelperFuncMap) {}
+        deallocHelperFunc(deallocHelperFunc) {}
 
   LogicalResult
   matchAndRewrite(bufferization::DeallocOp op, OpAdaptor adaptor,
@@ -363,8 +360,7 @@ public:
     if (adaptor.getMemrefs().size() == 1)
       return rewriteOneMemrefMultipleRetainCase(op, adaptor, rewriter);
 
-    Operation *symtableOp = op->getParentWithTrait<OpTrait::SymbolTable>();
-    if (!deallocHelperFuncMap.contains(symtableOp))
+    if (!deallocHelperFunc)
       return op->emitError(
           "library function required for generic lowering, but cannot be "
           "automatically inserted when operating on functions");
@@ -373,7 +369,7 @@ public:
   }
 
 private:
-  const bufferization::DeallocHelperMap &deallocHelperFuncMap;
+  func::FuncOp deallocHelperFunc;
 };
 } // namespace
 
@@ -389,29 +385,26 @@ struct LowerDeallocationsPass
       return;
     }
 
-    bufferization::DeallocHelperMap deallocHelperFuncMap;
+    func::FuncOp helperFuncOp;
     if (auto module = dyn_cast<ModuleOp>(getOperation())) {
       OpBuilder builder =
           OpBuilder::atBlockBegin(&module.getBodyRegion().front());
+      SymbolTable symbolTable(module);
 
       // Build dealloc helper function if there are deallocs.
       getOperation()->walk([&](bufferization::DeallocOp deallocOp) {
-        Operation *symtableOp =
-            deallocOp->getParentWithTrait<OpTrait::SymbolTable>();
-        if (deallocOp.getMemrefs().size() > 1 &&
-            !deallocHelperFuncMap.contains(symtableOp)) {
-          SymbolTable symbolTable(symtableOp);
-          func::FuncOp helperFuncOp =
-              bufferization::buildDeallocationLibraryFunction(
-                  builder, getOperation()->getLoc(), symbolTable);
-          deallocHelperFuncMap[symtableOp] = helperFuncOp;
+        if (deallocOp.getMemrefs().size() > 1) {
+          helperFuncOp = bufferization::buildDeallocationLibraryFunction(
+              builder, getOperation()->getLoc(), symbolTable);
+          return WalkResult::interrupt();
         }
+        return WalkResult::advance();
       });
     }
 
     RewritePatternSet patterns(&getContext());
-    bufferization::populateBufferizationDeallocLoweringPattern(
-        patterns, deallocHelperFuncMap);
+    bufferization::populateBufferizationDeallocLoweringPattern(patterns,
+                                                               helperFuncOp);
 
     ConversionTarget target(getContext());
     target.addLegalDialect<memref::MemRefDialect, arith::ArithDialect,
@@ -542,10 +535,8 @@ func::FuncOp mlir::bufferization::buildDeallocationLibraryFunction(
 }
 
 void mlir::bufferization::populateBufferizationDeallocLoweringPattern(
-    RewritePatternSet &patterns,
-    const bufferization::DeallocHelperMap &deallocHelperFuncMap) {
-  patterns.add<DeallocOpConversion>(patterns.getContext(),
-                                    deallocHelperFuncMap);
+    RewritePatternSet &patterns, func::FuncOp deallocLibraryFunc) {
+  patterns.add<DeallocOpConversion>(patterns.getContext(), deallocLibraryFunc);
 }
 
 std::unique_ptr<Pass> mlir::bufferization::createLowerDeallocationsPass() {

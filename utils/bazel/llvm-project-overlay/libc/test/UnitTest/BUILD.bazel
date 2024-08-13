@@ -18,7 +18,6 @@ libc_support_library(
         "//libc:__support_big_int",
         "//libc:__support_cpp_string",
         "//libc:__support_cpp_string_view",
-        "//libc:__support_macros_config",
         "//libc:__support_macros_properties_types",
         "//libc:__support_osutil_io",
         "//libc:__support_uint128",
@@ -53,7 +52,6 @@ libc_support_library(
         "//libc:__support_fputil_fp_bits",
         "//libc:__support_fputil_fpbits_str",
         "//libc:__support_fputil_rounding_mode",
-        "//libc:__support_macros_config",
         "//libc:__support_macros_properties_architectures",
         "//libc:__support_macros_properties_types",
         "//libc:__support_stringutil",
@@ -91,11 +89,10 @@ libc_support_library(
         "//libc:__support_fputil_fp_bits",
         "//libc:__support_fputil_fpbits_str",
         "//libc:__support_fputil_rounding_mode",
-        "//libc:__support_macros_config",
         "//libc:__support_macros_properties_architectures",
-        "//libc:hdr_fenv_macros",
         "//libc:hdr_math_macros",
-        "//libc:types_fenv_t",
+	    "//libc:hdr_fenv_macros",
+	    "//libc:types_fenv_t",
     ],
 )
 
@@ -113,7 +110,6 @@ libc_support_library(
         "//libc:__support_cpp_bitset",
         "//libc:__support_cpp_span",
         "//libc:__support_cpp_type_traits",
-        "//libc:__support_macros_config",
     ],
 )
 
@@ -129,7 +125,6 @@ libc_support_library(
         ":LibcUnitTest",
         ":string_utils",
         "//libc:__support_fputil_fp_bits",
-        "//libc:__support_macros_config",
         "//libc:printf_core_structs",
     ],
 )
@@ -143,6 +138,5 @@ libc_support_library(
         "//libc:__support_big_int",
         "//libc:__support_cpp_string",
         "//libc:__support_cpp_type_traits",
-        "//libc:__support_macros_config",
     ],
 )

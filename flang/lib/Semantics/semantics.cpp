@@ -602,9 +602,7 @@ bool Semantics::Perform() {
       CanonicalizeCUDA(program_) &&
       CanonicalizeDirectives(context_.messages(), program_) &&
       PerformStatementSemantics(context_, program_) &&
-      ModFileWriter{context_}
-          .set_hermeticModuleFileOutput(hermeticModuleFileOutput_)
-          .WriteAll();
+      ModFileWriter{context_}.WriteAll();
 }
 
 void Semantics::EmitMessages(llvm::raw_ostream &os) {

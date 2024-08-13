@@ -84,7 +84,8 @@ createAVRObjectTargetStreamer(MCStreamer &S, const MCSubtargetInfo &STI) {
 
 static MCTargetStreamer *createMCAsmTargetStreamer(MCStreamer &S,
                                                    formatted_raw_ostream &OS,
-                                                   MCInstPrinter *InstPrint) {
+                                                   MCInstPrinter *InstPrint,
+                                                   bool isVerboseAsm) {
   return new AVRTargetAsmStreamer(S);
 }
 

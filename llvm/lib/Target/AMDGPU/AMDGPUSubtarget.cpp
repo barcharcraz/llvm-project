@@ -105,14 +105,6 @@ GCNSubtarget::initializeSubtargetDependencies(const Triple &TT,
                                         : AMDGPUSubtarget::SOUTHERN_ISLANDS;
   }
 
-  if (!hasFeature(AMDGPU::FeatureWavefrontSize32) &&
-      !hasFeature(AMDGPU::FeatureWavefrontSize64)) {
-    // If there is no default wave size it must be a generation before gfx10,
-    // these have FeatureWavefrontSize64 in their definition already. For gfx10+
-    // set wave32 as a default.
-    ToggleFeature(AMDGPU::FeatureWavefrontSize32);
-  }
-
   // We don't support FP64 for EG/NI atm.
   assert(!hasFP64() || (getGeneration() >= AMDGPUSubtarget::SOUTHERN_ISLANDS));
 
@@ -183,7 +175,7 @@ void GCNSubtarget::checkSubtargetFeatures(const Function &F) const {
   }
 }
 
-AMDGPUSubtarget::AMDGPUSubtarget(Triple TT) : TargetTriple(std::move(TT)) {}
+AMDGPUSubtarget::AMDGPUSubtarget(const Triple &TT) : TargetTriple(TT) {}
 
 bool AMDGPUSubtarget::useRealTrue16Insts() const {
   return hasTrue16BitInsts() && EnableRealTrue16Insts;
@@ -203,13 +195,11 @@ GCNSubtarget::GCNSubtarget(const Triple &TT, StringRef GPU, StringRef FS,
   // clang-format on
   MaxWavesPerEU = AMDGPU::IsaInfo::getMaxWavesPerEU(this);
   EUsPerCU = AMDGPU::IsaInfo::getEUsPerCU(this);
-  CallLoweringInfo = std::make_unique<AMDGPUCallLowering>(*getTargetLowering());
-  InlineAsmLoweringInfo =
-      std::make_unique<InlineAsmLowering>(getTargetLowering());
-  Legalizer = std::make_unique<AMDGPULegalizerInfo>(*this, TM);
-  RegBankInfo = std::make_unique<AMDGPURegisterBankInfo>(*this);
-  InstSelector =
-      std::make_unique<AMDGPUInstructionSelector>(*this, *RegBankInfo, TM);
+  CallLoweringInfo.reset(new AMDGPUCallLowering(*getTargetLowering()));
+  InlineAsmLoweringInfo.reset(new InlineAsmLowering(getTargetLowering()));
+  Legalizer.reset(new AMDGPULegalizerInfo(*this, TM));
+  RegBankInfo.reset(new AMDGPURegisterBankInfo(*this));
+  InstSelector.reset(new AMDGPUInstructionSelector(*this, *RegBankInfo, TM));
 }
 
 unsigned GCNSubtarget::getConstantBusLimit(unsigned Opcode) const {
@@ -1038,14 +1028,15 @@ unsigned GCNSubtarget::getNSAThreshold(const MachineFunction &MF) const {
 const AMDGPUSubtarget &AMDGPUSubtarget::get(const MachineFunction &MF) {
   if (MF.getTarget().getTargetTriple().getArch() == Triple::amdgcn)
     return static_cast<const AMDGPUSubtarget&>(MF.getSubtarget<GCNSubtarget>());
-  return static_cast<const AMDGPUSubtarget &>(MF.getSubtarget<R600Subtarget>());
+  else
+    return static_cast<const AMDGPUSubtarget&>(MF.getSubtarget<R600Subtarget>());
 }
 
 const AMDGPUSubtarget &AMDGPUSubtarget::get(const TargetMachine &TM, const Function &F) {
   if (TM.getTargetTriple().getArch() == Triple::amdgcn)
     return static_cast<const AMDGPUSubtarget&>(TM.getSubtarget<GCNSubtarget>(F));
-  return static_cast<const AMDGPUSubtarget &>(
-      TM.getSubtarget<R600Subtarget>(F));
+  else
+    return static_cast<const AMDGPUSubtarget&>(TM.getSubtarget<R600Subtarget>(F));
 }
 
 GCNUserSGPRUsageInfo::GCNUserSGPRUsageInfo(const Function &F,

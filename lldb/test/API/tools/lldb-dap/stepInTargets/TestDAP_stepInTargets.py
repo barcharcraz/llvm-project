@@ -10,11 +10,9 @@ from lldbsuite.test import lldbutil
 
 
 class TestDAP_stepInTargets(lldbdap_testcase.DAPTestCaseBase):
-    @expectedFailureAll(oslist=["windows"])
-    @skipIf(archs=no_match(["x86_64"]))
-    # InstructionControlFlowKind for ARM is not supported yet.
-    # On Windows, lldb-dap seems to ignore targetId when stepping into functions.
-    # For more context, see https://github.com/llvm/llvm-project/issues/98509.
+    @skipIf(
+        archs=no_match(["x86_64"])
+    )  # InstructionControlFlowKind for ARM is not supported yet.
     def test_basic(self):
         """
         Tests the basic stepping in targets with directly calls.
@@ -57,24 +55,14 @@ class TestDAP_stepInTargets(lldbdap_testcase.DAPTestCaseBase):
         self.assertEqual(len(step_in_targets), 3, "expect 3 step in targets")
 
         # Verify the target names are correct.
-        # The order of funcA and funcB may change depending on the compiler ABI.
-        funcA_target = None
-        funcB_target = None
-        for target in step_in_targets[0:2]:
-            if "funcB" in target["label"]:
-                funcB_target = target
-            elif "funcA" in target["label"]:
-                funcA_target = target
-            else:
-                self.fail(f"Unexpected step in target: {target}")
+        self.assertEqual(step_in_targets[0]["label"], "bar()", "expect bar()")
+        self.assertEqual(step_in_targets[1]["label"], "bar2()", "expect bar2()")
+        self.assertEqual(
+            step_in_targets[2]["label"], "foo(int, int)", "expect foo(int, int)"
+        )
 
-        self.assertIsNotNone(funcA_target, "expect funcA")
-        self.assertIsNotNone(funcB_target, "expect funcB")
-        self.assertIn("foo", step_in_targets[2]["label"], "expect foo")
-
-        # Choose to step into second target and verify that we are in the second target,
-        # be it funcA or funcB.
+        # Choose to step into second target and verify that we are in bar2()
         self.stepIn(threadId=tid, targetId=step_in_targets[1]["id"], waitForStop=True)
         leaf_frame = self.dap_server.get_stackFrame()
         self.assertIsNotNone(leaf_frame, "expect a leaf frame")
-        self.assertEqual(step_in_targets[1]["label"], leaf_frame["name"])
+        self.assertEqual(leaf_frame["name"], "bar2()")

@@ -75,6 +75,7 @@ struct LexEmbedParametersResult {
   std::optional<PPEmbedParameterIfEmpty> MaybeIfEmptyParam;
   std::optional<PPEmbedParameterPrefix> MaybePrefixParam;
   std::optional<PPEmbedParameterSuffix> MaybeSuffixParam;
+  SourceRange ParamRange;
   int UnrecognizedParams;
 
   size_t PrefixTokenCount() const {

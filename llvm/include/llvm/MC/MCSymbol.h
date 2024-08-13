@@ -99,7 +99,7 @@ protected:
   /// uses binding instead of this bit.
   mutable unsigned IsExternal : 1;
 
-  /// Mach-O specific: This symbol is private extern.
+  /// This symbol is private extern.
   mutable unsigned IsPrivateExtern : 1;
 
   /// This symbol is weak external.
@@ -403,11 +403,12 @@ public:
     return Fragment;
   }
 
-  // For ELF, use MCSymbolELF::setBinding instead.
   bool isExternal() const { return IsExternal; }
   void setExternal(bool Value) const { IsExternal = Value; }
 
-  // COFF-specific
+  bool isPrivateExtern() const { return IsPrivateExtern; }
+  void setPrivateExtern(bool Value) { IsPrivateExtern = Value; }
+
   bool isWeakExternal() const { return IsWeakExternal; }
 
   /// print - Print the value to the stream \p OS.

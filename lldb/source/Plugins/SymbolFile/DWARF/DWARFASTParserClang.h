@@ -109,9 +109,6 @@ public:
   std::string GetDIEClassTemplateParams(
       const lldb_private::plugin::dwarf::DWARFDIE &die) override;
 
-  void MapDeclDIEToDefDIE(const lldb_private::plugin::dwarf::DWARFDIE &decl_die,
-                          const lldb_private::plugin::dwarf::DWARFDIE &def_die);
-
 protected:
   /// Protected typedefs and members.
   /// @{
@@ -171,10 +168,8 @@ protected:
       lldb_private::TypeSystemClang::TemplateParameterInfos
           &template_param_infos);
 
-  void GetUniqueTypeNameAndDeclaration(
-      const lldb_private::plugin::dwarf::DWARFDIE &die,
-      lldb::LanguageType language, lldb_private::ConstString &unique_typename,
-      lldb_private::Declaration &decl_declaration);
+  std::string
+  GetCPlusPlusQualifiedName(const lldb_private::plugin::dwarf::DWARFDIE &die);
 
   bool ParseChildMembers(
       const lldb_private::plugin::dwarf::DWARFDIE &die,

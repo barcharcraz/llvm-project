@@ -1365,7 +1365,7 @@ static MachineInstr *canFoldAsPredicatedOp(Register Reg,
       return nullptr;
   }
   bool DontMoveAcrossStores = true;
-  if (!MI->isSafeToMove(DontMoveAcrossStores))
+  if (!MI->isSafeToMove(/* AliasAnalysis = */ nullptr, DontMoveAcrossStores))
     return nullptr;
   return MI;
 }
@@ -1474,8 +1474,10 @@ unsigned RISCVInstrInfo::getInstSizeInBytes(const MachineInstr &MI) const {
 
   if (!MI.memoperands_empty()) {
     MachineMemOperand *MMO = *(MI.memoperands_begin());
-    if (STI.hasStdExtZihintntl() && MMO->isNonTemporal()) {
-      if (STI.hasStdExtCOrZca() && STI.enableRVCHintInstrs()) {
+    const MachineFunction &MF = *MI.getParent()->getParent();
+    const auto &ST = MF.getSubtarget<RISCVSubtarget>();
+    if (ST.hasStdExtZihintntl() && MMO->isNonTemporal()) {
+      if (ST.hasStdExtCOrZca() && ST.enableRVCHintInstrs()) {
         if (isCompressibleInst(MI, STI))
           return 4; // c.ntl.all + c.load/c.store
         return 6;   // c.ntl.all + load/store
@@ -2830,7 +2832,6 @@ bool RISCVInstrInfo::shouldOutlineFromFunctionByDefault(
 
 std::optional<outliner::OutlinedFunction>
 RISCVInstrInfo::getOutliningCandidateInfo(
-    const MachineModuleInfo &MMI,
     std::vector<outliner::Candidate> &RepeatedSequenceLocs) const {
 
   // First we need to filter out candidates where the X5 register (IE t0) can't
@@ -2869,9 +2870,8 @@ RISCVInstrInfo::getOutliningCandidateInfo(
 }
 
 outliner::InstrType
-RISCVInstrInfo::getOutliningTypeImpl(const MachineModuleInfo &MMI,
-                                     MachineBasicBlock::iterator &MBBI,
-                                     unsigned Flags) const {
+RISCVInstrInfo::getOutliningTypeImpl(MachineBasicBlock::iterator &MBBI,
+                                 unsigned Flags) const {
   MachineInstr &MI = *MBBI;
   MachineBasicBlock *MBB = MI.getParent();
   const TargetRegisterInfo *TRI =

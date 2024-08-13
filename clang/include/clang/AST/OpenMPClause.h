@@ -316,10 +316,10 @@ public:
   unsigned varlist_size() const { return NumVars; }
   bool varlist_empty() const { return NumVars == 0; }
 
-  varlist_range varlist() {
+  varlist_range varlists() {
     return varlist_range(varlist_begin(), varlist_end());
   }
-  varlist_const_range varlist() const {
+  varlist_const_range varlists() const {
     return varlist_const_range(varlist_begin(), varlist_end());
   }
 

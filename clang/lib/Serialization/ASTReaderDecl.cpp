@@ -794,12 +794,15 @@ void ASTDeclReader::VisitEnumDecl(EnumDecl *ED) {
   BitsUnpacker EnumDeclBits(Record.readInt());
   ED->setNumPositiveBits(EnumDeclBits.getNextBits(/*Width=*/8));
   ED->setNumNegativeBits(EnumDeclBits.getNextBits(/*Width=*/8));
+  bool ShouldSkipCheckingODR = EnumDeclBits.getNextBit();
   ED->setScoped(EnumDeclBits.getNextBit());
   ED->setScopedUsingClassTag(EnumDeclBits.getNextBit());
   ED->setFixed(EnumDeclBits.getNextBit());
 
-  ED->setHasODRHash(true);
-  ED->ODRHash = Record.readInt();
+  if (!ShouldSkipCheckingODR) {
+    ED->setHasODRHash(true);
+    ED->ODRHash = Record.readInt();
+  }
 
   // If this is a definition subject to the ODR, and we already have a
   // definition, merge this one into it.
@@ -821,7 +824,7 @@ void ASTDeclReader::VisitEnumDecl(EnumDecl *ED) {
       Reader.mergeDefinitionVisibility(OldDef, ED);
       // We don't want to check the ODR hash value for declarations from global
       // module fragment.
-      if (!shouldSkipCheckingODR(ED) && !shouldSkipCheckingODR(OldDef) &&
+      if (!shouldSkipCheckingODR(ED) &&
           OldDef->getODRHash() != ED->getODRHash())
         Reader.PendingEnumOdrMergeFailures[OldDef].push_back(ED);
     } else {
@@ -861,6 +864,9 @@ ASTDeclReader::VisitRecordDeclImpl(RecordDecl *RD) {
 
 void ASTDeclReader::VisitRecordDecl(RecordDecl *RD) {
   VisitRecordDeclImpl(RD);
+  // We should only reach here if we're in C/Objective-C. There is no
+  // global module fragment.
+  assert(!shouldSkipCheckingODR(RD));
   RD->setODRHash(Record.readInt());
 
   // Maintain the invariant of a redeclaration chain containing only
@@ -1060,6 +1066,7 @@ void ASTDeclReader::VisitFunctionDecl(FunctionDecl *FD) {
 
   FD->setCachedLinkage((Linkage)FunctionDeclBits.getNextBits(/*Width=*/3));
   FD->setStorageClass((StorageClass)FunctionDeclBits.getNextBits(/*Width=*/3));
+  bool ShouldSkipCheckingODR = FunctionDeclBits.getNextBit();
   FD->setInlineSpecified(FunctionDeclBits.getNextBit());
   FD->setImplicitlyInline(FunctionDeclBits.getNextBit());
   FD->setHasSkippedBody(FunctionDeclBits.getNextBit());
@@ -1089,8 +1096,10 @@ void ASTDeclReader::VisitFunctionDecl(FunctionDecl *FD) {
   if (FD->isExplicitlyDefaulted())
     FD->setDefaultLoc(readSourceLocation());
 
-  FD->ODRHash = Record.readInt();
-  FD->setHasODRHash(true);
+  if (!ShouldSkipCheckingODR) {
+    FD->ODRHash = Record.readInt();
+    FD->setHasODRHash(true);
+  }
 
   if (FD->isDefaulted() || FD->isDeletedAsWritten()) {
     // If 'Info' is nonzero, we need to read an DefaultedOrDeletedInfo; if,
@@ -1838,8 +1847,13 @@ void ASTDeclReader::VisitNamespaceDecl(NamespaceDecl *D) {
   // same namespace, and we have an invariant that older declarations
   // get merged before newer ones try to merge.
   GlobalDeclID AnonNamespace;
-  if (Redecl.getFirstID() == ThisDeclID)
+  if (Redecl.getFirstID() == ThisDeclID) {
     AnonNamespace = readDeclID();
+  } else {
+    // Link this namespace back to the first declaration, which has already
+    // been deserialized.
+    D->AnonOrFirstNamespaceAndFlags.setPointer(D->getFirstDecl());
+  }
 
   mergeRedeclarable(D, Redecl);
 
@@ -1962,6 +1976,8 @@ void ASTDeclReader::ReadCXXDefinitionData(
 
   BitsUnpacker CXXRecordDeclBits = Record.readInt();
 
+  bool ShouldSkipCheckingODR = CXXRecordDeclBits.getNextBit();
+
 #define FIELD(Name, Width, Merge)                                              \
   if (!CXXRecordDeclBits.canGetNextNBits(Width))                         \
     CXXRecordDeclBits.updateValue(Record.readInt());                           \
@@ -1970,9 +1986,12 @@ void ASTDeclReader::ReadCXXDefinitionData(
 #include "clang/AST/CXXRecordDeclDefinitionBits.def"
 #undef FIELD
 
-  // Note: the caller has deserialized the IsLambda bit already.
-  Data.ODRHash = Record.readInt();
-  Data.HasODRHash = true;
+  // We only perform ODR checks for decls not in GMF.
+  if (!ShouldSkipCheckingODR) {
+    // Note: the caller has deserialized the IsLambda bit already.
+    Data.ODRHash = Record.readInt();
+    Data.HasODRHash = true;
+  }
 
   if (Record.readInt()) {
     Reader.DefinitionSource[D] =
@@ -2134,7 +2153,7 @@ void ASTDeclReader::MergeDefinitionData(
   }
 
   // We don't want to check ODR for decls in the global module fragment.
-  if (shouldSkipCheckingODR(MergeDD.Definition) || shouldSkipCheckingODR(D))
+  if (shouldSkipCheckingODR(MergeDD.Definition))
     return;
 
   if (D->getODRHash() != MergeDD.ODRHash) {
@@ -2955,6 +2974,13 @@ void ASTDeclReader::mergeRedeclarable(Redeclarable<T> *DBase, T *Existing,
     ExistingCanon->Used |= D->Used;
     D->Used = false;
 
+    // When we merge a namespace, update its pointer to the first namespace.
+    // We cannot have loaded any redeclarations of this declaration yet, so
+    // there's nothing else that needs to be updated.
+    if (auto *Namespace = dyn_cast<NamespaceDecl>(D))
+      Namespace->AnonOrFirstNamespaceAndFlags.setPointer(
+          assert_cast<NamespaceDecl *>(ExistingCanon));
+
     // When we merge a template, merge its pattern.
     if (auto *DTemplate = dyn_cast<RedeclarableTemplateDecl>(D))
       mergeTemplatePattern(
@@ -3267,7 +3293,7 @@ ASTDeclReader::getOrFakePrimaryClassDefinition(ASTReader &Reader,
 DeclContext *ASTDeclReader::getPrimaryContextForMerging(ASTReader &Reader,
                                                         DeclContext *DC) {
   if (auto *ND = dyn_cast<NamespaceDecl>(DC))
-    return ND->getFirstDecl();
+    return ND->getOriginalNamespace();
 
   if (auto *RD = dyn_cast<CXXRecordDecl>(DC))
     return getOrFakePrimaryClassDefinition(Reader, RD);

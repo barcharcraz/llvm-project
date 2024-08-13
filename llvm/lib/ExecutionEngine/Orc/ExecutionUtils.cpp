@@ -17,7 +17,6 @@
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Object/MachOUniversal.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "llvm/Support/StringSaver.h"
 #include "llvm/Target/TargetMachine.h"
 #include <string>
 
@@ -423,7 +422,6 @@ Error StaticLibraryDefinitionGenerator::buildObjectFilesMap() {
   DenseMap<uint64_t, MemoryBufferRef> MemoryBuffers;
   DenseSet<uint64_t> Visited;
   DenseSet<uint64_t> Excluded;
-  StringSaver FileNames(ObjFileNameStorage);
   for (auto &S : Archive->symbols()) {
     StringRef SymName = S.getName();
     auto Member = S.getMember();
@@ -440,17 +438,7 @@ Error StaticLibraryDefinitionGenerator::buildObjectFilesMap() {
         Excluded.insert(DataOffset);
         continue;
       }
-
-      // Give members of the archive a name that contains the archive path so
-      // that they can be differentiated from a member with the same name in a
-      // different archive. This also ensure initializer symbols names will be
-      // unique within a JITDylib.
-      StringRef FullName = FileNames.save(Archive->getFileName() + "(" +
-                                          (*Child)->getFileName() + ")");
-      MemoryBufferRef MemBuffer((*Child)->getMemoryBufferRef().getBuffer(),
-                                FullName);
-
-      MemoryBuffers[DataOffset] = MemBuffer;
+      MemoryBuffers[DataOffset] = (*Child)->getMemoryBufferRef();
     }
     if (!Excluded.count(DataOffset))
       ObjectFilesMap[L.getExecutionSession().intern(SymName)] =

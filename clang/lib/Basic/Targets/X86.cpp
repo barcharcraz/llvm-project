@@ -258,9 +258,7 @@ bool X86TargetInfo::handleTargetFeatures(std::vector<std::string> &Features,
     if (Feature[0] != '+')
       continue;
 
-    if (Feature == "+mmx") {
-      HasMMX = true;
-    } else if (Feature == "+aes") {
+    if (Feature == "+aes") {
       HasAES = true;
     } else if (Feature == "+vaes") {
       HasVAES = true;
@@ -488,6 +486,13 @@ bool X86TargetInfo::handleTargetFeatures(std::vector<std::string> &Features,
     // determine whether to automatically use excess floating point precision
     // for bfloat16 arithmetic operations in the front-end.
     HasBFloat16 = SSELevel >= SSE2;
+
+    MMX3DNowEnum ThreeDNowLevel = llvm::StringSwitch<MMX3DNowEnum>(Feature)
+                                      .Case("+3dnowa", AMD3DNowAthlon)
+                                      .Case("+3dnow", AMD3DNow)
+                                      .Case("+mmx", MMX)
+                                      .Default(NoMMX3DNow);
+    MMX3DNowLevel = std::max(MMX3DNowLevel, ThreeDNowLevel);
 
     XOPEnum XLevel = llvm::StringSwitch<XOPEnum>(Feature)
                          .Case("+xop", XOP)
@@ -963,8 +968,8 @@ void X86TargetInfo::getTargetDefines(const LangOptions &Opts,
     Builder.defineMacro("__CF__");
   if (HasZU)
     Builder.defineMacro("__ZU__");
-  if (HasEGPR && HasPush2Pop2 && HasPPX && HasNDD && HasCCMP && HasNF &&
-      HasCF && HasZU)
+  // Condition here is aligned with the feature set of mapxf in Options.td
+  if (HasEGPR && HasPush2Pop2 && HasPPX && HasNDD && HasCCMP && HasNF && HasCF)
     Builder.defineMacro("__APX_F__");
   if (HasEGPR && HasInlineAsmUseGPR32)
     Builder.defineMacro("__APX_INLINE_ASM_USE_GPR32__");
@@ -1026,8 +1031,18 @@ void X86TargetInfo::getTargetDefines(const LangOptions &Opts,
   }
 
   // Each case falls through to the previous one here.
-  if (HasMMX) {
+  switch (MMX3DNowLevel) {
+  case AMD3DNowAthlon:
+    Builder.defineMacro("__3dNOW_A__");
+    [[fallthrough]];
+  case AMD3DNow:
+    Builder.defineMacro("__3dNOW__");
+    [[fallthrough]];
+  case MMX:
     Builder.defineMacro("__MMX__");
+    [[fallthrough]];
+  case NoMMX3DNow:
+    break;
   }
 
   if (CPU >= CK_i486 || CPU == CK_None) {
@@ -1046,6 +1061,8 @@ void X86TargetInfo::getTargetDefines(const LangOptions &Opts,
 
 bool X86TargetInfo::isValidFeatureName(StringRef Name) const {
   return llvm::StringSwitch<bool>(Name)
+      .Case("3dnow", true)
+      .Case("3dnowa", true)
       .Case("adx", true)
       .Case("aes", true)
       .Case("amx-bf16", true)
@@ -1215,7 +1232,9 @@ bool X86TargetInfo::hasFeature(StringRef Feature) const {
       .Case("widekl", HasWIDEKL)
       .Case("lwp", HasLWP)
       .Case("lzcnt", HasLZCNT)
-      .Case("mmx", HasMMX)
+      .Case("mm3dnow", MMX3DNowLevel >= AMD3DNow)
+      .Case("mm3dnowa", MMX3DNowLevel >= AMD3DNowAthlon)
+      .Case("mmx", MMX3DNowLevel >= MMX)
       .Case("movbe", HasMOVBE)
       .Case("movdiri", HasMOVDIRI)
       .Case("movdir64b", HasMOVDIR64B)

@@ -81,10 +81,6 @@ private:
   std::unordered_map<llvm::omp::Clause, ClauseSet> clauseSets;
 };
 
-template <typename ClauseTy>
-ConstructCompositionT(uint32_t, llvm::ArrayRef<DirectiveWithClauses<ClauseTy>>)
-    -> ConstructCompositionT<ClauseTy>;
-
 template <typename C>
 ConstructCompositionT<C>::ConstructCompositionT(
     uint32_t version, llvm::ArrayRef<DirectiveWithClauses<C>> leafs)
@@ -133,7 +129,7 @@ ConstructCompositionT<C>::ConstructCompositionT(
   mergeReduction();
   mergeDSA();
 
-  // For the rest of the clauses, just copy them.
+  // Fir the rest of the clauses, just copy them.
   for (auto &[id, clauses] : clauseSets) {
     // Skip clauses we've already dealt with.
     switch (id) {

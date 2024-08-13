@@ -12,10 +12,9 @@
 #include "hdr/types/off_t.h"
 #include "src/__support/CPP/new.h"
 #include "src/__support/CPP/span.h"
-#include "src/__support/macros/config.h"
 #include "src/errno/libc_errno.h" // For error macros
 
-namespace LIBC_NAMESPACE_DECL {
+namespace LIBC_NAMESPACE {
 
 FileIOResult File::write_unlocked(const void *data, size_t len) {
   if (!write_allowed()) {
@@ -282,7 +281,7 @@ int File::ungetc_unlocked(int c) {
   return c;
 }
 
-ErrorOr<int> File::seek(off_t offset, int whence) {
+ErrorOr<int> File::seek(long offset, int whence) {
   FileLock lock(this);
   if (prev_op == FileOp::WRITE && pos > 0) {
 
@@ -431,4 +430,4 @@ File::ModeFlags File::mode_flags(const char *mode) {
   return flags;
 }
 
-} // namespace LIBC_NAMESPACE_DECL
+} // namespace LIBC_NAMESPACE

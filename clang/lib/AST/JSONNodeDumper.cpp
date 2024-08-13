@@ -883,8 +883,9 @@ void JSONNodeDumper::VisitNamespaceDecl(const NamespaceDecl *ND) {
   VisitNamedDecl(ND);
   attributeOnlyIfTrue("isInline", ND->isInline());
   attributeOnlyIfTrue("isNested", ND->isNested());
-  if (!ND->isFirstDecl())
-    JOS.attribute("originalNamespace", createBareDeclRef(ND->getFirstDecl()));
+  if (!ND->isOriginalNamespace())
+    JOS.attribute("originalNamespace",
+                  createBareDeclRef(ND->getOriginalNamespace()));
 }
 
 void JSONNodeDumper::VisitUsingDirectiveDecl(const UsingDirectiveDecl *UDD) {

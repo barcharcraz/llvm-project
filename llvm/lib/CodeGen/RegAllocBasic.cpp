@@ -74,7 +74,7 @@ class RABasic : public MachineFunctionPass,
   void LRE_WillShrinkVirtReg(Register) override;
 
 public:
-  RABasic(const RegAllocFilterFunc F = nullptr);
+  RABasic(const RegClassFilterFunc F = nullptr);
 
   /// Return the pass name.
   StringRef getPassName() const override { return "Basic Register Allocator"; }
@@ -168,8 +168,10 @@ void RABasic::LRE_WillShrinkVirtReg(Register VirtReg) {
   enqueue(&LI);
 }
 
-RABasic::RABasic(RegAllocFilterFunc F)
-    : MachineFunctionPass(ID), RegAllocBase(F) {}
+RABasic::RABasic(RegClassFilterFunc F):
+  MachineFunctionPass(ID),
+  RegAllocBase(F) {
+}
 
 void RABasic::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.setPreservesCFG();
@@ -182,8 +184,8 @@ void RABasic::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.addPreserved<LiveDebugVariables>();
   AU.addRequired<LiveStacks>();
   AU.addPreserved<LiveStacks>();
-  AU.addRequired<MachineBlockFrequencyInfoWrapperPass>();
-  AU.addPreserved<MachineBlockFrequencyInfoWrapperPass>();
+  AU.addRequired<MachineBlockFrequencyInfo>();
+  AU.addPreserved<MachineBlockFrequencyInfo>();
   AU.addRequiredID(MachineDominatorsID);
   AU.addPreservedID(MachineDominatorsID);
   AU.addRequired<MachineLoopInfoWrapperPass>();
@@ -310,9 +312,9 @@ bool RABasic::runOnMachineFunction(MachineFunction &mf) {
   RegAllocBase::init(getAnalysis<VirtRegMap>(),
                      getAnalysis<LiveIntervalsWrapperPass>().getLIS(),
                      getAnalysis<LiveRegMatrix>());
-  VirtRegAuxInfo VRAI(
-      *MF, *LIS, *VRM, getAnalysis<MachineLoopInfoWrapperPass>().getLI(),
-      getAnalysis<MachineBlockFrequencyInfoWrapperPass>().getMBFI());
+  VirtRegAuxInfo VRAI(*MF, *LIS, *VRM,
+                      getAnalysis<MachineLoopInfoWrapperPass>().getLI(),
+                      getAnalysis<MachineBlockFrequencyInfo>());
   VRAI.calculateSpillWeightsAndHints();
 
   SpillerInstance.reset(createInlineSpiller(*this, *MF, *VRM, VRAI));
@@ -331,6 +333,6 @@ FunctionPass* llvm::createBasicRegisterAllocator() {
   return new RABasic();
 }
 
-FunctionPass *llvm::createBasicRegisterAllocator(RegAllocFilterFunc F) {
+FunctionPass* llvm::createBasicRegisterAllocator(RegClassFilterFunc F) {
   return new RABasic(F);
 }

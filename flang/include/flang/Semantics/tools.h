@@ -222,6 +222,7 @@ inline bool HasCUDAAttr(const Symbol &sym) {
 }
 
 inline bool NeedCUDAAlloc(const Symbol &sym) {
+  bool inDeviceSubprogram{IsCUDADeviceContext(&sym.owner())};
   if (IsDummy(sym)) {
     return false;
   }
@@ -229,8 +230,11 @@ inline bool NeedCUDAAlloc(const Symbol &sym) {
     if (details->cudaDataAttr() &&
         (*details->cudaDataAttr() == common::CUDADataAttr::Device ||
             *details->cudaDataAttr() == common::CUDADataAttr::Managed ||
-            *details->cudaDataAttr() == common::CUDADataAttr::Unified ||
-            *details->cudaDataAttr() == common::CUDADataAttr::Pinned)) {
+            *details->cudaDataAttr() == common::CUDADataAttr::Unified)) {
+      // Descriptor is allocated on host when in host context.
+      if (IsAllocatable(sym)) {
+        return inDeviceSubprogram;
+      }
       return true;
     }
   }

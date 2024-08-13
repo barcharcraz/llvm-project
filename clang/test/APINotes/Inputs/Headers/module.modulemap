@@ -24,10 +24,6 @@ module BrokenTypes {
   header "BrokenTypes.h"
 }
 
-module Methods {
-  header "Methods.h"
-}
-
 module ModuleWithWrongCase {
   header "ModuleWithWrongCase.h"
 }

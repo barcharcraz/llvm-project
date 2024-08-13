@@ -10,7 +10,6 @@
 #define LLDB_CORE_PLUGINMANAGER_H
 
 #include "lldb/Core/Architecture.h"
-#include "lldb/Interpreter/Interfaces/ScriptedInterfaceUsages.h"
 #include "lldb/Symbol/TypeSystem.h"
 #include "lldb/Utility/CompletionRequest.h"
 #include "lldb/Utility/FileSpec.h"
@@ -179,8 +178,6 @@ public:
 
   static bool UnregisterPlugin(ObjectFileCreateInstance create_callback);
 
-  static bool IsRegisteredObjectFilePluginName(llvm::StringRef name);
-
   static ObjectFileCreateInstance
   GetObjectFileCreateCallbackAtIndex(uint32_t idx);
 
@@ -194,7 +191,9 @@ public:
   GetObjectFileCreateMemoryCallbackForPluginName(llvm::StringRef name);
 
   static Status SaveCore(const lldb::ProcessSP &process_sp,
-                         const lldb_private::SaveCoreOptions &core_options);
+                         const FileSpec &outfile,
+                         lldb::SaveCoreStyle &core_style,
+                         llvm::StringRef plugin_name);
 
   // ObjectContainer
   static bool RegisterPlugin(
@@ -487,25 +486,6 @@ public:
   static LanguageSet GetAllTypeSystemSupportedLanguagesForTypes();
 
   static LanguageSet GetAllTypeSystemSupportedLanguagesForExpressions();
-
-  // Scripted Interface
-  static bool RegisterPlugin(llvm::StringRef name, llvm::StringRef description,
-                             ScriptedInterfaceCreateInstance create_callback,
-                             lldb::ScriptLanguage language,
-                             ScriptedInterfaceUsages usages);
-
-  static bool UnregisterPlugin(ScriptedInterfaceCreateInstance create_callback);
-
-  static uint32_t GetNumScriptedInterfaces();
-
-  static llvm::StringRef GetScriptedInterfaceNameAtIndex(uint32_t idx);
-
-  static llvm::StringRef GetScriptedInterfaceDescriptionAtIndex(uint32_t idx);
-
-  static lldb::ScriptLanguage GetScriptedInterfaceLanguageAtIndex(uint32_t idx);
-
-  static ScriptedInterfaceUsages
-  GetScriptedInterfaceUsagesAtIndex(uint32_t idx);
 
   // REPL
   static bool RegisterPlugin(llvm::StringRef name, llvm::StringRef description,

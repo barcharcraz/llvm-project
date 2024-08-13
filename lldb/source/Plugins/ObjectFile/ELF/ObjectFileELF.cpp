@@ -1696,6 +1696,7 @@ static SectionType GetSectionTypeFromName(llvm::StringRef Name) {
   return llvm::StringSwitch<SectionType>(Name)
       .Case(".ARM.exidx", eSectionTypeARMexidx)
       .Case(".ARM.extab", eSectionTypeARMextab)
+      .Cases(".bss", ".tbss", eSectionTypeZeroFill)
       .Case(".ctf", eSectionTypeDebug)
       .Cases(".data", ".tdata", eSectionTypeData)
       .Case(".eh_frame", eSectionTypeEHFrame)
@@ -1711,10 +1712,6 @@ SectionType ObjectFileELF::GetSectionType(const ELFSectionHeaderInfo &H) const {
   case SHT_PROGBITS:
     if (H.sh_flags & SHF_EXECINSTR)
       return eSectionTypeCode;
-    break;
-  case SHT_NOBITS:
-    if (H.sh_flags & SHF_ALLOC)
-      return eSectionTypeZeroFill;
     break;
   case SHT_SYMTAB:
     return eSectionTypeELFSymbolTable;

@@ -47,7 +47,8 @@ static cl::opt<bool> VerifyHSAMetadata(
     "amdgpu-verify-hsa-metadata",
     cl::desc("Verify AMDGPU HSA Metadata"));
 
-namespace AMDGPU::HSAMD {
+namespace AMDGPU {
+namespace HSAMD {
 
 //===----------------------------------------------------------------------===//
 // HSAMetadataStreamerV4
@@ -706,5 +707,6 @@ void MetadataStreamerMsgPackV6::emitVersion() {
   getRootMetadata("amdhsa.version") = Version;
 }
 
-} // end namespace AMDGPU::HSAMD
+} // end namespace HSAMD
+} // end namespace AMDGPU
 } // end namespace llvm

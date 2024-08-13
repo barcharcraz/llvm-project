@@ -101,15 +101,13 @@ namespace llvm {
 /// format.
 class MIRPrinter {
   raw_ostream &OS;
-  const MachineModuleInfo &MMI;
   DenseMap<const uint32_t *, unsigned> RegisterMaskIds;
   /// Maps from stack object indices to operand indices which will be used when
   /// printing frame index machine operands.
   DenseMap<int, FrameIndexOperand> StackObjectOperandMapping;
 
 public:
-  MIRPrinter(raw_ostream &OS, const MachineModuleInfo &MMI)
-      : OS(OS), MMI(MMI) {}
+  MIRPrinter(raw_ostream &OS) : OS(OS) {}
 
   void print(const MachineFunction &MF);
 
@@ -224,7 +222,7 @@ void MIRPrinter::print(const MachineFunction &MF) {
       MachineFunctionProperties::Property::TracksDebugUserValues);
 
   convert(YamlMF, MF.getRegInfo(), MF.getSubtarget().getRegisterInfo());
-  MachineModuleSlotTracker MST(MMI, &MF);
+  MachineModuleSlotTracker MST(&MF);
   MST.incorporateFunction(MF.getFunction());
   convert(MST, YamlMF.FrameInfo, MF.getFrameInfo());
   convertStackObjects(YamlMF, MF, MST);
@@ -1007,13 +1005,12 @@ void llvm::printMIR(raw_ostream &OS, const Module &M) {
   Out << const_cast<Module &>(M);
 }
 
-void llvm::printMIR(raw_ostream &OS, const MachineModuleInfo &MMI,
-                    const MachineFunction &MF) {
+void llvm::printMIR(raw_ostream &OS, const MachineFunction &MF) {
   // RemoveDIs: as there's no textual form for DbgRecords yet, print debug-info
   // in dbg.value format.
   ScopedDbgInfoFormatSetter FormatSetter(
       const_cast<Function &>(MF.getFunction()), WriteNewDbgInfoFormat);
 
-  MIRPrinter Printer(OS, MMI);
+  MIRPrinter Printer(OS);
   Printer.print(MF);
 }

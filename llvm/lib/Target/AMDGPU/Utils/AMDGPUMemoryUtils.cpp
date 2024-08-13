@@ -25,7 +25,9 @@
 
 using namespace llvm;
 
-namespace llvm::AMDGPU {
+namespace llvm {
+
+namespace AMDGPU {
 
 Align getAlign(const DataLayout &DL, const GlobalVariable *GV) {
   return DL.getValueOrABITypeAlignment(GV->getPointerAlignment(DL),
@@ -369,4 +371,6 @@ bool isClobberedInFunction(const LoadInst *Load, MemorySSA *MSSA,
   return false;
 }
 
-} // end namespace llvm::AMDGPU
+} // end namespace AMDGPU
+
+} // end namespace llvm

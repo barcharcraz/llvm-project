@@ -153,7 +153,7 @@ inline unsigned getSaSdstBitWidth() { return 1; }
 /// \returns SaSdst bit shift
 inline unsigned getSaSdstBitShift() { return 0; }
 
-} // end anonymous namespace
+} // end namespace anonymous
 
 namespace llvm {
 
@@ -496,17 +496,17 @@ bool getSMEMIsBuffer(unsigned Opc) {
 
 bool getVOP1IsSingle(unsigned Opc) {
   const VOPInfo *Info = getVOP1OpcodeHelper(Opc);
-  return Info ? Info->IsSingle : true;
+  return Info ? Info->IsSingle : false;
 }
 
 bool getVOP2IsSingle(unsigned Opc) {
   const VOPInfo *Info = getVOP2OpcodeHelper(Opc);
-  return Info ? Info->IsSingle : true;
+  return Info ? Info->IsSingle : false;
 }
 
 bool getVOP3IsSingle(unsigned Opc) {
   const VOPInfo *Info = getVOP3OpcodeHelper(Opc);
-  return Info ? Info->IsSingle : true;
+  return Info ? Info->IsSingle : false;
 }
 
 bool isVOPC64DPP(unsigned Opc) {
@@ -537,7 +537,8 @@ CanBeVOPD getCanBeVOPD(unsigned Opc) {
   const VOPDComponentInfo *Info = getVOPDComponentHelper(Opc);
   if (Info)
     return {Info->CanBeVOPDX, true};
-  return {false, false};
+  else
+    return {false, false};
 }
 
 unsigned getVOPDOpcode(unsigned Opc) {
@@ -1478,10 +1479,11 @@ static unsigned getCombinedCountBitMask(const IsaVersion &Version,
     unsigned Storecnt = getBitMask(getLoadcntStorecntBitShift(Version.Major),
                                    getStorecntBitWidth(Version.Major));
     return Dscnt | Storecnt;
+  } else {
+    unsigned Loadcnt = getBitMask(getLoadcntStorecntBitShift(Version.Major),
+                                  getLoadcntBitWidth(Version.Major));
+    return Dscnt | Loadcnt;
   }
-  unsigned Loadcnt = getBitMask(getLoadcntStorecntBitShift(Version.Major),
-                                getLoadcntBitWidth(Version.Major));
-  return Dscnt | Loadcnt;
 }
 
 Waitcnt decodeLoadcntDscnt(const IsaVersion &Version, unsigned LoadcntDscnt) {

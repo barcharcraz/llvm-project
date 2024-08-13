@@ -72,8 +72,7 @@ static mlir::Value genScalarValue(Fortran::lower::AbstractConverter &converter,
 }
 
 /// Does this variable have a default initialization?
-bool Fortran::lower::hasDefaultInitialization(
-    const Fortran::semantics::Symbol &sym) {
+static bool hasDefaultInitialization(const Fortran::semantics::Symbol &sym) {
   if (sym.has<Fortran::semantics::ObjectEntityDetails>() && sym.size())
     if (!Fortran::semantics::IsAllocatableOrPointer(sym))
       if (const Fortran::semantics::DeclTypeSpec *declTypeSpec = sym.GetType())
@@ -354,7 +353,7 @@ static mlir::Value genComponentDefaultInit(
       // global constructor since this has no runtime cost.
       componentValue = fir::factory::createUnallocatedBox(
           builder, loc, componentTy, std::nullopt);
-    } else if (Fortran::lower::hasDefaultInitialization(component)) {
+    } else if (hasDefaultInitialization(component)) {
       // Component type has default initialization.
       componentValue = genDefaultInitializerValue(converter, loc, component,
                                                   componentTy, stmtCtx);
@@ -557,7 +556,7 @@ static fir::GlobalOp defineGlobal(Fortran::lower::AbstractConverter &converter,
                 builder.createConvert(loc, symTy, fir::getBase(initVal));
             builder.create<fir::HasValueOp>(loc, castTo);
           });
-    } else if (Fortran::lower::hasDefaultInitialization(sym)) {
+    } else if (hasDefaultInitialization(sym)) {
       Fortran::lower::createGlobalInitialization(
           builder, global, [&](fir::FirOpBuilder &builder) {
             Fortran::lower::StatementContext stmtCtx(
@@ -716,9 +715,8 @@ static mlir::Value createNewLocal(Fortran::lower::AbstractConverter &converter,
     auto idxTy = builder.getIndexType();
     for (mlir::Value sh : elidedShape)
       indices.push_back(builder.createConvert(loc, idxTy, sh));
-    mlir::Value alloc = builder.create<cuf::AllocOp>(
-        loc, ty, nm, symNm, dataAttr, lenParams, indices);
-    return alloc;
+    return builder.create<cuf::AllocOp>(loc, ty, nm, symNm, dataAttr, lenParams,
+                                        indices);
   }
 
   // Let the builder do all the heavy lifting.
@@ -753,15 +751,17 @@ mustBeDefaultInitializedAtRuntime(const Fortran::lower::pft::Variable &var) {
     return true;
   // Local variables (including function results), and intent(out) dummies must
   // be default initialized at runtime if their type has default initialization.
-  return Fortran::lower::hasDefaultInitialization(sym);
+  return hasDefaultInitialization(sym);
 }
 
 /// Call default initialization runtime routine to initialize \p var.
-void Fortran::lower::defaultInitializeAtRuntime(
-    Fortran::lower::AbstractConverter &converter,
-    const Fortran::semantics::Symbol &sym, Fortran::lower::SymMap &symMap) {
+static void
+defaultInitializeAtRuntime(Fortran::lower::AbstractConverter &converter,
+                           const Fortran::lower::pft::Variable &var,
+                           Fortran::lower::SymMap &symMap) {
   fir::FirOpBuilder &builder = converter.getFirOpBuilder();
   mlir::Location loc = converter.getCurrentLocation();
+  const Fortran::semantics::Symbol &sym = var.getSymbol();
   fir::ExtendedValue exv = converter.getSymbolExtendedValue(sym, &symMap);
   if (Fortran::semantics::IsOptional(sym)) {
     // 15.5.2.12 point 3, absent optional dummies are not initialized.
@@ -926,21 +926,7 @@ static void instantiateLocal(Fortran::lower::AbstractConverter &converter,
   if (needDummyIntentoutFinalization(var))
     finalizeAtRuntime(converter, var, symMap);
   if (mustBeDefaultInitializedAtRuntime(var))
-    Fortran::lower::defaultInitializeAtRuntime(converter, var.getSymbol(),
-                                               symMap);
-  if (Fortran::semantics::NeedCUDAAlloc(var.getSymbol())) {
-    auto *builder = &converter.getFirOpBuilder();
-    mlir::Location loc = converter.getCurrentLocation();
-    fir::ExtendedValue exv =
-        converter.getSymbolExtendedValue(var.getSymbol(), &symMap);
-    auto *sym = &var.getSymbol();
-    converter.getFctCtx().attachCleanup([builder, loc, exv, sym]() {
-      cuf::DataAttributeAttr dataAttr =
-          Fortran::lower::translateSymbolCUFDataAttribute(builder->getContext(),
-                                                          *sym);
-      builder->create<cuf::FreeOp>(loc, fir::getBase(exv), dataAttr);
-    });
-  }
+    defaultInitializeAtRuntime(converter, var, symMap);
   if (std::optional<VariableCleanUp> cleanup =
           needDeallocationOrFinalization(var)) {
     auto *builder = &converter.getFirOpBuilder();
@@ -964,9 +950,21 @@ static void instantiateLocal(Fortran::lower::AbstractConverter &converter,
                "trying to deallocate entity not lowered as allocatable");
         Fortran::lower::genDeallocateIfAllocated(*converterPtr, *mutableBox,
                                                  loc, sym);
-        
       });
     }
+  }
+  if (Fortran::semantics::NeedCUDAAlloc(var.getSymbol())) {
+    auto *builder = &converter.getFirOpBuilder();
+    mlir::Location loc = converter.getCurrentLocation();
+    fir::ExtendedValue exv =
+        converter.getSymbolExtendedValue(var.getSymbol(), &symMap);
+    auto *sym = &var.getSymbol();
+    converter.getFctCtx().attachCleanup([builder, loc, exv, sym]() {
+      cuf::DataAttributeAttr dataAttr =
+          Fortran::lower::translateSymbolCUFDataAttribute(builder->getContext(),
+                                                          *sym);
+      builder->create<cuf::FreeOp>(loc, fir::getBase(exv), dataAttr);
+    });
   }
 }
 
@@ -1168,8 +1166,7 @@ static void instantiateAlias(Fortran::lower::AbstractConverter &converter,
   // do not try optimizing this to single default initializations of
   // the equivalenced storages. Keep lowering simple.
   if (mustBeDefaultInitializedAtRuntime(var))
-    Fortran::lower::defaultInitializeAtRuntime(converter, var.getSymbol(),
-                                               symMap);
+    defaultInitializeAtRuntime(converter, var, symMap);
 }
 
 //===--------------------------------------------------------------===//

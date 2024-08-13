@@ -406,10 +406,10 @@ mlir::Value fir::runtime::genModulo(fir::FirOpBuilder &builder,
   return builder.create<fir::CallOp>(loc, func, args).getResult(0);
 }
 
-/// Generate call to Nearest intrinsic or a "Next" intrinsic module procedure.
+/// Generate call to Nearest intrinsic runtime routine.
 mlir::Value fir::runtime::genNearest(fir::FirOpBuilder &builder,
                                      mlir::Location loc, mlir::Value x,
-                                     mlir::Value valueUp) {
+                                     mlir::Value s) {
   mlir::func::FuncOp func;
   mlir::Type fltTy = x.getType();
 
@@ -425,7 +425,19 @@ mlir::Value fir::runtime::genNearest(fir::FirOpBuilder &builder,
     fir::intrinsicTypeTODO(builder, fltTy, loc, "NEAREST");
 
   auto funcTy = func.getFunctionType();
-  auto args = fir::runtime::createArguments(builder, loc, funcTy, x, valueUp);
+
+  mlir::Type sTy = s.getType();
+  mlir::Value zero = builder.createRealZeroConstant(loc, sTy);
+  auto cmp = builder.create<mlir::arith::CmpFOp>(
+      loc, mlir::arith::CmpFPredicate::OGT, s, zero);
+
+  mlir::Type boolTy = mlir::IntegerType::get(builder.getContext(), 1);
+  mlir::Value False = builder.createIntegerConstant(loc, boolTy, 0);
+  mlir::Value True = builder.createIntegerConstant(loc, boolTy, 1);
+
+  mlir::Value positive =
+      builder.create<mlir::arith::SelectOp>(loc, cmp, True, False);
+  auto args = fir::runtime::createArguments(builder, loc, funcTy, x, positive);
 
   return builder.create<fir::CallOp>(loc, func, args).getResult(0);
 }

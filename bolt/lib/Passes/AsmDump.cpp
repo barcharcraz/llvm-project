@@ -139,8 +139,11 @@ void dumpFunction(const BinaryFunction &BF) {
   auto FOut = std::make_unique<formatted_raw_ostream>(OS);
   FOut->SetUnbuffered();
   std::unique_ptr<MCStreamer> AsmStreamer(
-      createAsmStreamer(*LocalCtx, std::move(FOut), InstructionPrinter,
-                        std::move(MCEInstance.MCE), std::move(MAB)));
+      createAsmStreamer(*LocalCtx, std::move(FOut),
+                        /*isVerboseAsm=*/true,
+                        /*useDwarfDirectory=*/false, InstructionPrinter,
+                        std::move(MCEInstance.MCE), std::move(MAB),
+                        /*ShowInst=*/false));
   AsmStreamer->initSections(true, *BC.STI);
   std::unique_ptr<TargetMachine> TM(BC.TheTarget->createTargetMachine(
       BC.TripleName, "", "", TargetOptions(), std::nullopt));

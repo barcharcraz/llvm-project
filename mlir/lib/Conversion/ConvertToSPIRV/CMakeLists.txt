@@ -27,7 +27,6 @@ add_mlir_conversion_library(MLIRConvertToSPIRVPass
   MLIRTransforms
   MLIRTransformUtils
   MLIRUBToSPIRV
-  MLIRVectorDialect
   MLIRVectorToSPIRV
   MLIRVectorTransforms
   )

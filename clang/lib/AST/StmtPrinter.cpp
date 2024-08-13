@@ -763,16 +763,6 @@ void StmtPrinter::VisitOMPUnrollDirective(OMPUnrollDirective *Node) {
   PrintOMPExecutableDirective(Node);
 }
 
-void StmtPrinter::VisitOMPReverseDirective(OMPReverseDirective *Node) {
-  Indent() << "#pragma omp reverse";
-  PrintOMPExecutableDirective(Node);
-}
-
-void StmtPrinter::VisitOMPInterchangeDirective(OMPInterchangeDirective *Node) {
-  Indent() << "#pragma omp interchange";
-  PrintOMPExecutableDirective(Node);
-}
-
 void StmtPrinter::VisitOMPForDirective(OMPForDirective *Node) {
   Indent() << "#pragma omp for";
   PrintOMPExecutableDirective(Node);

@@ -456,8 +456,8 @@ bool ExpandVariadics::runOnFunction(Module &M, IRBuilder<> &Builder,
   // Replace known calls to the variadic with calls to the va_list equivalent
   for (User *U : make_early_inc_range(VariadicWrapper->users())) {
     if (CallBase *CB = dyn_cast<CallBase>(U)) {
-      Value *CalledOperand = CB->getCalledOperand();
-      if (VariadicWrapper == CalledOperand)
+      Value *calledOperand = CB->getCalledOperand();
+      if (VariadicWrapper == calledOperand)
         Changed |=
             expandCall(M, Builder, CB, VariadicWrapper->getFunctionType(),
                        FixedArityReplacement);
@@ -938,33 +938,6 @@ struct Amdgpu final : public VariadicABIInfo {
   }
 };
 
-struct NVPTX final : public VariadicABIInfo {
-
-  bool enableForTarget() override { return true; }
-
-  bool vaListPassedInSSARegister() override { return true; }
-
-  Type *vaListType(LLVMContext &Ctx) override {
-    return PointerType::getUnqual(Ctx);
-  }
-
-  Type *vaListParameterType(Module &M) override {
-    return PointerType::getUnqual(M.getContext());
-  }
-
-  Value *initializeVaList(Module &M, LLVMContext &Ctx, IRBuilder<> &Builder,
-                          AllocaInst *, Value *Buffer) override {
-    return Builder.CreateAddrSpaceCast(Buffer, vaListParameterType(M));
-  }
-
-  VAArgSlotInfo slotInfo(const DataLayout &DL, Type *Parameter) override {
-    // NVPTX expects natural alignment in all cases. The variadic call ABI will
-    // handle promoting types to their appropriate size and alignment.
-    Align A = DL.getABITypeAlign(Parameter);
-    return {A, false};
-  }
-};
-
 struct Wasm final : public VariadicABIInfo {
 
   bool enableForTarget() override {
@@ -994,8 +967,8 @@ struct Wasm final : public VariadicABIInfo {
     if (A < MinAlign)
       A = Align(MinAlign);
 
-    if (auto *S = dyn_cast<StructType>(Parameter)) {
-      if (S->getNumElements() > 1) {
+    if (auto s = dyn_cast<StructType>(Parameter)) {
+      if (s->getNumElements() > 1) {
         return {DL.getABITypeAlign(PointerType::getUnqual(Ctx)), true};
       }
     }
@@ -1013,11 +986,6 @@ std::unique_ptr<VariadicABIInfo> VariadicABIInfo::create(const Triple &T) {
 
   case Triple::wasm32: {
     return std::make_unique<Wasm>();
-  }
-
-  case Triple::nvptx:
-  case Triple::nvptx64: {
-    return std::make_unique<NVPTX>();
   }
 
   default:

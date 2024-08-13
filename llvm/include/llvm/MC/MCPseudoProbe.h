@@ -61,7 +61,6 @@
 #include "llvm/IR/PseudoProbe.h"
 #include "llvm/Support/ErrorOr.h"
 #include <list>
-#include <map>
 #include <memory>
 #include <string>
 #include <tuple>
@@ -103,7 +102,8 @@ using MCPseudoProbeInlineStack = SmallVector<InlineSite, 8>;
 using GUIDProbeFunctionMap =
     std::unordered_map<uint64_t, MCPseudoProbeFuncDesc>;
 // Address to pseudo probes map.
-using AddressProbesMap = std::map<uint64_t, std::list<MCDecodedPseudoProbe>>;
+using AddressProbesMap =
+    std::unordered_map<uint64_t, std::list<MCDecodedPseudoProbe>>;
 
 class MCDecodedPseudoProbeInlineTree;
 
@@ -280,6 +280,8 @@ class MCDecodedPseudoProbeInlineTree
                                          MCDecodedPseudoProbeInlineTree> {
 public:
   InlineSite ISite;
+  // Used for decoding
+  uint32_t ChildrenToProcess = 0;
 
   MCDecodedPseudoProbeInlineTree() = default;
   MCDecodedPseudoProbeInlineTree(const InlineSite &Site) : ISite(Site){};

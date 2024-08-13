@@ -112,7 +112,7 @@ public:
   virtual ~InstructionRule() = default;
 };
 
-using SUnitsToCandidateSGsMap = DenseMap<SUnit *, SmallVector<int, 4>>;
+typedef DenseMap<SUnit *, SmallVector<int, 4>> SUnitsToCandidateSGsMap;
 
 // Classify instructions into groups to enable fine tuned control over the
 // scheduler. These groups may be more specific than current SchedModel
@@ -190,9 +190,13 @@ public:
   // Returns true if the SU matches all rules
   bool allowedByRules(const SUnit *SU,
                       SmallVectorImpl<SchedGroup> &SyncPipe) const {
-    for (auto &Rule : Rules) {
-      if (!Rule.get()->apply(SU, Collection, SyncPipe))
+    if (Rules.empty())
+      return true;
+    for (size_t I = 0; I < Rules.size(); I++) {
+      auto TheRule = Rules[I].get();
+      if (!TheRule->apply(SU, Collection, SyncPipe)) {
         return false;
+      }
     }
     return true;
   }
@@ -257,8 +261,8 @@ static void resetEdges(SUnit &SU, ScheduleDAGInstrs *DAG) {
           S.getSUnit()->removePred(SP);
 }
 
-using SUToCandSGsPair = std::pair<SUnit *, SmallVector<int, 4>>;
-using SUsToCandSGsVec = SmallVector<SUToCandSGsPair, 4>;
+typedef std::pair<SUnit *, SmallVector<int, 4>> SUToCandSGsPair;
+typedef SmallVector<SUToCandSGsPair, 4> SUsToCandSGsVec;
 
 // The PipelineSolver is used to assign SUnits to SchedGroups in a pipeline
 // in non-trivial cases. For example, if the requested pipeline is
@@ -307,7 +311,7 @@ class PipelineSolver {
   uint64_t BranchesExplored = 0;
 
   // The direction in which we process the candidate SchedGroups per SU
-  bool IsBottomUp = true;
+  bool IsBottomUp = 1;
 
   // Update indices to fit next conflicting instruction
   void advancePosition();
@@ -361,7 +365,7 @@ public:
 
   PipelineSolver(DenseMap<int, SmallVector<SchedGroup, 4>> &SyncedSchedGroups,
                  DenseMap<int, SUnitsToCandidateSGsMap> &SyncedInstrs,
-                 ScheduleDAGMI *DAG, bool IsBottomUp = true)
+                 ScheduleDAGMI *DAG, bool IsBottomUp = 1)
       : DAG(DAG), SyncedInstrs(SyncedInstrs),
         SyncedSchedGroups(SyncedSchedGroups), IsBottomUp(IsBottomUp) {
 
@@ -854,7 +858,7 @@ public:
   virtual bool shouldApplyStrategy(ScheduleDAGInstrs *DAG,
                                    AMDGPU::SchedulingPhase Phase) = 0;
 
-  bool IsBottomUp = true;
+  bool IsBottomUp = 1;
 
   IGLPStrategy(ScheduleDAGInstrs *DAG, const SIInstrInfo *TII)
       : DAG(DAG), TII(TII) {}
@@ -877,7 +881,7 @@ public:
 
   MFMASmallGemmOpt(ScheduleDAGInstrs *DAG, const SIInstrInfo *TII)
       : IGLPStrategy(DAG, TII) {
-    IsBottomUp = true;
+    IsBottomUp = 1;
   }
 };
 
@@ -1346,7 +1350,7 @@ public:
 
   MFMAExpInterleaveOpt(ScheduleDAGInstrs *DAG, const SIInstrInfo *TII)
       : IGLPStrategy(DAG, TII) {
-    IsBottomUp = false;
+    IsBottomUp = 0;
   }
 };
 
@@ -2057,7 +2061,7 @@ public:
 
   MFMASmallGemmSingleWaveOpt(ScheduleDAGInstrs *DAG, const SIInstrInfo *TII)
       : IGLPStrategy(DAG, TII) {
-    IsBottomUp = false;
+    IsBottomUp = 0;
   }
 };
 
@@ -2367,7 +2371,7 @@ public:
   // created SchedGroup first, and will consider that as the ultimate
   // predecessor group when linking. TOP_DOWN instead links and processes the
   // first created SchedGroup first.
-  bool IsBottomUp = true;
+  bool IsBottomUp = 1;
 
   // The scheduling phase this application of IGLP corresponds with.
   AMDGPU::SchedulingPhase Phase = AMDGPU::SchedulingPhase::Initial;
@@ -2462,7 +2466,7 @@ int SchedGroup::link(SUnit &SU, bool MakePred,
     // the A->B edge impossible, otherwise it returns true;
     bool Added = tryAddEdge(A, B);
     if (Added)
-      AddedEdges.emplace_back(A, B);
+      AddedEdges.push_back(std::pair(A, B));
     else
       ++MissedEdges;
   }

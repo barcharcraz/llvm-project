@@ -1279,7 +1279,8 @@ bool MVEGatherScatterLowering::runOnFunction(Function &F) {
       }
     }
   }
-  for (IntrinsicInst *I : Gathers) {
+  for (unsigned i = 0; i < Gathers.size(); i++) {
+    IntrinsicInst *I = Gathers[i];
     Instruction *L = lowerGather(I);
     if (L == nullptr)
       continue;
@@ -1289,7 +1290,8 @@ bool MVEGatherScatterLowering::runOnFunction(Function &F) {
     Changed = true;
   }
 
-  for (IntrinsicInst *I : Scatters) {
+  for (unsigned i = 0; i < Scatters.size(); i++) {
+    IntrinsicInst *I = Scatters[i];
     Instruction *S = lowerScatter(I);
     if (S == nullptr)
       continue;

@@ -6,8 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// This test did pass but is very slow when run using qemu. ~7 minutes on a
-// Neoverse N1 (AArch64) server core.
+// This test appears to hang with picolibc & qemu.
 // UNSUPPORTED: LIBCXX-PICOLIBC-FIXME
 
 // <algorithm>

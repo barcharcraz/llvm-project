@@ -11,15 +11,15 @@
 //===----------------------------------------------------------------------===//
 
 #include "bolt/Utils/CommandLineOpts.h"
-#include "VCSVersion.inc"
+#include "llvm/Support/VCSRevision.h"
 
 using namespace llvm;
 
 namespace llvm {
 namespace bolt {
 const char *BoltRevision =
-#ifdef BOLT_REVISION
-    BOLT_REVISION;
+#ifdef LLVM_REVISION
+    LLVM_REVISION;
 #else
     "<unknown>";
 #endif
@@ -103,12 +103,6 @@ cl::opt<unsigned long long> HeatmapMaxAddress(
 cl::opt<unsigned long long> HeatmapMinAddress(
     "min-address", cl::init(0x0),
     cl::desc("minimum address considered valid for heatmap (default 0)"),
-    cl::Optional, cl::cat(HeatmapCategory));
-
-cl::opt<bool> HeatmapPrintMappings(
-    "print-mappings", cl::init(false),
-    cl::desc("print mappings in the legend, between characters/blocks and text "
-             "sections (default false)"),
     cl::Optional, cl::cat(HeatmapCategory));
 
 cl::opt<bool> HotData("hot-data",

@@ -151,7 +151,6 @@ public:
   }
 
   void addIRPasses() override;
-  void addCodeGenPrepare() override;
   bool addInstSelector() override;
   void addPreEmitPass() override;
   void addPreEmitPass2() override;
@@ -177,12 +176,6 @@ void LoongArchPassConfig::addIRPasses() {
   addPass(createAtomicExpandLegacyPass());
 
   TargetPassConfig::addIRPasses();
-}
-
-void LoongArchPassConfig::addCodeGenPrepare() {
-  if (getOptLevel() != CodeGenOptLevel::None)
-    addPass(createTypePromotionLegacyPass());
-  TargetPassConfig::addCodeGenPrepare();
 }
 
 bool LoongArchPassConfig::addInstSelector() {

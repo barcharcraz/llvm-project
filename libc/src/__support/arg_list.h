@@ -10,19 +10,13 @@
 #define LLVM_LIBC_SRC___SUPPORT_ARG_LIST_H
 
 #include "src/__support/common.h"
-#include "src/__support/macros/config.h"
 
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
 
-namespace LIBC_NAMESPACE_DECL {
+namespace LIBC_NAMESPACE {
 namespace internal {
-
-template <typename V, typename A>
-LIBC_INLINE constexpr V align_up(V val, A align) {
-  return ((val + V(align) - 1) / V(align)) * V(align);
-}
 
 class ArgList {
   va_list vlist;
@@ -60,34 +54,7 @@ public:
   }
 
   template <class T> LIBC_INLINE T next_var() {
-    arg_counter++;
-    return T(arg_counter);
-  }
-
-  size_t read_count() const { return arg_counter; }
-};
-
-// Used by the GPU implementation to parse how many bytes need to be read from
-// the variadic argument buffer.
-template <bool packed> class DummyArgList {
-  size_t arg_counter = 0;
-
-public:
-  LIBC_INLINE DummyArgList() = default;
-  LIBC_INLINE DummyArgList(va_list) { ; }
-  LIBC_INLINE DummyArgList(DummyArgList &other) {
-    arg_counter = other.arg_counter;
-  }
-  LIBC_INLINE ~DummyArgList() = default;
-
-  LIBC_INLINE DummyArgList &operator=(DummyArgList &rhs) {
-    arg_counter = rhs.arg_counter;
-    return *this;
-  }
-
-  template <class T> LIBC_INLINE T next_var() {
-    arg_counter = packed ? arg_counter + sizeof(T)
-                         : align_up(arg_counter, alignof(T)) + sizeof(T);
+    ++arg_counter;
     return T(arg_counter);
   }
 
@@ -96,7 +63,7 @@ public:
 
 // Used for the GPU implementation of `printf`. This models a variadic list as a
 // simple array of pointers that are built manually by the implementation.
-template <bool packed> class StructArgList {
+class StructArgList {
   void *ptr;
   void *end;
 
@@ -118,23 +85,20 @@ public:
   LIBC_INLINE void *get_ptr() const { return ptr; }
 
   template <class T> LIBC_INLINE T next_var() {
-    if (!packed)
-      ptr = reinterpret_cast<void *>(
-          align_up(reinterpret_cast<uintptr_t>(ptr), alignof(T)));
+    ptr = reinterpret_cast<void *>(
+        ((reinterpret_cast<uintptr_t>(ptr) + alignof(T) - 1) / alignof(T)) *
+        alignof(T));
+
     if (ptr >= end)
       return T(-1);
 
-    // Memcpy because pointer alignment may be illegal given a packed struct.
-    T val;
-    __builtin_memcpy(&val, ptr, sizeof(T));
-
-    ptr =
-        reinterpret_cast<void *>(reinterpret_cast<uintptr_t>(ptr) + sizeof(T));
+    T val = *reinterpret_cast<T *>(ptr);
+    ptr = reinterpret_cast<unsigned char *>(ptr) + sizeof(T);
     return val;
   }
 };
 
 } // namespace internal
-} // namespace LIBC_NAMESPACE_DECL
+} // namespace LIBC_NAMESPACE
 
 #endif // LLVM_LIBC_SRC___SUPPORT_ARG_LIST_H

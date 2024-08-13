@@ -25,11 +25,11 @@
 #include "llvm/MC/MCCodeEmitter.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCDwarf.h"
-#include "llvm/MC/MCELFObjectWriter.h"
 #include "llvm/MC/MCELFStreamer.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCInstrAnalysis.h"
 #include "llvm/MC/MCInstrInfo.h"
+#include "llvm/MC/MCObjectWriter.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCSectionXCOFF.h"
 #include "llvm/MC/MCStreamer.h"
@@ -298,14 +298,15 @@ public:
   }
 
   void emitAbiVersion(int AbiVersion) override {
-    ELFObjectWriter &W = getStreamer().getWriter();
-    unsigned Flags = W.getELFHeaderEFlags();
+    MCAssembler &MCA = getStreamer().getAssembler();
+    unsigned Flags = MCA.getELFHeaderEFlags();
     Flags &= ~ELF::EF_PPC64_ABI;
     Flags |= (AbiVersion & ELF::EF_PPC64_ABI);
-    W.setELFHeaderEFlags(Flags);
+    MCA.setELFHeaderEFlags(Flags);
   }
 
   void emitLocalEntry(MCSymbolELF *S, const MCExpr *LocalOffset) override {
+    MCAssembler &MCA = getStreamer().getAssembler();
 
     // encodePPC64LocalEntryOffset will report an error if it cannot
     // encode LocalOffset.
@@ -318,10 +319,9 @@ public:
 
     // For GAS compatibility, unless we already saw a .abiversion directive,
     // set e_flags to indicate ELFv2 ABI.
-    ELFObjectWriter &W = getStreamer().getWriter();
-    unsigned Flags = W.getELFHeaderEFlags();
+    unsigned Flags = MCA.getELFHeaderEFlags();
     if ((Flags & ELF::EF_PPC64_ABI) == 0)
-      W.setELFHeaderEFlags(Flags | 2);
+      MCA.setELFHeaderEFlags(Flags | 2);
   }
 
   void emitAssignment(MCSymbol *S, const MCExpr *Value) override {
@@ -439,7 +439,8 @@ public:
 
 static MCTargetStreamer *createAsmTargetStreamer(MCStreamer &S,
                                                  formatted_raw_ostream &OS,
-                                                 MCInstPrinter *InstPrint) {
+                                                 MCInstPrinter *InstPrint,
+                                                 bool isVerboseAsm) {
   return new PPCTargetAsmStreamer(S, OS);
 }
 

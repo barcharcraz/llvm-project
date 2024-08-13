@@ -483,7 +483,7 @@ static MachineInstr *canFoldIntoSelect(Register Reg,
       return nullptr;
   }
   bool DontMoveAcrossStores = true;
-  if (!MI->isSafeToMove(DontMoveAcrossStores))
+  if (!MI->isSafeToMove(/*AliasAnalysis=*/nullptr, DontMoveAcrossStores))
     return nullptr;
   return MI;
 }

@@ -88,17 +88,6 @@ def getStdFlag(cfg, std):
     return None
 
 
-def getDefaultStdValue(cfg):
-    viable = [s for s in reversed(_allStandards) if getStdFlag(cfg, s)]
-
-    if not viable:
-        raise RuntimeError(
-            "Unable to successfully detect the presence of any -std=c++NN flag. This likely indicates an issue with your compiler."
-        )
-
-    return viable[0]
-
-
 def getSpeedOptimizationFlag(cfg):
     if _isClang(cfg) or _isAppleClang(cfg) or _isGCC(cfg):
         return "-O3"
@@ -181,7 +170,9 @@ DEFAULT_PARAMETERS = [
         choices=_allStandards,
         type=str,
         help="The version of the standard to compile the test suite with.",
-        default=lambda cfg: getDefaultStdValue(cfg),
+        default=lambda cfg: next(
+            s for s in reversed(_allStandards) if getStdFlag(cfg, s)
+        ),
         actions=lambda std: [
             AddFeature(std),
             AddSubstitution("%{cxx_std}", re.sub(r"\+", "x", std)),
@@ -383,12 +374,11 @@ DEFAULT_PARAMETERS = [
     ),
     Parameter(
         name="hardening_mode",
-        choices=["none", "fast", "extensive", "debug", "undefined"],
+        choices=["none", "fast", "extensive", "debug"],
         type=str,
-        default="undefined",
+        default="none",
         help="Whether to enable one of the hardening modes when compiling the test suite. This is only "
-        "meaningful when running the tests against libc++. By default, no hardening mode is specified "
-        "so the default hardening mode of the standard library will be used (if any).",
+        "meaningful when running the tests against libc++.",
         actions=lambda hardening_mode: filter(
             None,
             [
@@ -396,7 +386,7 @@ DEFAULT_PARAMETERS = [
                 AddCompileFlag("-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_FAST")      if hardening_mode == "fast" else None,
                 AddCompileFlag("-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE") if hardening_mode == "extensive" else None,
                 AddCompileFlag("-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_DEBUG")     if hardening_mode == "debug" else None,
-                AddFeature("libcpp-hardening-mode={}".format(hardening_mode))               if hardening_mode != "undefined" else None,
+                AddFeature("libcpp-hardening-mode={}".format(hardening_mode)),
             ],
         ),
     ),

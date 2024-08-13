@@ -1,7 +1,6 @@
 import unittest
 
 from clang.cindex import (
-    TokenKind,
     CursorKind,
     TemplateArgumentKind,
     ExceptionSpecificationKind,
@@ -12,13 +11,11 @@ from clang.cindex import (
     LinkageKind,
     TLSKind,
     StorageClass,
-    BinaryOperator,
 )
 
 
-class TestEnums(unittest.TestCase):
+class TestCursorKind(unittest.TestCase):
     enums = [
-        TokenKind,
         CursorKind,
         TemplateArgumentKind,
         ExceptionSpecificationKind,
@@ -29,23 +26,22 @@ class TestEnums(unittest.TestCase):
         LinkageKind,
         TLSKind,
         StorageClass,
-        BinaryOperator,
     ]
 
     def test_from_id(self):
         """Check that kinds can be constructed from valid IDs"""
         for enum in self.enums:
-            self.assertEqual(enum.from_id(2), enum(2))
-            max_value = max([variant.value for variant in enum])
+            self.assertEqual(enum.from_id(2), enum._kinds[2])
             with self.assertRaises(ValueError):
-                enum.from_id(max_value + 1)
+                enum.from_id(len(enum._kinds))
             with self.assertRaises(ValueError):
                 enum.from_id(-1)
 
-    def test_duplicate_ids(self):
-        """Check that no two kinds have the same id"""
-        # for enum in self.enums:
+    def test_unique_kinds(self):
+        """Check that no kind name has been used multiple times"""
         for enum in self.enums:
-            num_declared_variants = len(enum._member_map_.keys())
-            num_unique_variants = len(list(enum))
-            self.assertEqual(num_declared_variants, num_unique_variants)
+            for id in range(len(enum._kinds)):
+                try:
+                    enum.from_id(id).name
+                except ValueError:
+                    pass

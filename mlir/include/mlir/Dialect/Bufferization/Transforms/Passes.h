@@ -18,9 +18,6 @@ class FuncOp;
 namespace bufferization {
 struct OneShotBufferizationOptions;
 
-/// Maps from symbol table to its corresponding dealloc helper function.
-using DeallocHelperMap = llvm::DenseMap<Operation *, func::FuncOp>;
-
 //===----------------------------------------------------------------------===//
 // Passes
 //===----------------------------------------------------------------------===//
@@ -49,7 +46,7 @@ std::unique_ptr<Pass> createLowerDeallocationsPass();
 /// Adds the conversion pattern of the `bufferization.dealloc` operation to the
 /// given pattern set for use in other transformation passes.
 void populateBufferizationDeallocLoweringPattern(
-    RewritePatternSet &patterns, const DeallocHelperMap &deallocHelperFuncMap);
+    RewritePatternSet &patterns, func::FuncOp deallocLibraryFunc);
 
 /// Construct the library function needed for the fully generic
 /// `bufferization.dealloc` lowering implemented in the LowerDeallocations pass.

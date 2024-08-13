@@ -70,8 +70,6 @@ public:
                                      TTI::TargetCostKind CostKind,
                                      unsigned Index, Value *Op0, Value *Op1);
 
-  TTI::ReductionShuffle
-  getPreferredExpandedReductionShuffle(const IntrinsicInst *II) const;
   /// @}
 
   bool areInlineCompatible(const Function *Caller,

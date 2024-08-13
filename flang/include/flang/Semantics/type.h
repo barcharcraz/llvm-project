@@ -459,7 +459,7 @@ inline const DerivedTypeSpec *DeclTypeSpec::AsDerived() const {
   return const_cast<DeclTypeSpec *>(this)->AsDerived();
 }
 
-std::optional<bool> IsInteroperableIntrinsicType(
+bool IsInteroperableIntrinsicType(
     const DeclTypeSpec &, const common::LanguageFeatureControl &);
 
 } // namespace Fortran::semantics

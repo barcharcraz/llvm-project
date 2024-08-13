@@ -55,7 +55,7 @@ private:
   AssumptionCache *AC = nullptr;
   DominatorTree *DT = nullptr;
 
-  using FuncInfo = llvm::AMDGPULibFunc;
+  typedef llvm::AMDGPULibFunc FuncInfo;
 
   bool UnsafeFPMath = false;
 
@@ -136,7 +136,7 @@ protected:
   }
 
 public:
-  AMDGPULibCalls() = default;
+  AMDGPULibCalls() {}
 
   bool fold(CallInst *CI);
 
@@ -147,7 +147,7 @@ public:
   bool useNative(CallInst *CI);
 };
 
-} // end namespace llvm
+} // end llvm namespace
 
 template <typename IRB>
 static CallInst *CreateCallEx(IRB &B, FunctionCallee Callee, Value *Arg,
@@ -861,8 +861,9 @@ bool AMDGPULibCalls::TDOFold(CallInst *CI, const FuncInfo &FInfo) {
       Constant *nval;
       if (getArgType(FInfo) == AMDGPULibFunc::F32) {
         SmallVector<float, 0> FVal;
-        for (double D : DVal)
-          FVal.push_back((float)D);
+        for (unsigned i = 0; i < DVal.size(); ++i) {
+          FVal.push_back((float)DVal[i]);
+        }
         ArrayRef<float> tmp(FVal);
         nval = ConstantDataVector::get(context, tmp);
       } else { // F64
@@ -898,7 +899,7 @@ static double log2(double V) {
   return log(V) / numbers::ln2;
 #endif
 }
-} // namespace llvm
+}
 
 bool AMDGPULibCalls::fold_pow(FPMathOperator *FPOp, IRBuilder<> &B,
                               const FuncInfo &FInfo) {
@@ -1081,8 +1082,9 @@ bool AMDGPULibCalls::fold_pow(FPMathOperator *FPOp, IRBuilder<> &B,
       }
       if (getArgType(FInfo) == AMDGPULibFunc::F32) {
         SmallVector<float, 0> FVal;
-        for (double D : DVal)
-          FVal.push_back((float)D);
+        for (unsigned i=0; i < DVal.size(); ++i) {
+          FVal.push_back((float)DVal[i]);
+        }
         ArrayRef<float> tmp(FVal);
         cnval = ConstantDataVector::get(M->getContext(), tmp);
       } else {

@@ -998,22 +998,18 @@ uint64_t InstrProfRecord::remapValue(uint64_t Value, uint32_t ValueKind,
 }
 
 void InstrProfRecord::addValueData(uint32_t ValueKind, uint32_t Site,
-                                   ArrayRef<InstrProfValueData> VData,
+                                   InstrProfValueData *VData, uint32_t N,
                                    InstrProfSymtab *ValueMap) {
-  // Remap values.
-  std::vector<InstrProfValueData> RemappedVD;
-  RemappedVD.reserve(VData.size());
-  for (const auto &V : VData) {
-    uint64_t NewValue = remapValue(V.Value, ValueKind, ValueMap);
-    RemappedVD.push_back({NewValue, V.Count});
+  for (uint32_t I = 0; I < N; I++) {
+    VData[I].Value = remapValue(VData[I].Value, ValueKind, ValueMap);
   }
-
   std::vector<InstrProfValueSiteRecord> &ValueSites =
       getOrCreateValueSitesForKind(ValueKind);
   assert(ValueSites.size() == Site);
-
-  // Add a new value site with remapped value profiling data.
-  ValueSites.emplace_back(std::move(RemappedVD));
+  if (N == 0)
+    ValueSites.emplace_back();
+  else
+    ValueSites.emplace_back(VData, VData + N);
 }
 
 void TemporalProfTraceTy::createBPFunctionNodes(
@@ -1147,8 +1143,7 @@ void ValueProfRecord::deserializeTo(InstrProfRecord &Record,
   InstrProfValueData *ValueData = getValueProfRecordValueData(this);
   for (uint64_t VSite = 0; VSite < NumValueSites; ++VSite) {
     uint8_t ValueDataCount = this->SiteCountArray[VSite];
-    ArrayRef<InstrProfValueData> VDs(ValueData, ValueDataCount);
-    Record.addValueData(Kind, VSite, VDs, SymTab);
+    Record.addValueData(Kind, VSite, ValueData, ValueDataCount, SymTab);
     ValueData += ValueDataCount;
   }
 }

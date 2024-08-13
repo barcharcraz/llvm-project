@@ -503,7 +503,8 @@ llvm::Error dwarfgen::Generator::init(Triple TheTriple, uint16_t V) {
   MS = TheTarget->createMCObjectStreamer(
       TheTriple, *MC, std::unique_ptr<MCAsmBackend>(MAB),
       MAB->createObjectWriter(*Stream), std::unique_ptr<MCCodeEmitter>(MCE),
-      *MSTI);
+      *MSTI, MCOptions.MCRelaxAll, MCOptions.MCIncrementalLinkerCompatible,
+      /*DWARFMustBeAtTheEnd*/ false);
   if (!MS)
     return make_error<StringError>("no object streamer for target " +
                                        TripleName,

@@ -260,7 +260,8 @@ Expected<std::vector<BenchmarkCode>> readSnippets(const LLVMState &State,
           *TM.getMCAsmInfo(), *TM.getMCInstrInfo(), *TM.getMCRegisterInfo()));
   // The following call will take care of calling Streamer.setTargetStreamer.
   TM.getTarget().createAsmTargetStreamer(Streamer, InstPrinterOStream,
-                                         InstPrinter.get());
+                                         InstPrinter.get(),
+                                         TM.Options.MCOptions.AsmVerbose);
   if (!Streamer.getTargetStreamer())
     return make_error<Failure>("cannot create target asm streamer");
 

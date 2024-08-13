@@ -2496,9 +2496,7 @@ Error BitcodeReader::parseTypeTableBody() {
       ResultTy = Type::getMetadataTy(Context);
       break;
     case bitc::TYPE_CODE_X86_MMX:   // X86_MMX
-      // Deprecated: decodes as <1 x i64>
-      ResultTy =
-          llvm::FixedVectorType::get(llvm::IntegerType::get(Context, 64), 1);
+      ResultTy = Type::getX86_MMXTy(Context);
       break;
     case bitc::TYPE_CODE_X86_AMX:   // X86_AMX
       ResultTy = Type::getX86_AMXTy(Context);
@@ -4383,6 +4381,7 @@ Error BitcodeReader::parseGlobalIndirectSymbolRecord(
       return error("Malformed partition, too large.");
     NewGA->setPartition(
         StringRef(Strtab.data() + Record[OpNum], Record[OpNum + 1]));
+    OpNum += 2;
   }
 
   ValueList.push_back(NewGA, getVirtualTypeID(NewGA->getType(), TypeID));
@@ -7995,12 +7994,7 @@ Error ModuleSummaryIndexBitcodeReader::parseEntireSummary(unsigned ID) {
     case bitc::FS_PERMODULE_ALLOC_INFO: {
       unsigned I = 0;
       std::vector<MIBInfo> MIBs;
-      unsigned NumMIBs = 0;
-      if (Version >= 10)
-        NumMIBs = Record[I++];
-      unsigned MIBsRead = 0;
-      while ((Version >= 10 && MIBsRead++ < NumMIBs) ||
-             (Version < 10 && I < Record.size())) {
+      while (I < Record.size()) {
         assert(Record.size() - I >= 2);
         AllocationType AllocType = (AllocationType)Record[I++];
         unsigned NumStackEntries = Record[I++];
@@ -8013,19 +8007,7 @@ Error ModuleSummaryIndexBitcodeReader::parseEntireSummary(unsigned ID) {
         }
         MIBs.push_back(MIBInfo(AllocType, std::move(StackIdList)));
       }
-      std::vector<uint64_t> TotalSizes;
-      // We either have no sizes or NumMIBs of them.
-      assert(I == Record.size() || Record.size() - I == NumMIBs);
-      if (I < Record.size()) {
-        MIBsRead = 0;
-        while (MIBsRead++ < NumMIBs)
-          TotalSizes.push_back(Record[I++]);
-      }
       PendingAllocs.push_back(AllocInfo(std::move(MIBs)));
-      if (!TotalSizes.empty()) {
-        assert(PendingAllocs.back().MIBs.size() == TotalSizes.size());
-        PendingAllocs.back().TotalSizes = std::move(TotalSizes);
-      }
       break;
     }
 
@@ -8052,21 +8034,8 @@ Error ModuleSummaryIndexBitcodeReader::parseEntireSummary(unsigned ID) {
       SmallVector<uint8_t> Versions;
       for (unsigned J = 0; J < NumVersions; J++)
         Versions.push_back(Record[I++]);
-      std::vector<uint64_t> TotalSizes;
-      // We either have no sizes or NumMIBs of them.
-      assert(I == Record.size() || Record.size() - I == NumMIBs);
-      if (I < Record.size()) {
-        MIBsRead = 0;
-        while (MIBsRead++ < NumMIBs) {
-          TotalSizes.push_back(Record[I++]);
-        }
-      }
       PendingAllocs.push_back(
           AllocInfo(std::move(Versions), std::move(MIBs)));
-      if (!TotalSizes.empty()) {
-        assert(PendingAllocs.back().MIBs.size() == TotalSizes.size());
-        PendingAllocs.back().TotalSizes = std::move(TotalSizes);
-      }
       break;
     }
     }

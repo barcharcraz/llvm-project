@@ -151,8 +151,9 @@ public:
               D->getLocation(),
               diag::warn_target_unsupported_branch_protection_attribute)
               << Arch;
-        } else
-          setBranchProtectionFnAttributes(BPI, (*Fn));
+        } else {
+          BPI.setFnAttributes(*Fn);
+        }
       } else if (CGM.getLangOpts().BranchTargetEnforcement ||
                  CGM.getLangOpts().hasSignReturnAddress()) {
         // If the Branch Protection attribute is missing, validate the target
@@ -167,7 +168,7 @@ public:
     } else if (CGM.getTarget().isBranchProtectionSupportedArch(
                    CGM.getTarget().getTargetOpts().CPU)) {
       TargetInfo::BranchProtectionInfo BPI(CGM.getLangOpts());
-      setBranchProtectionFnAttributes(BPI, (*Fn));
+      BPI.setFnAttributes(*Fn);
     }
 
     const ARMInterruptAttr *Attr = FD->getAttr<ARMInterruptAttr>();

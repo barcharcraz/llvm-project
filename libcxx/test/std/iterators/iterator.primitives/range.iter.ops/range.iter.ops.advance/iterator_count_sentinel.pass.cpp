@@ -38,16 +38,14 @@ check_forward(int* first, int* last, std::iter_difference_t<It> n, int* expected
 
   // Count operations
   if constexpr (Count) {
-    IteratorOpCounts ops;
-    auto it   = operation_counting_iterator(It(first), &ops);
-    auto sent = sentinel_wrapper(operation_counting_iterator(It(last), &ops));
+    auto it = stride_counting_iterator(It(first));
+    auto sent = sentinel_wrapper(stride_counting_iterator(It(last)));
     (void)std::ranges::advance(it, n, sent);
     // We don't have a sized sentinel, so we have to increment one-by-one
     // regardless of the iterator category.
-    assert(static_cast<Difference>(ops.increments) == M);
-    assert(static_cast<Difference>(ops.decrements) == 0);
-    assert(ops.zero_moves == 0);
-    assert(ops.equal_cmps == static_cast<std::size_t>(expected_equals_count));
+    assert(it.stride_count() == M);
+    assert(it.stride_displacement() == M);
+    assert(it.equals_count() == expected_equals_count);
   }
 }
 
@@ -67,24 +65,28 @@ constexpr void check_forward_sized_sentinel(int* first, int* last, std::iter_dif
 
   // Count operations
   {
-    IteratorOpCounts ops;
-    auto it   = operation_counting_iterator(It(first), &ops);
+    auto it = stride_counting_iterator(It(first));
     auto sent = distance_apriori_sentinel(size);
     (void)std::ranges::advance(it, n, sent);
     if constexpr (std::random_access_iterator<It>) {
-      assert(ops.increments + ops.zero_moves == 1);
-      assert(ops.decrements == 0);
+      assert(it.stride_count() <= 1);
+      assert(it.stride_displacement() <= 1);
     } else {
-      assert(static_cast<Difference>(ops.increments) == M);
-      assert(ops.decrements == 0);
-      assert(ops.zero_moves == 0);
+      assert(it.stride_count() == M);
+      assert(it.stride_displacement() == M);
     }
   }
 }
 
+struct Expected {
+  int stride_count;
+  int stride_displacement;
+  int equals_count;
+};
+
 template <bool Count, typename It>
 constexpr void
-check_backward(int* first, int* last, std::iter_difference_t<It> n, int* expected, IteratorOpCounts expected_counts) {
+check_backward(int* first, int* last, std::iter_difference_t<It> n, int* expected, Expected expected_counts) {
   // Check preconditions for `advance` when called with negative `n`
   // (see [range.iter.op.advance]). In addition, allow `n == 0`.
   assert(n <= 0);
@@ -103,18 +105,16 @@ check_backward(int* first, int* last, std::iter_difference_t<It> n, int* expecte
 
   // Count operations
   {
-    IteratorOpCounts ops;
-    auto it   = operation_counting_iterator(It(last), &ops);
-    auto sent = operation_counting_iterator(It(first), &ops);
-    static_assert(std::bidirectional_iterator<operation_counting_iterator<It>>);
+    auto it = stride_counting_iterator(It(last));
+    auto sent = stride_counting_iterator(It(first));
+    static_assert(std::bidirectional_iterator<stride_counting_iterator<It>>);
     static_assert(Count == !std::sized_sentinel_for<It, It>);
 
     (void)std::ranges::advance(it, n, sent);
 
-    assert(ops.increments == expected_counts.increments);
-    assert(ops.decrements == expected_counts.decrements);
-    assert(ops.zero_moves == expected_counts.zero_moves);
-    assert(ops.equal_cmps == expected_counts.equal_cmps);
+    assert(it.stride_count() == expected_counts.stride_count);
+    assert(it.stride_displacement() == expected_counts.stride_displacement);
+    assert(it.equals_count() == expected_counts.equals_count);
   }
 }
 
@@ -217,22 +217,21 @@ constexpr bool test() {
       {
         int* expected = n > size ? range : range + size - n;
         {
-          IteratorOpCounts expected_counts = {
-              .increments = 0,
-              .decrements = static_cast<std::size_t>(range + size - expected),
-              .equal_cmps = static_cast<std::size_t>(n > size ? size + 1 : n),
+          Expected expected_counts = {
+              .stride_count        = static_cast<int>(range + size - expected),
+              .stride_displacement = -expected_counts.stride_count,
+              .equals_count        = n > size ? size + 1 : n,
           };
 
           check_backward<true, bidirectional_iterator<int*>>(range, range + size, -n, expected, expected_counts);
         }
         {
-          IteratorOpCounts expected_counts = {
+          Expected expected_counts = {
               // If `n >= size`, the algorithm can just do `it = std::move(sent);`
               // instead of doing iterator arithmetic.
-              .increments = 0,
-              .decrements = static_cast<std::size_t>((n == 0 || n >= size) ? 0 : 1),
-              .zero_moves = static_cast<std::size_t>(n == 0 && size != 0 ? 1 : 0),
-              .equal_cmps = 0,
+              .stride_count        = (n >= size) ? 0 : 1,
+              .stride_displacement = (n >= size) ? 0 : 1,
+              .equals_count        = 0,
           };
 
           check_backward<false, random_access_iterator<int*>>(range, range + size, -n, expected, expected_counts);

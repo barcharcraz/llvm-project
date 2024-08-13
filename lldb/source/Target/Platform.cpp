@@ -1446,8 +1446,7 @@ Platform::GetCachedExecutable(ModuleSpec &module_spec,
   Status error = GetRemoteSharedModule(
       module_spec, nullptr, module_sp,
       [&](const ModuleSpec &spec) {
-        return Platform::ResolveExecutable(spec, module_sp,
-                                           module_search_paths_ptr);
+        return ResolveExecutable(spec, module_sp, module_search_paths_ptr);
       },
       nullptr);
   if (error.Success()) {

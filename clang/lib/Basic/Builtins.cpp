@@ -119,9 +119,6 @@ static bool builtinIsSupported(const Builtin::Info &BuiltinInfo,
   /* CPlusPlus Unsupported */
   if (!LangOpts.CPlusPlus && BuiltinInfo.Langs == CXX_LANG)
     return false;
-  /* consteval Unsupported */
-  if (!LangOpts.CPlusPlus20 && strchr(BuiltinInfo.Attributes, 'G') != nullptr)
-    return false;
   return true;
 }
 

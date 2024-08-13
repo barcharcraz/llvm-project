@@ -18,11 +18,9 @@
 #include "src/__support/FPUtil/FPBits.h"
 #include "src/__support/FPUtil/dyadic_float.h"
 #include "src/__support/macros/attributes.h"
-#include "src/__support/macros/config.h"
 #include "src/__support/macros/optimization.h"
 
-namespace LIBC_NAMESPACE_DECL {
-namespace fputil::generic {
+namespace LIBC_NAMESPACE::fputil::generic {
 
 template <typename OutType, typename InType>
 LIBC_INLINE cpp::enable_if_t<cpp::is_floating_point_v<OutType> &&
@@ -49,19 +47,19 @@ div(InType x, InType y) {
         raise_except_if_required(FE_INVALID);
 
       if (x_bits.is_quiet_nan()) {
-        InStorageType x_payload = x_bits.get_mantissa();
-        x_payload >>= InFPBits::FRACTION_LEN - OutFPBits::FRACTION_LEN;
-        return OutFPBits::quiet_nan(x_bits.sign(),
-                                    static_cast<OutStorageType>(x_payload))
-            .get_val();
+        InStorageType x_payload = static_cast<InStorageType>(getpayload(x));
+        if ((x_payload & ~(OutFPBits::FRACTION_MASK >> 1)) == 0)
+          return OutFPBits::quiet_nan(x_bits.sign(),
+                                      static_cast<OutStorageType>(x_payload))
+              .get_val();
       }
 
       if (y_bits.is_quiet_nan()) {
-        InStorageType y_payload = y_bits.get_mantissa();
-        y_payload >>= InFPBits::FRACTION_LEN - OutFPBits::FRACTION_LEN;
-        return OutFPBits::quiet_nan(y_bits.sign(),
-                                    static_cast<OutStorageType>(y_payload))
-            .get_val();
+        InStorageType y_payload = static_cast<InStorageType>(getpayload(y));
+        if ((y_payload & ~(OutFPBits::FRACTION_MASK >> 1)) == 0)
+          return OutFPBits::quiet_nan(y_bits.sign(),
+                                      static_cast<OutStorageType>(y_payload))
+              .get_val();
       }
 
       return OutFPBits::quiet_nan().get_val();
@@ -120,7 +118,6 @@ div(InType x, InType y) {
   return result.template as<OutType, /*ShouldSignalExceptions=*/true>();
 }
 
-} // namespace fputil::generic
-} // namespace LIBC_NAMESPACE_DECL
+} // namespace LIBC_NAMESPACE::fputil::generic
 
 #endif // LLVM_LIBC_SRC___SUPPORT_FPUTIL_GENERIC_DIV_H

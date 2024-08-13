@@ -235,7 +235,6 @@ cc_library(
         "//llvm:ObjCARC",
         "//llvm:Object",
         "//llvm:Option",
-        "//llvm:ProfileData",
         "//llvm:Support",
         "//llvm:TargetParser",
         "//llvm:TextAPI",

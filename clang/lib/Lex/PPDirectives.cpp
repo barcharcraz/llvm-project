@@ -1137,9 +1137,7 @@ Preprocessor::LookupEmbedFile(StringRef Filename, bool isAngled, bool OpenFile,
     SeparateComponents(LookupPath, Entry, Filename, false);
     llvm::Expected<FileEntryRef> ShouldBeEntry =
         FM.getFileRef(LookupPath, OpenFile);
-    if (ShouldBeEntry)
-      return llvm::expectedToOptional(std::move(ShouldBeEntry));
-    llvm::consumeError(ShouldBeEntry.takeError());
+    return llvm::expectedToOptional(std::move(ShouldBeEntry));
   }
   return std::nullopt;
 }
@@ -3626,10 +3624,12 @@ Preprocessor::LexEmbedParameters(Token &CurTok, bool ForHasEmbed) {
   LexEmbedParametersResult Result{};
   SmallVector<Token, 2> ParameterTokens;
   tok::TokenKind EndTokenKind = ForHasEmbed ? tok::r_paren : tok::eod;
+  Result.ParamRange = {CurTok.getLocation(), CurTok.getLocation()};
 
   auto DiagMismatchedBracesAndSkipToEOD =
       [&](tok::TokenKind Expected,
           std::pair<tok::TokenKind, SourceLocation> Matches) {
+        Result.ParamRange.setEnd(CurTok.getEndLoc());
         Diag(CurTok, diag::err_expected) << Expected;
         Diag(Matches.second, diag::note_matching) << Matches.first;
         if (CurTok.isNot(tok::eod))
@@ -3638,6 +3638,7 @@ Preprocessor::LexEmbedParameters(Token &CurTok, bool ForHasEmbed) {
 
   auto ExpectOrDiagAndSkipToEOD = [&](tok::TokenKind Kind) {
     if (CurTok.isNot(Kind)) {
+      Result.ParamRange.setEnd(CurTok.getEndLoc());
       Diag(CurTok, diag::err_expected) << Kind;
       if (CurTok.isNot(tok::eod))
         DiscardUntilEndOfDirective(CurTok);
@@ -3871,6 +3872,7 @@ Preprocessor::LexEmbedParameters(Token &CurTok, bool ForHasEmbed) {
       }
     }
   }
+  Result.ParamRange.setEnd(CurTok.getLocation());
   return Result;
 }
 

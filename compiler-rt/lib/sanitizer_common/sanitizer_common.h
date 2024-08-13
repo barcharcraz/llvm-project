@@ -221,7 +221,7 @@ bool DontDumpShadowMemory(uptr addr, uptr length);
 // Check if the built VMA size matches the runtime one.
 void CheckVMASize();
 void RunMallocHooks(void *ptr, uptr size);
-int RunFreeHooks(void *ptr);
+void RunFreeHooks(void *ptr);
 
 class ReservedAddressRange {
  public:

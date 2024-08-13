@@ -10,7 +10,7 @@ except ImportError:
 def convertToCaretAndMNotation(data):
     newdata = StringIO()
     if isinstance(data, str):
-        data = bytearray(data.encode())
+        data = bytearray(data)
 
     for intval in data:
         if intval == 9 or intval == 10:

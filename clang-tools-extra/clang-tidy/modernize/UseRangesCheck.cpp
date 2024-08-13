@@ -96,9 +96,6 @@ static constexpr const char *TwoRangeNames[] = {
     "is_permutation",
 };
 
-static constexpr const char *SinglePivotRangeNames[] = {"rotate", "rotate_copy",
-                                                        "inplace_merge"};
-
 namespace {
 class StdReplacer : public utils::UseRangesCheck::Replacer {
 public:
@@ -144,19 +141,13 @@ utils::UseRangesCheck::ReplacerMap UseRangesCheck::getReplacerMap() const {
   // Func(Iter1 first1, Iter1 last1, Iter2 first2, Iter2 last2,...).
   static const Signature TwoRangeArgs = {{0}, {2}};
 
-  // template<typename Iter> Func(Iter first, Iter pivot, Iter last,...).
-  static const Signature SinglePivotRange = {{0, 2}};
-
   static const Signature SingleRangeFunc[] = {SingleRangeArgs};
 
   static const Signature TwoRangeFunc[] = {TwoRangeArgs};
 
-  static const Signature SinglePivotFunc[] = {SinglePivotRange};
-
   static const std::pair<ArrayRef<Signature>, ArrayRef<const char *>>
       AlgorithmNames[] = {{SingleRangeFunc, SingleRangeNames},
-                          {TwoRangeFunc, TwoRangeNames},
-                          {SinglePivotFunc, SinglePivotRangeNames}};
+                          {TwoRangeFunc, TwoRangeNames}};
   SmallString<64> Buff;
   for (const auto &[Signatures, Values] : AlgorithmNames) {
     auto Replacer = llvm::makeIntrusiveRefCnt<StdAlgorithmReplacer>(
@@ -175,15 +166,6 @@ utils::UseRangesCheck::ReplacerMap UseRangesCheck::getReplacerMap() const {
   return Result;
 }
 
-UseRangesCheck::UseRangesCheck(StringRef Name, ClangTidyContext *Context)
-    : utils::UseRangesCheck(Name, Context),
-      UseReversePipe(Options.get("UseReversePipe", false)) {}
-
-void UseRangesCheck::storeOptions(ClangTidyOptions::OptionMap &Opts) {
-  utils::UseRangesCheck::storeOptions(Opts);
-  Options.store(Opts, "UseReversePipe", UseReversePipe);
-}
-
 bool UseRangesCheck::isLanguageVersionSupported(
     const LangOptions &LangOpts) const {
   return LangOpts.CPlusPlus20;
@@ -198,8 +180,6 @@ std::optional<UseRangesCheck::ReverseIteratorDescriptor>
 UseRangesCheck::getReverseDescriptor() const {
   static const std::pair<StringRef, StringRef> Refs[] = {
       {"::std::rbegin", "::std::rend"}, {"::std::crbegin", "::std::crend"}};
-  return ReverseIteratorDescriptor{UseReversePipe ? "std::views::reverse"
-                                                  : "std::ranges::reverse_view",
-                                   "<ranges>", Refs, UseReversePipe};
+  return ReverseIteratorDescriptor{"std::views::reverse", "<ranges>", Refs};
 }
 } // namespace clang::tidy::modernize

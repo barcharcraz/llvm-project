@@ -297,11 +297,10 @@ OMPParallelDirective *OMPParallelDirective::CreateEmpty(const ASTContext &C,
                                                     /*NumChildren=*/1);
 }
 
-OMPSimdDirective *
-OMPSimdDirective::Create(const ASTContext &C, SourceLocation StartLoc,
-                         SourceLocation EndLoc, unsigned CollapsedNum,
-                         ArrayRef<OMPClause *> Clauses, Stmt *AssociatedStmt,
-                         const HelperExprs &Exprs) {
+OMPSimdDirective *OMPSimdDirective::Create(
+    const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc,
+    unsigned CollapsedNum, ArrayRef<OMPClause *> Clauses, Stmt *AssociatedStmt,
+    const HelperExprs &Exprs, OpenMPDirectiveKind ParamPrevMappedDirective) {
   auto *Dir = createDirective<OMPSimdDirective>(
       C, Clauses, AssociatedStmt, numLoopChildren(CollapsedNum, OMPD_simd),
       StartLoc, EndLoc, CollapsedNum);
@@ -321,6 +320,7 @@ OMPSimdDirective::Create(const ASTContext &C, SourceLocation StartLoc,
   Dir->setDependentInits(Exprs.DependentInits);
   Dir->setFinalsConditions(Exprs.FinalsConditions);
   Dir->setPreInits(Exprs.PreInits);
+  Dir->setMappedDirective(ParamPrevMappedDirective);
   return Dir;
 }
 
@@ -336,7 +336,8 @@ OMPSimdDirective *OMPSimdDirective::CreateEmpty(const ASTContext &C,
 OMPForDirective *OMPForDirective::Create(
     const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc,
     unsigned CollapsedNum, ArrayRef<OMPClause *> Clauses, Stmt *AssociatedStmt,
-    const HelperExprs &Exprs, Expr *TaskRedRef, bool HasCancel) {
+    const HelperExprs &Exprs, Expr *TaskRedRef, bool HasCancel,
+    OpenMPDirectiveKind ParamPrevMappedDirective) {
   auto *Dir = createDirective<OMPForDirective>(
       C, Clauses, AssociatedStmt, numLoopChildren(CollapsedNum, OMPD_for) + 1,
       StartLoc, EndLoc, CollapsedNum);
@@ -366,6 +367,7 @@ OMPForDirective *OMPForDirective::Create(
   Dir->setPreInits(Exprs.PreInits);
   Dir->setTaskReductionRefExpr(TaskRedRef);
   Dir->setHasCancel(HasCancel);
+  Dir->setMappedDirective(ParamPrevMappedDirective);
   return Dir;
 }
 
@@ -445,44 +447,6 @@ OMPUnrollDirective *OMPUnrollDirective::CreateEmpty(const ASTContext &C,
   return createEmptyDirective<OMPUnrollDirective>(
       C, NumClauses, /*HasAssociatedStmt=*/true, TransformedStmtOffset + 1,
       SourceLocation(), SourceLocation());
-}
-
-OMPReverseDirective *
-OMPReverseDirective::Create(const ASTContext &C, SourceLocation StartLoc,
-                            SourceLocation EndLoc, Stmt *AssociatedStmt,
-                            Stmt *TransformedStmt, Stmt *PreInits) {
-  OMPReverseDirective *Dir = createDirective<OMPReverseDirective>(
-      C, std::nullopt, AssociatedStmt, TransformedStmtOffset + 1, StartLoc,
-      EndLoc);
-  Dir->setTransformedStmt(TransformedStmt);
-  Dir->setPreInits(PreInits);
-  return Dir;
-}
-
-OMPReverseDirective *OMPReverseDirective::CreateEmpty(const ASTContext &C) {
-  return createEmptyDirective<OMPReverseDirective>(
-      C, /*NumClauses=*/0, /*HasAssociatedStmt=*/true,
-      TransformedStmtOffset + 1, SourceLocation(), SourceLocation());
-}
-
-OMPInterchangeDirective *OMPInterchangeDirective::Create(
-    const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc,
-    ArrayRef<OMPClause *> Clauses, unsigned NumLoops, Stmt *AssociatedStmt,
-    Stmt *TransformedStmt, Stmt *PreInits) {
-  OMPInterchangeDirective *Dir = createDirective<OMPInterchangeDirective>(
-      C, Clauses, AssociatedStmt, TransformedStmtOffset + 1, StartLoc, EndLoc,
-      NumLoops);
-  Dir->setTransformedStmt(TransformedStmt);
-  Dir->setPreInits(PreInits);
-  return Dir;
-}
-
-OMPInterchangeDirective *
-OMPInterchangeDirective::CreateEmpty(const ASTContext &C, unsigned NumClauses,
-                                     unsigned NumLoops) {
-  return createEmptyDirective<OMPInterchangeDirective>(
-      C, NumClauses, /*HasAssociatedStmt=*/true, TransformedStmtOffset + 1,
-      SourceLocation(), SourceLocation(), NumLoops);
 }
 
 OMPForSimdDirective *
@@ -1567,11 +1531,10 @@ OMPParallelMaskedTaskLoopSimdDirective::CreateEmpty(const ASTContext &C,
       CollapsedNum);
 }
 
-OMPDistributeDirective *
-OMPDistributeDirective::Create(const ASTContext &C, SourceLocation StartLoc,
-                               SourceLocation EndLoc, unsigned CollapsedNum,
-                               ArrayRef<OMPClause *> Clauses,
-                               Stmt *AssociatedStmt, const HelperExprs &Exprs) {
+OMPDistributeDirective *OMPDistributeDirective::Create(
+    const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc,
+    unsigned CollapsedNum, ArrayRef<OMPClause *> Clauses, Stmt *AssociatedStmt,
+    const HelperExprs &Exprs, OpenMPDirectiveKind ParamPrevMappedDirective) {
   auto *Dir = createDirective<OMPDistributeDirective>(
       C, Clauses, AssociatedStmt,
       numLoopChildren(CollapsedNum, OMPD_distribute), StartLoc, EndLoc,
@@ -1600,6 +1563,7 @@ OMPDistributeDirective::Create(const ASTContext &C, SourceLocation StartLoc,
   Dir->setDependentInits(Exprs.DependentInits);
   Dir->setFinalsConditions(Exprs.FinalsConditions);
   Dir->setPreInits(Exprs.PreInits);
+  Dir->setMappedDirective(ParamPrevMappedDirective);
   return Dir;
 }
 

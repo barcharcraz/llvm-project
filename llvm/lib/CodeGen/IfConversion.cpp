@@ -209,7 +209,7 @@ namespace {
     }
 
     void getAnalysisUsage(AnalysisUsage &AU) const override {
-      AU.addRequired<MachineBlockFrequencyInfoWrapperPass>();
+      AU.addRequired<MachineBlockFrequencyInfo>();
       AU.addRequired<MachineBranchProbabilityInfoWrapperPass>();
       AU.addRequired<ProfileSummaryInfoWrapperPass>();
       MachineFunctionPass::getAnalysisUsage(AU);
@@ -444,8 +444,7 @@ bool IfConverter::runOnMachineFunction(MachineFunction &MF) {
   TLI = ST.getTargetLowering();
   TII = ST.getInstrInfo();
   TRI = ST.getRegisterInfo();
-  MBFIWrapper MBFI(
-      getAnalysis<MachineBlockFrequencyInfoWrapperPass>().getMBFI());
+  MBFIWrapper MBFI(getAnalysis<MachineBlockFrequencyInfo>());
   MBPI = &getAnalysis<MachineBranchProbabilityInfoWrapperPass>().getMBPI();
   ProfileSummaryInfo *PSI =
       &getAnalysis<ProfileSummaryInfoWrapperPass>().getPSI();
@@ -2097,7 +2096,7 @@ bool IfConverter::IfConvertDiamond(BBInfo &BBI, IfcvtKind Kind,
 static bool MaySpeculate(const MachineInstr &MI,
                          SmallSet<MCPhysReg, 4> &LaterRedefs) {
   bool SawStore = true;
-  if (!MI.isSafeToMove(SawStore))
+  if (!MI.isSafeToMove(nullptr, SawStore))
     return false;
 
   for (const MachineOperand &MO : MI.operands()) {

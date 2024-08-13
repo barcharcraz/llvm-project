@@ -86,7 +86,6 @@ target(liblldb_type, "liblldb") {
     "SBQueue.cpp",
     "SBQueueItem.cpp",
     "SBReproducer.cpp",
-    "SBSaveCoreOptions.cpp",
     "SBScriptObject.cpp",
     "SBSection.cpp",
     "SBSourceManager.cpp",

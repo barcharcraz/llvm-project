@@ -902,16 +902,6 @@ struct DSEState {
     });
   }
 
-  static void pushMemUses(MemoryAccess *Acc,
-                          SmallVectorImpl<MemoryAccess *> &WorkList,
-                          SmallPtrSetImpl<MemoryAccess *> &Visited) {
-    for (Use &U : Acc->uses()) {
-      auto *MA = cast<MemoryAccess>(U.getUser());
-      if (Visited.insert(MA).second)
-        WorkList.push_back(MA);
-    }
-  };
-
   LocationSize strengthenLocationSize(const Instruction *I,
                                       LocationSize Size) const {
     if (auto *CB = dyn_cast<CallBase>(I)) {
@@ -1167,14 +1157,26 @@ struct DSEState {
   }
 
   /// Returns true if \p Def is not read before returning from the function.
-  bool isWriteAtEndOfFunction(MemoryDef *Def, const MemoryLocation &DefLoc) {
+  bool isWriteAtEndOfFunction(MemoryDef *Def) {
     LLVM_DEBUG(dbgs() << "  Check if def " << *Def << " ("
                       << *Def->getMemoryInst()
                       << ") is at the end the function \n");
+
+    auto MaybeLoc = getLocForWrite(Def->getMemoryInst());
+    if (!MaybeLoc) {
+      LLVM_DEBUG(dbgs() << "  ... could not get location for write.\n");
+      return false;
+    }
+
     SmallVector<MemoryAccess *, 4> WorkList;
     SmallPtrSet<MemoryAccess *, 8> Visited;
-
-    pushMemUses(Def, WorkList, Visited);
+    auto PushMemUses = [&WorkList, &Visited](MemoryAccess *Acc) {
+      if (!Visited.insert(Acc).second)
+        return;
+      for (Use &U : Acc->uses())
+        WorkList.push_back(cast<MemoryAccess>(U.getUser()));
+    };
+    PushMemUses(Def);
     for (unsigned I = 0; I < WorkList.size(); I++) {
       if (WorkList.size() >= MemorySSAScanLimit) {
         LLVM_DEBUG(dbgs() << "  ... hit exploration limit.\n");
@@ -1186,22 +1188,22 @@ struct DSEState {
         // AliasAnalysis does not account for loops. Limit elimination to
         // candidates for which we can guarantee they always store to the same
         // memory location.
-        if (!isGuaranteedLoopInvariant(DefLoc.Ptr))
+        if (!isGuaranteedLoopInvariant(MaybeLoc->Ptr))
           return false;
 
-        pushMemUses(cast<MemoryPhi>(UseAccess), WorkList, Visited);
+        PushMemUses(cast<MemoryPhi>(UseAccess));
         continue;
       }
       // TODO: Checking for aliasing is expensive. Consider reducing the amount
       // of times this is called and/or caching it.
       Instruction *UseInst = cast<MemoryUseOrDef>(UseAccess)->getMemoryInst();
-      if (isReadClobber(DefLoc, UseInst)) {
+      if (isReadClobber(*MaybeLoc, UseInst)) {
         LLVM_DEBUG(dbgs() << "  ... hit read clobber " << *UseInst << ".\n");
         return false;
       }
 
       if (MemoryDef *UseDef = dyn_cast<MemoryDef>(UseAccess))
-        pushMemUses(UseDef, WorkList, Visited);
+        PushMemUses(UseDef);
     }
     return true;
   }
@@ -1503,9 +1505,12 @@ struct DSEState {
     LLVM_DEBUG(dbgs() << "  Checking for reads of " << *MaybeDeadAccess << " ("
                       << *MaybeDeadI << ")\n");
 
-    SmallVector<MemoryAccess *, 32> WorkList;
-    SmallPtrSet<MemoryAccess *, 32> Visited;
-    pushMemUses(MaybeDeadAccess, WorkList, Visited);
+    SmallSetVector<MemoryAccess *, 32> WorkList;
+    auto PushMemUses = [&WorkList](MemoryAccess *Acc) {
+      for (Use &U : Acc->uses())
+        WorkList.insert(cast<MemoryAccess>(U.getUser()));
+    };
+    PushMemUses(MaybeDeadAccess);
 
     // Check if DeadDef may be read.
     for (unsigned I = 0; I < WorkList.size(); I++) {
@@ -1529,7 +1534,7 @@ struct DSEState {
           continue;
         }
         LLVM_DEBUG(dbgs() << "\n    ... adding PHI uses\n");
-        pushMemUses(UseAccess, WorkList, Visited);
+        PushMemUses(UseAccess);
         continue;
       }
 
@@ -1554,7 +1559,7 @@ struct DSEState {
 
       if (isNoopIntrinsic(cast<MemoryUseOrDef>(UseAccess)->getMemoryInst())) {
         LLVM_DEBUG(dbgs() << "    ... adding uses of intrinsic\n");
-        pushMemUses(UseAccess, WorkList, Visited);
+        PushMemUses(UseAccess);
         continue;
       }
 
@@ -1613,7 +1618,7 @@ struct DSEState {
             return std::nullopt;
           }
         } else
-          pushMemUses(UseDef, WorkList, Visited);
+          PushMemUses(UseDef);
       }
     }
 
@@ -1816,11 +1821,8 @@ struct DSEState {
 
         Instruction *DefI = Def->getMemoryInst();
         auto DefLoc = getLocForWrite(DefI);
-        if (!DefLoc || !isRemovable(DefI)) {
-          LLVM_DEBUG(dbgs() << "  ... could not get location for write or "
-                               "instruction not removable.\n");
+        if (!DefLoc || !isRemovable(DefI))
           continue;
-        }
 
         // NOTE: Currently eliminating writes at the end of a function is
         // limited to MemoryDefs with a single underlying object, to save
@@ -1831,7 +1833,7 @@ struct DSEState {
         if (!isInvisibleToCallerAfterRet(UO))
           continue;
 
-        if (isWriteAtEndOfFunction(Def, *DefLoc)) {
+        if (isWriteAtEndOfFunction(Def)) {
           // See through pointer-to-pointer bitcasts
           LLVM_DEBUG(dbgs() << "   ... MemoryDef is not accessed until the end "
                                "of the function\n");
@@ -1889,12 +1891,12 @@ struct DSEState {
         return true;
       auto *Ptr = Memset->getArgOperand(0);
       auto *TI = MallocBB->getTerminator();
+      ICmpInst::Predicate Pred;
       BasicBlock *TrueBB, *FalseBB;
-      if (!match(TI, m_Br(m_SpecificICmp(ICmpInst::ICMP_EQ, m_Specific(Ptr),
-                                         m_Zero()),
-                          TrueBB, FalseBB)))
+      if (!match(TI, m_Br(m_ICmp(Pred, m_Specific(Ptr), m_Zero()), TrueBB,
+                          FalseBB)))
         return false;
-      if (MemsetBB != FalseBB)
+      if (Pred != ICmpInst::ICMP_EQ || MemsetBB != FalseBB)
         return false;
       return true;
     };

@@ -34,8 +34,8 @@ void LangOptions::resetNonModularOptions() {
   // invocations that cannot be round-tripped to arguments.
   // FIXME: we should derive this automatically from ImpliedBy in tablegen.
   AllowFPReassoc = UnsafeFPMath;
-  NoHonorInfs = FastMath;
-  NoHonorNaNs = FastMath;
+  NoHonorNaNs = FiniteMathOnly;
+  NoHonorInfs = FiniteMathOnly;
 
   // These options do not affect AST generation.
   NoSanitizeFiles.clear();

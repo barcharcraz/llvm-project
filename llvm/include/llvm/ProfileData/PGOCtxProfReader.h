@@ -73,8 +73,7 @@ public:
 };
 
 class PGOCtxProfileReader final {
-  StringRef Magic;
-  BitstreamCursor Cursor;
+  BitstreamCursor &Cursor;
   Expected<BitstreamEntry> advance();
   Error readMetadata();
   Error wrongValue(const Twine &);
@@ -85,9 +84,7 @@ class PGOCtxProfileReader final {
   bool canReadContext();
 
 public:
-  PGOCtxProfileReader(StringRef Buffer)
-      : Magic(Buffer.substr(0, PGOCtxProfileWriter::ContainerMagic.size())),
-        Cursor(Buffer.substr(PGOCtxProfileWriter::ContainerMagic.size())) {}
+  PGOCtxProfileReader(BitstreamCursor &Cursor) : Cursor(Cursor) {}
 
   Expected<std::map<GlobalValue::GUID, PGOContextualProfile>> loadContexts();
 };

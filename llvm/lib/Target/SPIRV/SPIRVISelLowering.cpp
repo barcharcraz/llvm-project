@@ -196,7 +196,7 @@ static void validateGroupWaitEventsPtr(const SPIRVSubtarget &STI,
   if (!ElemType || ElemType->getOpcode() == SPIRV::OpTypeEvent)
     return;
   // Insert a bitcast before the instruction to keep SPIR-V code valid.
-  LLVMContext &Context = MF->getFunction().getContext();
+  LLVMContext &Context = MF->getMMI().getModule()->getContext();
   SPIRVType *NewPtrType =
       createNewPtrType(GR, I, OpType, false, true, nullptr,
                        TargetExtType::get(Context, "spirv.Event"));

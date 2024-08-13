@@ -420,7 +420,9 @@ bool SystemZElimCompare::adjustCCMasksForInstr(
   if (!MIEquivalentToCmp) {
     // Now check whether these flags are enough for all users.
     SmallVector<MachineOperand *, 4> AlterMasks;
-    for (MachineInstr *CCUserMI : CCUsers) {
+    for (unsigned int I = 0, E = CCUsers.size(); I != E; ++I) {
+      MachineInstr *CCUserMI = CCUsers[I];
+
       // Fail if this isn't a use of CC that we understand.
       unsigned Flags = CCUserMI->getDesc().TSFlags;
       unsigned FirstOpNum;

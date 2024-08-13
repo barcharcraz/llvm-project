@@ -1248,7 +1248,6 @@ static void handleNoSuspendCoroutine(coro::Shape &Shape) {
   }
 
   CoroBegin->eraseFromParent();
-  Shape.CoroBegin = nullptr;
 }
 
 // SimplifySuspendPoint needs to check that there is no calls between
@@ -1971,17 +1970,9 @@ splitCoroutine(Function &F, SmallVectorImpl<Function *> &Clones,
 }
 
 /// Remove calls to llvm.coro.end in the original function.
-static void removeCoroEndsFromRampFunction(const coro::Shape &Shape) {
-  if (Shape.ABI != coro::ABI::Switch) {
-    for (auto *End : Shape.CoroEnds) {
-      replaceCoroEnd(End, Shape, Shape.FramePtr, /*in resume*/ false, nullptr);
-    }
-  } else {
-    for (llvm::AnyCoroEndInst *End : Shape.CoroEnds) {
-      auto &Context = End->getContext();
-      End->replaceAllUsesWith(ConstantInt::getFalse(Context));
-      End->eraseFromParent();
-    }
+static void removeCoroEnds(const coro::Shape &Shape) {
+  for (auto *End : Shape.CoroEnds) {
+    replaceCoroEnd(End, Shape, Shape.FramePtr, /*in resume*/ false, nullptr);
   }
 }
 
@@ -1990,6 +1981,18 @@ static void updateCallGraphAfterCoroutineSplit(
     const SmallVectorImpl<Function *> &Clones, LazyCallGraph::SCC &C,
     LazyCallGraph &CG, CGSCCAnalysisManager &AM, CGSCCUpdateResult &UR,
     FunctionAnalysisManager &FAM) {
+  if (!Shape.CoroBegin)
+    return;
+
+  if (Shape.ABI != coro::ABI::Switch)
+    removeCoroEnds(Shape);
+  else {
+    for (llvm::AnyCoroEndInst *End : Shape.CoroEnds) {
+      auto &Context = End->getContext();
+      End->replaceAllUsesWith(ConstantInt::getFalse(Context));
+      End->eraseFromParent();
+    }
+  }
 
   if (!Clones.empty()) {
     switch (Shape.ABI) {
@@ -2117,7 +2120,6 @@ PreservedAnalyses CoroSplitPass::run(LazyCallGraph::SCC &C,
     const coro::Shape Shape =
         splitCoroutine(F, Clones, FAM.getResult<TargetIRAnalysis>(F),
                        OptimizeFrame, MaterializableCallback);
-    removeCoroEndsFromRampFunction(Shape);
     updateCallGraphAfterCoroutineSplit(*N, Shape, Clones, C, CG, AM, UR, FAM);
 
     ORE.emit([&]() {

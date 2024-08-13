@@ -35,8 +35,7 @@ entry:
 ;; CHECK-LABEL: __llvm_gcov_writeout:
 ;; CHECK:       .cfi_b_key_frame
 ;; CHECK-NEXT:  pacibsp
-;; CHECK:       .cfi_negate_ra_state
-;; CHECK-NEXT:  .cfi_def_cfa_offset
+;; CHECK-NEXT: .cfi_negate_ra_state
 
 define internal void @__llvm_gcov_reset() unnamed_addr #2 {
 entry:
@@ -56,9 +55,7 @@ entry:
 ;; CHECK-LABEL: __llvm_gcov_init:
 ;; CHECK:      .cfi_b_key_frame
 ;; CHECK-NEXT:  pacibsp
-;; CHECK-NEXT:  .cfi_negate_ra_state
-;; CHECK-NOT:   .cfi_
-;; CHECK:       .cfi_endproc
+;; CHECK-NEXT: .cfi_negate_ra_state
 
 attributes #0 = { norecurse nounwind readnone "sign-return-address"="all" "sign-return-address-key"="b_key" }
 attributes #1 = { noinline "sign-return-address"="all" "sign-return-address-key"="b_key" }

@@ -459,7 +459,8 @@ SDValue VETargetLowering::LowerFormalArguments(
   // by CC_VE would be correct now.
   CCInfo.AnalyzeFormalArguments(Ins, getParamCC(CallConv, false));
 
-  for (const CCValAssign &VA : ArgLocs) {
+  for (unsigned i = 0, e = ArgLocs.size(); i != e; ++i) {
+    CCValAssign &VA = ArgLocs[i];
     assert(!VA.needsCustom() && "Unexpected custom lowering");
     if (VA.isRegLoc()) {
       // This argument is passed in a register.

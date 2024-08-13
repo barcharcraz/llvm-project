@@ -62,8 +62,14 @@ INITIALIZE_PASS_END(InstructionSelect, DEBUG_TYPE,
                     "Select target instructions out of generic instructions",
                     false, false)
 
-InstructionSelect::InstructionSelect(CodeGenOptLevel OL, char &PassID)
-    : MachineFunctionPass(PassID), OptLevel(OL) {}
+InstructionSelect::InstructionSelect(CodeGenOptLevel OL)
+    : MachineFunctionPass(ID), OptLevel(OL) {}
+
+// In order not to crash when calling getAnalysis during testing with -run-pass
+// we use the default opt level here instead of None, so that the addRequired()
+// calls are made in getAnalysisUsage().
+InstructionSelect::InstructionSelect()
+    : MachineFunctionPass(ID), OptLevel(CodeGenOptLevel::Default) {}
 
 void InstructionSelect::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.addRequired<TargetPassConfig>();

@@ -93,6 +93,7 @@ bool SemaPPC::CheckPPCBuiltinFunctionCall(const TargetInfo &TI,
                                           unsigned BuiltinID,
                                           CallExpr *TheCall) {
   ASTContext &Context = getASTContext();
+  unsigned i = 0, l = 0, u = 0;
   bool IsTarget64Bit = TI.getTypeWidth(TI.getIntPtrType()) == 64;
   llvm::APSInt Result;
 
@@ -247,7 +248,7 @@ bool SemaPPC::CheckPPCBuiltinFunctionCall(const TargetInfo &TI,
     return BuiltinPPCMMACall(TheCall, BuiltinID, Types);
 #include "clang/Basic/BuiltinsPPC.def"
   }
-  llvm_unreachable("must return from switch");
+  return SemaRef.BuiltinConstantArgRange(TheCall, i, l, u);
 }
 
 // Check if the given type is a non-pointer PPC MMA type. This function is used

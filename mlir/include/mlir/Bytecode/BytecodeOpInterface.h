@@ -15,6 +15,8 @@
 #define MLIR_BYTECODE_BYTECODEOPINTERFACE_H
 
 #include "mlir/Bytecode/BytecodeImplementation.h"
+#include "mlir/Bytecode/BytecodeReader.h"
+#include "mlir/Bytecode/BytecodeWriter.h"
 #include "mlir/IR/OpDefinition.h"
 
 /// Include the generated interface declarations.

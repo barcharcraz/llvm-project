@@ -58,8 +58,6 @@ enum class IndirectBranchType : char {
   POSSIBLE_PIC_JUMP_TABLE, /// Possibly a jump table for PIC.
   POSSIBLE_GOTO,           /// Possibly a gcc's computed goto.
   POSSIBLE_FIXED_BRANCH,   /// Possibly an indirect branch to a fixed location.
-  POSSIBLE_PIC_FIXED_BRANCH, /// Possibly an indirect jump to a fixed entry in a
-                             /// PIC jump table.
 };
 
 class MCPlusBuilder {
@@ -1476,11 +1474,12 @@ public:
   /// will be set to the different components of the branch.  \p MemLocInstr
   /// is the instruction that loads up the indirect function pointer.  It may
   /// or may not be same as \p Instruction.
-  virtual IndirectBranchType analyzeIndirectBranch(
-      MCInst &Instruction, InstructionIterator Begin, InstructionIterator End,
-      const unsigned PtrSize, MCInst *&MemLocInstr, unsigned &BaseRegNum,
-      unsigned &IndexRegNum, int64_t &DispValue, const MCExpr *&DispExpr,
-      MCInst *&PCRelBaseOut, MCInst *&FixedEntryLoadInst) const {
+  virtual IndirectBranchType
+  analyzeIndirectBranch(MCInst &Instruction, InstructionIterator Begin,
+                        InstructionIterator End, const unsigned PtrSize,
+                        MCInst *&MemLocInstr, unsigned &BaseRegNum,
+                        unsigned &IndexRegNum, int64_t &DispValue,
+                        const MCExpr *&DispExpr, MCInst *&PCRelBaseOut) const {
     llvm_unreachable("not implemented");
     return IndirectBranchType::UNKNOWN;
   }
@@ -2042,14 +2041,9 @@ public:
     return InstructionListType();
   }
 
-  /// Returns a function body that contains only a return instruction. An
-  /// example usage is a workaround for the '__bolt_fini_trampoline' of
-  // Instrumentation.
-  virtual InstructionListType
-  createReturnInstructionList(MCContext *Ctx) const {
-    InstructionListType Insts(1);
-    createReturn(Insts[0]);
-    return Insts;
+  virtual InstructionListType createDummyReturnFunction(MCContext *Ctx) const {
+    llvm_unreachable("not implemented");
+    return InstructionListType();
   }
 
   /// This method takes an indirect call instruction and splits it up into an

@@ -331,15 +331,12 @@ utils::UseRangesCheck::ReplacerMap UseRangesCheck::getReplacerMap() const {
 
 UseRangesCheck::UseRangesCheck(StringRef Name, ClangTidyContext *Context)
     : utils::UseRangesCheck(Name, Context),
-      IncludeBoostSystem(Options.get("IncludeBoostSystem", true)),
-      UseReversePipe(Options.get("UseReversePipe", false)) {}
+      IncludeBoostSystem(Options.get("IncludeBoostSystem", true)) {}
 
 void UseRangesCheck::storeOptions(ClangTidyOptions::OptionMap &Opts) {
   utils::UseRangesCheck::storeOptions(Opts);
   Options.store(Opts, "IncludeBoostSystem", IncludeBoostSystem);
-  Options.store(Opts, "UseReversePipe", UseReversePipe);
 }
-
 DiagnosticBuilder UseRangesCheck::createDiag(const CallExpr &Call) {
   DiagnosticBuilder D =
       diag(Call.getBeginLoc(), "use a %0 version of this algorithm");
@@ -365,10 +362,10 @@ UseRangesCheck::getReverseDescriptor() const {
       {"::boost::rbegin", "::boost::rend"},
       {"::boost::const_rbegin", "::boost::const_rend"},
   };
-  return ReverseIteratorDescriptor{
-      UseReversePipe ? "boost::adaptors::reversed" : "boost::adaptors::reverse",
-      IncludeBoostSystem ? "<boost/range/adaptor/reversed.hpp>"
-                         : "boost/range/adaptor/reversed.hpp",
-      Refs, UseReversePipe};
+  return ReverseIteratorDescriptor{"boost::adaptors::reverse",
+                                   IncludeBoostSystem
+                                       ? "<boost/range/adaptor/reversed.hpp>"
+                                       : "boost/range/adaptor/reversed.hpp",
+                                   Refs};
 }
 } // namespace clang::tidy::boost

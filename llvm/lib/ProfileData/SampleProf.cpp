@@ -236,9 +236,7 @@ LineLocation FunctionSamples::getCallSiteIdentifier(const DILocation *DIL,
 }
 
 const FunctionSamples *FunctionSamples::findFunctionSamples(
-    const DILocation *DIL, SampleProfileReaderItaniumRemapper *Remapper,
-    const HashKeyMap<std::unordered_map, FunctionId, FunctionId>
-        *FuncNameToProfNameMap) const {
+    const DILocation *DIL, SampleProfileReaderItaniumRemapper *Remapper) const {
   assert(DIL);
   SmallVector<std::pair<LineLocation, StringRef>, 10> S;
 
@@ -258,8 +256,7 @@ const FunctionSamples *FunctionSamples::findFunctionSamples(
     return this;
   const FunctionSamples *FS = this;
   for (int i = S.size() - 1; i >= 0 && FS != nullptr; i--) {
-    FS = FS->findFunctionSamplesAt(S[i].first, S[i].second, Remapper,
-                                   FuncNameToProfNameMap);
+    FS = FS->findFunctionSamplesAt(S[i].first, S[i].second, Remapper);
   }
   return FS;
 }
@@ -280,32 +277,19 @@ void FunctionSamples::findAllNames(DenseSet<FunctionId> &NameSet) const {
 
 const FunctionSamples *FunctionSamples::findFunctionSamplesAt(
     const LineLocation &Loc, StringRef CalleeName,
-    SampleProfileReaderItaniumRemapper *Remapper,
-    const HashKeyMap<std::unordered_map, FunctionId, FunctionId>
-        *FuncNameToProfNameMap) const {
+    SampleProfileReaderItaniumRemapper *Remapper) const {
   CalleeName = getCanonicalFnName(CalleeName);
 
-  auto I = CallsiteSamples.find(mapIRLocToProfileLoc(Loc));
-  if (I == CallsiteSamples.end())
+  auto iter = CallsiteSamples.find(mapIRLocToProfileLoc(Loc));
+  if (iter == CallsiteSamples.end())
     return nullptr;
-  auto FS = I->second.find(getRepInFormat(CalleeName));
-  if (FS != I->second.end())
+  auto FS = iter->second.find(getRepInFormat(CalleeName));
+  if (FS != iter->second.end())
     return &FS->second;
-
-  if (FuncNameToProfNameMap && !FuncNameToProfNameMap->empty()) {
-    auto R = FuncNameToProfNameMap->find(FunctionId(CalleeName));
-    if (R != FuncNameToProfNameMap->end()) {
-      CalleeName = R->second.stringRef();
-      auto FS = I->second.find(getRepInFormat(CalleeName));
-      if (FS != I->second.end())
-        return &FS->second;
-    }
-  }
-
   if (Remapper) {
     if (auto NameInProfile = Remapper->lookUpNameInProfile(CalleeName)) {
-      auto FS = I->second.find(getRepInFormat(*NameInProfile));
-      if (FS != I->second.end())
+      auto FS = iter->second.find(getRepInFormat(*NameInProfile));
+      if (FS != iter->second.end())
         return &FS->second;
     }
   }
@@ -316,7 +300,7 @@ const FunctionSamples *FunctionSamples::findFunctionSamplesAt(
     return nullptr;
   uint64_t MaxTotalSamples = 0;
   const FunctionSamples *R = nullptr;
-  for (const auto &NameFS : I->second)
+  for (const auto &NameFS : iter->second)
     if (NameFS.second.getTotalSamples() >= MaxTotalSamples) {
       MaxTotalSamples = NameFS.second.getTotalSamples();
       R = &NameFS.second;

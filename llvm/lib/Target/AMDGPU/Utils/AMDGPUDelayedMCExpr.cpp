@@ -37,7 +37,7 @@ void DelayedMCExprs::assignDocNode(msgpack::DocNode &DN, msgpack::Type Type,
     }
   }
 
-  DelayedExprs.emplace_back(DN, Type, ExprValue);
+  DelayedExprs.push_back(Expr{DN, Type, ExprValue});
 }
 
 bool DelayedMCExprs::resolveDelayedExpressions() {

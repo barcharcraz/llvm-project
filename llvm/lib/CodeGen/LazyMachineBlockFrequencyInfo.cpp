@@ -36,6 +36,11 @@ LazyMachineBlockFrequencyInfoPass::LazyMachineBlockFrequencyInfoPass()
       *PassRegistry::getPassRegistry());
 }
 
+void LazyMachineBlockFrequencyInfoPass::print(raw_ostream &OS,
+                                              const Module *M) const {
+  getBFI().print(OS, M);
+}
+
 void LazyMachineBlockFrequencyInfoPass::getAnalysisUsage(
     AnalysisUsage &AU) const {
   AU.addRequired<MachineBranchProbabilityInfoWrapperPass>();
@@ -51,11 +56,10 @@ void LazyMachineBlockFrequencyInfoPass::releaseMemory() {
 
 MachineBlockFrequencyInfo &
 LazyMachineBlockFrequencyInfoPass::calculateIfNotAvailable() const {
-  auto *MBFIWrapper =
-      getAnalysisIfAvailable<MachineBlockFrequencyInfoWrapperPass>();
-  if (MBFIWrapper) {
+  auto *MBFI = getAnalysisIfAvailable<MachineBlockFrequencyInfo>();
+  if (MBFI) {
     LLVM_DEBUG(dbgs() << "MachineBlockFrequencyInfo is available\n");
-    return MBFIWrapper->getMBFI();
+    return *MBFI;
   }
 
   auto &MBPI = getAnalysis<MachineBranchProbabilityInfoWrapperPass>().getMBPI();

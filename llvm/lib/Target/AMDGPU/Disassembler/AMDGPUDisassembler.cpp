@@ -45,26 +45,10 @@ using namespace llvm;
 
 using DecodeStatus = llvm::MCDisassembler::DecodeStatus;
 
-static const MCSubtargetInfo &addDefaultWaveSize(const MCSubtargetInfo &STI,
-                                                 MCContext &Ctx) {
-  if (!STI.hasFeature(AMDGPU::FeatureWavefrontSize64) &&
-      !STI.hasFeature(AMDGPU::FeatureWavefrontSize32)) {
-    MCSubtargetInfo &STICopy = Ctx.getSubtargetCopy(STI);
-    // If there is no default wave size it must be a generation before gfx10,
-    // these have FeatureWavefrontSize64 in their definition already. For gfx10+
-    // set wave32 as a default.
-    STICopy.ToggleFeature(AMDGPU::FeatureWavefrontSize32);
-    return STICopy;
-  }
-
-  return STI;
-}
-
 AMDGPUDisassembler::AMDGPUDisassembler(const MCSubtargetInfo &STI,
                                        MCContext &Ctx, MCInstrInfo const *MCII)
-    : MCDisassembler(addDefaultWaveSize(STI, Ctx), Ctx), MCII(MCII),
-      MRI(*Ctx.getRegisterInfo()), MAI(*Ctx.getAsmInfo()),
-      TargetMaxInstBytes(MAI.getMaxInstLength(&STI)),
+    : MCDisassembler(STI, Ctx), MCII(MCII), MRI(*Ctx.getRegisterInfo()),
+      MAI(*Ctx.getAsmInfo()), TargetMaxInstBytes(MAI.getMaxInstLength(&STI)),
       CodeObjectVersion(AMDGPU::getDefaultAMDHSACodeObjectVersion()) {
   // ToDo: AMDGPUDisassembler supports only VI ISA.
   if (!STI.hasFeature(AMDGPU::FeatureGCN3Encoding) && !isGFX10Plus())
@@ -1566,7 +1550,8 @@ AMDGPUDisassembler::decodeNonVGPRSrcOp(const OpWidthTy Width, unsigned Val,
     if (MandatoryLiteral)
       // Keep a sentinel value for deferred setting
       return MCOperand::createImm(LITERAL_CONST);
-    return decodeLiteralConstant(Sema == AMDGPU::OperandSemantics::FP64);
+    else
+      return decodeLiteralConstant(Sema == AMDGPU::OperandSemantics::FP64);
   }
 
   switch (Width) {
@@ -1700,9 +1685,9 @@ AMDGPUDisassembler::decodeSDWASrc(const OpWidthTy Width, const unsigned Val,
       return decodeFPImmed(ImmWidth, SVal, Sema);
 
     return decodeSpecialReg32(SVal);
-  }
-  if (STI.hasFeature(AMDGPU::FeatureVolcanicIslands))
+  } else if (STI.hasFeature(AMDGPU::FeatureVolcanicIslands)) {
     return createRegOperand(getVgprClassId(Width), Val);
+  }
   llvm_unreachable("unsupported target");
 }
 
@@ -1730,13 +1715,15 @@ MCOperand AMDGPUDisassembler::decodeSDWAVopcDst(unsigned Val) const {
     if (TTmpIdx >= 0) {
       auto TTmpClsId = getTtmpClassId(IsWave64 ? OPW64 : OPW32);
       return createSRegOperand(TTmpClsId, TTmpIdx);
+    } else if (Val > SGPR_MAX) {
+      return IsWave64 ? decodeSpecialReg64(Val)
+                      : decodeSpecialReg32(Val);
+    } else {
+      return createSRegOperand(getSgprClassId(IsWave64 ? OPW64 : OPW32), Val);
     }
-    if (Val > SGPR_MAX) {
-      return IsWave64 ? decodeSpecialReg64(Val) : decodeSpecialReg32(Val);
-    }
-    return createSRegOperand(getSgprClassId(IsWave64 ? OPW64 : OPW32), Val);
+  } else {
+    return createRegOperand(IsWave64 ? AMDGPU::VCC : AMDGPU::VCC_LO);
   }
-  return createRegOperand(IsWave64 ? AMDGPU::VCC : AMDGPU::VCC_LO);
 }
 
 MCOperand AMDGPUDisassembler::decodeBoolReg(unsigned Val) const {
@@ -2262,8 +2249,7 @@ Expected<bool> AMDGPUDisassembler::decodeKernelDescriptorDirective(
       return createReservedKDBitsError(
           KERNEL_CODE_PROPERTY_ENABLE_WAVEFRONT_SIZE32,
           amdhsa::KERNEL_CODE_PROPERTIES_OFFSET, "must be zero on gfx9");
-    }
-    if (isGFX10Plus()) {
+    } else if (isGFX10Plus()) {
       PRINT_DIRECTIVE(".amdhsa_wavefront_size32",
                       KERNEL_CODE_PROPERTY_ENABLE_WAVEFRONT_SIZE32);
     }

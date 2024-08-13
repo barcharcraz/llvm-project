@@ -914,15 +914,7 @@ struct Allocator {
       return;
     }
 
-    if (RunFreeHooks(ptr)) {
-      // Someone used __sanitizer_ignore_free_hook() and decided that they
-      // didn't want the memory to __sanitizer_ignore_free_hook freed right now.
-      // When they call free() on this pointer again at a later time, we should
-      // ignore the alloc-type mismatch and allow them to deallocate the pointer
-      // through free(), rather than the initial alloc type.
-      m->alloc_type = FROM_MALLOC;
-      return;
-    }
+    RunFreeHooks(ptr);
 
     // Bad mutating writes during COE, can clobber the AsanChunk
     ChunkSafeCopy *smd = AsanChunkCOE_Restore(m);

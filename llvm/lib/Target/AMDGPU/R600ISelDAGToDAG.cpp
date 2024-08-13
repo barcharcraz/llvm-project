@@ -175,9 +175,8 @@ bool R600DAGToDAGISel::SelectADDRVTX_READ(SDValue Addr, SDValue &Base,
                                        MVT::i32);
     return true;
     // If the pointer address is constant, we can move it to the offset field.
-  }
-  if ((IMMOffset = dyn_cast<ConstantSDNode>(Addr)) &&
-      isInt<16>(IMMOffset->getZExtValue())) {
+  } else if ((IMMOffset = dyn_cast<ConstantSDNode>(Addr)) &&
+             isInt<16>(IMMOffset->getZExtValue())) {
     Base = CurDAG->getCopyFromReg(CurDAG->getEntryNode(),
                                   SDLoc(CurDAG->getEntryNode()), R600::ZERO,
                                   MVT::i32);

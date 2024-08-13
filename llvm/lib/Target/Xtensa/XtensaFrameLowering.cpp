@@ -41,7 +41,8 @@ void XtensaFrameLowering::emitPrologue(MachineFunction &MF,
   DebugLoc DL = MBBI != MBB.end() ? MBBI->getDebugLoc() : DebugLoc();
   MCRegister SP = Xtensa::SP;
   MCRegister FP = TRI->getFrameRegister(MF);
-  const MCRegisterInfo *MRI = MF.getContext().getRegisterInfo();
+  MachineModuleInfo &MMI = MF.getMMI();
+  const MCRegisterInfo *MRI = MMI.getContext().getRegisterInfo();
 
   // First, compute final stack size.
   uint64_t StackSize = MFI.getStackSize();

@@ -417,6 +417,30 @@ void SelectionDAGISelLegacy::getAnalysisUsage(AnalysisUsage &AU) const {
   MachineFunctionPass::getAnalysisUsage(AU);
 }
 
+static void computeUsesMSVCFloatingPoint(const Triple &TT, const Function &F,
+                                         MachineModuleInfo &MMI) {
+  // Only needed for MSVC
+  if (!TT.isWindowsMSVCEnvironment())
+    return;
+
+  // If it's already set, nothing to do.
+  if (MMI.usesMSVCFloatingPoint())
+    return;
+
+  for (const Instruction &I : instructions(F)) {
+    if (I.getType()->isFPOrFPVectorTy()) {
+      MMI.setUsesMSVCFloatingPoint(true);
+      return;
+    }
+    for (const auto &Op : I.operands()) {
+      if (Op->getType()->isFPOrFPVectorTy()) {
+        MMI.setUsesMSVCFloatingPoint(true);
+        return;
+      }
+    }
+  }
+}
+
 PreservedAnalyses
 SelectionDAGISelPass::run(MachineFunction &MF,
                           MachineFunctionAnalysisManager &MFAM) {
@@ -485,10 +509,7 @@ void SelectionDAGISel::initializeAnalysisResults(
     FnVarLocs = &FAM.getResult<DebugAssignmentTrackingAnalysis>(Fn);
 
   auto *UA = FAM.getCachedResult<UniformityInfoAnalysis>(Fn);
-  MachineModuleInfo &MMI =
-      MAMP.getCachedResult<MachineModuleAnalysis>(*Fn.getParent())->getMMI();
-
-  CurDAG->init(*MF, *ORE, MFAM, LibInfo, UA, PSI, BFI, MMI, FnVarLocs);
+  CurDAG->init(*MF, *ORE, MFAM, LibInfo, UA, PSI, BFI, FnVarLocs);
 
   // Now get the optional analyzes if we want to.
   // This is based on the possibly changed OptLevel (after optnone is taken
@@ -541,11 +562,7 @@ void SelectionDAGISel::initializeAnalysisResults(MachineFunctionPass &MFP) {
   UniformityInfo *UA = nullptr;
   if (auto *UAPass = MFP.getAnalysisIfAvailable<UniformityInfoWrapperPass>())
     UA = &UAPass->getUniformityInfo();
-
-  MachineModuleInfo &MMI =
-      MFP.getAnalysis<MachineModuleInfoWrapperPass>().getMMI();
-
-  CurDAG->init(*MF, *ORE, &MFP, LibInfo, UA, PSI, BFI, MMI, FnVarLocs);
+  CurDAG->init(*MF, *ORE, &MFP, LibInfo, UA, PSI, BFI, FnVarLocs);
 
   // Now get the optional analyzes if we want to.
   // This is based on the possibly changed OptLevel (after optnone is taken
@@ -777,6 +794,9 @@ bool SelectionDAGISel::runOnMachineFunction(MachineFunction &mf) {
       }
     }
   }
+
+  // Determine if floating point is used for msvc
+  computeUsesMSVCFloatingPoint(TM.getTargetTriple(), Fn, MF->getMMI());
 
   // Release function-specific state. SDB and CurDAG are already cleared
   // at this point.
@@ -1423,6 +1443,7 @@ bool SelectionDAGISel::PrepareEHLandingPad() {
 
 // Mark and Report IPToState for each Block under IsEHa
 void SelectionDAGISel::reportIPToStateForBlocks(MachineFunction *MF) {
+  MachineModuleInfo &MMI = MF->getMMI();
   llvm::WinEHFuncInfo *EHInfo = MF->getWinEHFuncInfo();
   if (!EHInfo)
     return;
@@ -1437,8 +1458,8 @@ void SelectionDAGISel::reportIPToStateForBlocks(MachineFunction *MF) {
         continue;
 
       // Insert EH Labels
-      MCSymbol *BeginLabel = MF->getContext().createTempSymbol();
-      MCSymbol *EndLabel = MF->getContext().createTempSymbol();
+      MCSymbol *BeginLabel = MMI.getContext().createTempSymbol();
+      MCSymbol *EndLabel = MMI.getContext().createTempSymbol();
       EHInfo->addIPToStateRange(State, BeginLabel, EndLabel);
       BuildMI(MBB, MBBb, SDB->getCurDebugLoc(),
               TII->get(TargetOpcode::EH_LABEL))
@@ -2199,27 +2220,24 @@ bool SelectionDAGISel::CheckOrMask(SDValue LHS, ConstantSDNode *RHS,
 /// by tblgen.  Others should not call it.
 void SelectionDAGISel::SelectInlineAsmMemoryOperands(std::vector<SDValue> &Ops,
                                                      const SDLoc &DL) {
-  // Change the vector of SDValue into a list of SDNodeHandle for x86 might call
-  // replaceAllUses when matching address.
+  std::vector<SDValue> InOps;
+  std::swap(InOps, Ops);
 
-  std::list<HandleSDNode> Handles;
+  Ops.push_back(InOps[InlineAsm::Op_InputChain]); // 0
+  Ops.push_back(InOps[InlineAsm::Op_AsmString]);  // 1
+  Ops.push_back(InOps[InlineAsm::Op_MDNode]);     // 2, !srcloc
+  Ops.push_back(InOps[InlineAsm::Op_ExtraInfo]);  // 3 (SideEffect, AlignStack)
 
-  Handles.emplace_back(Ops[InlineAsm::Op_InputChain]); // 0
-  Handles.emplace_back(Ops[InlineAsm::Op_AsmString]);  // 1
-  Handles.emplace_back(Ops[InlineAsm::Op_MDNode]);     // 2, !srcloc
-  Handles.emplace_back(
-      Ops[InlineAsm::Op_ExtraInfo]); // 3 (SideEffect, AlignStack)
-
-  unsigned i = InlineAsm::Op_FirstOperand, e = Ops.size();
-  if (Ops[e - 1].getValueType() == MVT::Glue)
+  unsigned i = InlineAsm::Op_FirstOperand, e = InOps.size();
+  if (InOps[e-1].getValueType() == MVT::Glue)
     --e;  // Don't process a glue operand if it is here.
 
   while (i != e) {
-    InlineAsm::Flag Flags(Ops[i]->getAsZExtVal());
+    InlineAsm::Flag Flags(InOps[i]->getAsZExtVal());
     if (!Flags.isMemKind() && !Flags.isFuncKind()) {
       // Just skip over this operand, copying the operands verbatim.
-      Handles.insert(Handles.end(), Ops.begin() + i,
-                     Ops.begin() + i + Flags.getNumOperandRegisters() + 1);
+      Ops.insert(Ops.end(), InOps.begin() + i,
+                 InOps.begin() + i + Flags.getNumOperandRegisters() + 1);
       i += Flags.getNumOperandRegisters() + 1;
     } else {
       assert(Flags.getNumOperandRegisters() == 1 &&
@@ -2229,10 +2247,10 @@ void SelectionDAGISel::SelectInlineAsmMemoryOperands(std::vector<SDValue> &Ops,
       if (Flags.isUseOperandTiedToDef(TiedToOperand)) {
         // We need the constraint ID from the operand this is tied to.
         unsigned CurOp = InlineAsm::Op_FirstOperand;
-        Flags = InlineAsm::Flag(Ops[CurOp]->getAsZExtVal());
+        Flags = InlineAsm::Flag(InOps[CurOp]->getAsZExtVal());
         for (; TiedToOperand; --TiedToOperand) {
           CurOp += Flags.getNumOperandRegisters() + 1;
-          Flags = InlineAsm::Flag(Ops[CurOp]->getAsZExtVal());
+          Flags = InlineAsm::Flag(InOps[CurOp]->getAsZExtVal());
         }
       }
 
@@ -2240,7 +2258,7 @@ void SelectionDAGISel::SelectInlineAsmMemoryOperands(std::vector<SDValue> &Ops,
       std::vector<SDValue> SelOps;
       const InlineAsm::ConstraintCode ConstraintID =
           Flags.getMemoryConstraintID();
-      if (SelectInlineAsmMemoryOperand(Ops[i + 1], ConstraintID, SelOps))
+      if (SelectInlineAsmMemoryOperand(InOps[i+1], ConstraintID, SelOps))
         report_fatal_error("Could not match memory address.  Inline asm"
                            " failure!");
 
@@ -2249,19 +2267,15 @@ void SelectionDAGISel::SelectInlineAsmMemoryOperands(std::vector<SDValue> &Ops,
                                                 : InlineAsm::Kind::Func,
                               SelOps.size());
       Flags.setMemConstraint(ConstraintID);
-      Handles.emplace_back(CurDAG->getTargetConstant(Flags, DL, MVT::i32));
-      Handles.insert(Handles.end(), SelOps.begin(), SelOps.end());
+      Ops.push_back(CurDAG->getTargetConstant(Flags, DL, MVT::i32));
+      llvm::append_range(Ops, SelOps);
       i += 2;
     }
   }
 
   // Add the glue input back if present.
-  if (e != Ops.size())
-    Handles.emplace_back(Ops.back());
-
-  Ops.clear();
-  for (auto &handle : Handles)
-    Ops.push_back(handle.getValue());
+  if (e != InOps.size())
+    Ops.push_back(InOps.back());
 }
 
 /// findGlueUse - Return use of MVT::Glue value produced by the specified

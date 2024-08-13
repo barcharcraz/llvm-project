@@ -79,7 +79,7 @@ const IntegerRelation &PresburgerRelation::getDisjunct(unsigned index) const {
 /// IntegerRelation.
 void PresburgerRelation::unionInPlace(const IntegerRelation &disjunct) {
   assert(space.isCompatible(disjunct.getSpace()) && "Spaces should match");
-  disjuncts.emplace_back(disjunct);
+  disjuncts.push_back(disjunct);
 }
 
 /// Mutate this set, turning it into the union of this set and the given set.
@@ -121,8 +121,8 @@ PresburgerRelation::unionSet(const PresburgerRelation &set) const {
 
 /// A point is contained in the union iff any of the parts contain the point.
 bool PresburgerRelation::containsPoint(ArrayRef<DynamicAPInt> point) const {
-  return llvm::any_of(disjuncts, [&point](const IntegerRelation &disjunct) {
-    return disjunct.containsPointNoLocal(point);
+  return llvm::any_of(disjuncts, [&](const IntegerRelation &disjunct) {
+    return (disjunct.containsPointNoLocal(point));
   });
 }
 
@@ -376,15 +376,6 @@ static PresburgerRelation getSetDifference(IntegerRelation b,
     // The index of the last inequality that was processed at this level.
     // This is empty when we are coming to this level for the first time.
     std::optional<unsigned> lastIneqProcessed;
-
-    // Convenience constructor.
-    Frame(unsigned simplexSnapshot,
-          const IntegerRelation::CountsSnapshot &bCounts,
-          const IntegerRelation &sI, ArrayRef<unsigned> ineqsToProcess = {},
-          std::optional<unsigned> lastIneqProcessed = std::nullopt)
-        : simplexSnapshot(simplexSnapshot), bCounts(bCounts), sI(sI),
-          ineqsToProcess(ineqsToProcess), lastIneqProcessed(lastIneqProcessed) {
-    }
   };
   SmallVector<Frame, 2> frames;
 
@@ -498,7 +489,9 @@ static PresburgerRelation getSetDifference(IntegerRelation b,
         //
         // TODO: consider supporting tail recursion directly if this becomes
         // relevant for performance.
-        frames.emplace_back(Frame{initialSnapshot, initBCounts, sI});
+        frames.push_back(Frame{initialSnapshot, initBCounts, sI,
+                               /*ineqsToProcess=*/{},
+                               /*lastIneqProcessed=*/{}});
         ++level;
         continue;
       }
@@ -528,7 +521,7 @@ static PresburgerRelation getSetDifference(IntegerRelation b,
       ineqsToProcess.reserve(totalNewSimplexInequalities);
       for (unsigned i = 0; i < totalNewSimplexInequalities; ++i)
         if (!canIgnoreIneq[i])
-          ineqsToProcess.emplace_back(i);
+          ineqsToProcess.push_back(i);
 
       if (ineqsToProcess.empty()) {
         // Nothing to process; return. (we have no frame to pop.)
@@ -538,7 +531,8 @@ static PresburgerRelation getSetDifference(IntegerRelation b,
 
       unsigned simplexSnapshot = simplex.getSnapshot();
       IntegerRelation::CountsSnapshot bCounts = b.getCounts();
-      frames.emplace_back(Frame{simplexSnapshot, bCounts, sI, ineqsToProcess});
+      frames.push_back(Frame{simplexSnapshot, bCounts, sI, ineqsToProcess,
+                             /*lastIneqProcessed=*/std::nullopt});
       // We have completed the initial setup for this level.
       // Fallthrough to the main recursive part below.
     }
@@ -802,7 +796,7 @@ SetCoalescer::SetCoalescer(const PresburgerRelation &s) : space(s.getSpace()) {
       continue;
     }
     ++i;
-    simplices.emplace_back(simp);
+    simplices.push_back(simp);
   }
 }
 
@@ -934,9 +928,9 @@ LogicalResult SetCoalescer::typeInequality(ArrayRef<DynamicAPInt> ineq,
                                            Simplex &simp) {
   Simplex::IneqType type = simp.findIneqType(ineq);
   if (type == Simplex::IneqType::Redundant)
-    redundantIneqsB.emplace_back(ineq);
+    redundantIneqsB.push_back(ineq);
   else if (type == Simplex::IneqType::Cut)
-    cuttingIneqsB.emplace_back(ineq);
+    cuttingIneqsB.push_back(ineq);
   else
     return failure();
   return success();
@@ -946,7 +940,7 @@ LogicalResult SetCoalescer::typeEquality(ArrayRef<DynamicAPInt> eq,
                                          Simplex &simp) {
   if (typeInequality(eq, simp).failed())
     return failure();
-  negEqs.emplace_back(getNegatedCoeffs(eq));
+  negEqs.push_back(getNegatedCoeffs(eq));
   ArrayRef<DynamicAPInt> inv(negEqs.back());
   return typeInequality(inv, simp);
 }
@@ -1044,7 +1038,7 @@ PresburgerRelation PresburgerRelation::simplify() const {
 }
 
 bool PresburgerRelation::isFullDim() const {
-  return llvm::any_of(getAllDisjuncts(), [](IntegerRelation disjunct) {
+  return llvm::any_of(getAllDisjuncts(), [&](IntegerRelation disjunct) {
     return disjunct.isFullDim();
   });
 }

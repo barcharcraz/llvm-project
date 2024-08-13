@@ -14,6 +14,7 @@
 
 #include "llvm/Passes/StandardInstrumentations.h"
 #include "llvm/ADT/Any.h"
+#include "llvm/ADT/StableHashing.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Analysis/CallGraphSCCPass.h"
 #include "llvm/Analysis/LazyCallGraph.h"
@@ -21,7 +22,6 @@
 #include "llvm/CodeGen/MIRPrinter.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
-#include "llvm/CodeGen/MachineVerifier.h"
 #include "llvm/Demangle/Demangle.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Function.h"
@@ -43,7 +43,6 @@
 #include "llvm/Support/Regex.h"
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/Support/xxhash.h"
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -753,27 +752,28 @@ static SmallString<32> getIRFileDisplayName(Any IR) {
   SmallString<32> Result;
   raw_svector_ostream ResultStream(Result);
   const Module *M = unwrapModule(IR);
-  uint64_t NameHash = xxh3_64bits(M->getName());
-  unsigned MaxHashWidth = sizeof(uint64_t) * 2;
+  stable_hash NameHash = stable_hash_combine_string(M->getName());
+  unsigned int MaxHashWidth = sizeof(stable_hash) * 8 / 4;
   write_hex(ResultStream, NameHash, HexPrintStyle::Lower, MaxHashWidth);
   if (unwrapIR<Module>(IR)) {
     ResultStream << "-module";
   } else if (const auto *F = unwrapIR<Function>(IR)) {
     ResultStream << "-function-";
-    auto FunctionNameHash = xxh3_64bits(F->getName());
+    stable_hash FunctionNameHash = stable_hash_combine_string(F->getName());
     write_hex(ResultStream, FunctionNameHash, HexPrintStyle::Lower,
               MaxHashWidth);
   } else if (const auto *C = unwrapIR<LazyCallGraph::SCC>(IR)) {
     ResultStream << "-scc-";
-    auto SCCNameHash = xxh3_64bits(C->getName());
+    stable_hash SCCNameHash = stable_hash_combine_string(C->getName());
     write_hex(ResultStream, SCCNameHash, HexPrintStyle::Lower, MaxHashWidth);
   } else if (const auto *L = unwrapIR<Loop>(IR)) {
     ResultStream << "-loop-";
-    auto LoopNameHash = xxh3_64bits(L->getName());
+    stable_hash LoopNameHash = stable_hash_combine_string(L->getName());
     write_hex(ResultStream, LoopNameHash, HexPrintStyle::Lower, MaxHashWidth);
   } else if (const auto *MF = unwrapIR<MachineFunction>(IR)) {
     ResultStream << "-machine-function-";
-    auto MachineFunctionNameHash = xxh3_64bits(MF->getName());
+    stable_hash MachineFunctionNameHash =
+        stable_hash_combine_string(MF->getName());
     write_hex(ResultStream, MachineFunctionNameHash, HexPrintStyle::Lower,
               MaxHashWidth);
   } else {
@@ -1451,10 +1451,10 @@ void PreservedCFGCheckerInstrumentation::registerCallbacks(
   });
 }
 
-void VerifyInstrumentation::registerCallbacks(PassInstrumentationCallbacks &PIC,
-                                              ModuleAnalysisManager *MAM) {
+void VerifyInstrumentation::registerCallbacks(
+    PassInstrumentationCallbacks &PIC) {
   PIC.registerAfterPassCallback(
-      [this, MAM](StringRef P, Any IR, const PreservedAnalyses &PassPA) {
+      [this](StringRef P, Any IR, const PreservedAnalyses &PassPA) {
         if (isIgnored(P) || P == "VerifierPass")
           return;
         const auto *F = unwrapIR<Function>(IR);
@@ -1488,23 +1488,15 @@ void VerifyInstrumentation::registerCallbacks(PassInstrumentationCallbacks &PIC,
                                          P));
           }
 
+          // TODO: Use complete MachineVerifierPass.
           if (auto *MF = unwrapIR<MachineFunction>(IR)) {
             if (DebugLogging)
               dbgs() << "Verifying machine function " << MF->getName() << '\n';
-            std::string Banner =
+            verifyMachineFunction(
                 formatv("Broken machine function found after pass "
                         "\"{0}\", compilation aborted!",
-                        P);
-            if (MAM) {
-              Module &M = const_cast<Module &>(*MF->getFunction().getParent());
-              auto &MFAM =
-                  MAM->getResult<MachineFunctionAnalysisManagerModuleProxy>(M)
-                      .getManager();
-              MachineVerifierPass Verifier(Banner);
-              Verifier.run(const_cast<MachineFunction &>(*MF), MFAM);
-            } else {
-              verifyMachineFunction(Banner, *MF);
-            }
+                        P),
+                *MF);
           }
         }
       });
@@ -2523,7 +2515,7 @@ void StandardInstrumentations::registerCallbacks(
   PrintChangedIR.registerCallbacks(PIC);
   PseudoProbeVerification.registerCallbacks(PIC);
   if (VerifyEach)
-    Verify.registerCallbacks(PIC, MAM);
+    Verify.registerCallbacks(PIC);
   PrintChangedDiff.registerCallbacks(PIC);
   WebsiteChangeReporter.registerCallbacks(PIC);
   ChangeTester.registerCallbacks(PIC);
