@@ -22,6 +22,9 @@
 // RUN: %env_asan_opts=strict_string_checks=false %run %t test7 2>&1
 // RUN: %env_asan_opts=strict_string_checks=true not %run %t test7 2>&1 | FileCheck %s --check-prefix=CHECK7
 
+// FIXME: _set_invalid_parameter_handler is per-crt state.
+// XFAIL: ( asan-static-runtime && target={{.*-windows-.*}} ), debug-crt
+// FIXME: Enable strtoll interceptor.
 // REQUIRES: shadow-scale-3
 
 #include <assert.h>
