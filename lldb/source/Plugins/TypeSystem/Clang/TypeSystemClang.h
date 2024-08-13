@@ -498,8 +498,7 @@ public:
   // Array Types
 
   CompilerType CreateArrayType(const CompilerType &element_type,
-                               std::optional<size_t> element_count,
-                               bool is_vector);
+                               size_t element_count, bool is_vector);
 
   // Enumeration Types
   CompilerType CreateEnumerationType(llvm::StringRef name,

@@ -4373,7 +4373,6 @@ bool Compiler<Emitter>::visitWhileStmt(const WhileStmt *S) {
 
   if (!this->jump(CondLabel))
     return false;
-  this->fallthrough(EndLabel);
   this->emitLabel(EndLabel);
 
   return true;

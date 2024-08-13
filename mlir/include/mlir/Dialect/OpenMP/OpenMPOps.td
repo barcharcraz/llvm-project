@@ -145,14 +145,15 @@ def ParallelOp : OpenMP_Op<"parallel", traits = [
     The parallel construct includes a region of code which is to be executed
     by a team of threads.
 
-    The optional `if_expr` parameter specifies a boolean result of a conditional
-    check. If this value is 1 or is not provided then the parallel region runs
-    as normal, if it is 0 then the parallel region is executed with one thread.
+    The optional `if_expr` parameter specifies a boolean result of a
+    conditional check. If this value is 1 or is not provided then the parallel
+    region runs as normal, if it is 0 then the parallel region is executed with
+    one thread.
   }] # clausesDescription;
 
   let builders = [
     OpBuilder<(ins CArg<"ArrayRef<NamedAttribute>", "{}">:$attributes)>,
-    OpBuilder<(ins CArg<"const ParallelOperands &">:$clauses)>
+    OpBuilder<(ins CArg<"const ParallelClauseOps &">:$clauses)>
   ];
 
   // TODO: Use default assembly format inherited from OpenMP_Op once printing
@@ -162,16 +163,16 @@ def ParallelOp : OpenMP_Op<"parallel", traits = [
   let assemblyFormat = [{
     oilist(
           `if` `(` $if_expr `)`
-          | `num_threads` `(` $num_threads `:` type($num_threads) `)`
+          | `num_threads` `(` $num_threads_var `:` type($num_threads_var) `)`
           | `allocate` `(`
               custom<AllocateAndAllocator>(
                 $allocate_vars, type($allocate_vars),
-                $allocator_vars, type($allocator_vars)
+                $allocators_vars, type($allocators_vars)
               ) `)`
-          | `proc_bind` `(` custom<ClauseAttr>($proc_bind_kind) `)`
+          | `proc_bind` `(` custom<ClauseAttr>($proc_bind_val) `)`
     ) custom<ParallelRegion>($region, $reduction_vars, type($reduction_vars),
-                             $reduction_byref, $reduction_syms, $private_vars,
-                             type($private_vars), $private_syms) attr-dict
+                             $reduction_vars_byref, $reductions, $private_vars,
+                             type($private_vars), $privatizers) attr-dict
   }];
 
   let hasVerifier = 1;
@@ -195,9 +196,10 @@ def TerminatorOp : OpenMP_Op<"terminator", [Terminator, Pure]> {
 def TeamsOp : OpenMP_Op<"teams", traits = [
     AttrSizedOperandSegments, RecursiveMemoryEffects
   ], clauses = [
+    // TODO: Complete clause list (private).
     // TODO: Sort clauses alphabetically.
     OpenMP_NumTeamsClause, OpenMP_IfClause, OpenMP_ThreadLimitClause,
-    OpenMP_AllocateClause, OpenMP_ReductionClause, OpenMP_PrivateClause
+    OpenMP_AllocateClause, OpenMP_ReductionClause
   ], singleRegion = true> {
   let summary = "teams construct";
   let description = [{
@@ -210,7 +212,7 @@ def TeamsOp : OpenMP_Op<"teams", traits = [
   }] # clausesDescription;
 
   let builders = [
-    OpBuilder<(ins CArg<"const TeamsOperands &">:$clauses)>
+    OpBuilder<(ins CArg<"const TeamsClauseOps &">:$clauses)>
   ];
 
   let hasVerifier = 1;
@@ -237,9 +239,9 @@ def SectionOp : OpenMP_Op<"section", [HasParent<"SectionsOp">],
 def SectionsOp : OpenMP_Op<"sections", traits = [
     AttrSizedOperandSegments
   ], clauses = [
+    // TODO: Complete clause list (private).
     // TODO: Sort clauses alphabetically.
-    OpenMP_ReductionClause, OpenMP_AllocateClause, OpenMP_NowaitClause,
-    OpenMP_PrivateClause
+    OpenMP_ReductionClause, OpenMP_AllocateClause, OpenMP_NowaitClause
   ], singleRegion = true> {
   let summary = "sections construct";
   let description = [{
@@ -256,7 +258,7 @@ def SectionsOp : OpenMP_Op<"sections", traits = [
   let regions = (region SizedRegion<1>:$region);
 
   let builders = [
-    OpBuilder<(ins CArg<"const SectionsOperands &">:$clauses)>
+    OpBuilder<(ins CArg<"const SectionsClauseOps &">:$clauses)>
   ];
 
   let hasVerifier = 1;
@@ -270,8 +272,8 @@ def SectionsOp : OpenMP_Op<"sections", traits = [
 def SingleOp : OpenMP_Op<"single", traits = [
     AttrSizedOperandSegments
   ], clauses = [
-    OpenMP_AllocateClause, OpenMP_CopyprivateClause, OpenMP_NowaitClause,
-    OpenMP_PrivateClause
+    // TODO: Complete clause list (private).
+    OpenMP_AllocateClause, OpenMP_CopyprivateClause, OpenMP_NowaitClause
   ], singleRegion = true> {
   let summary = "single directive";
   let description = [{
@@ -283,7 +285,7 @@ def SingleOp : OpenMP_Op<"single", traits = [
   }] # clausesDescription;
 
   let builders = [
-    OpBuilder<(ins CArg<"const SingleOperands &">:$clauses)>
+    OpBuilder<(ins CArg<"const SingleClauseOps &">:$clauses)>
   ];
 
   let hasVerifier = 1;
@@ -296,7 +298,7 @@ def SingleOp : OpenMP_Op<"single", traits = [
 def LoopNestOp : OpenMP_Op<"loop_nest", traits = [
     RecursiveMemoryEffects, SameVariadicOperandSize
   ], clauses = [
-    OpenMP_LoopRelatedClause
+    OpenMP_CollapseClause
   ], singleRegion = true> {
   let summary = "rectangular loop nest";
   let description = [{
@@ -305,14 +307,14 @@ def LoopNestOp : OpenMP_Op<"loop_nest", traits = [
     lower and upper bounds, as well as a step variable, must be defined.
 
     The lower and upper bounds specify a half-open range: the range includes the
-    lower bound but does not include the upper bound. If the `loop_inclusive`
+    lower bound but does not include the upper bound. If the `inclusive`
     attribute is specified then the upper bound is also included.
 
     The body region can contain any number of blocks. The region is terminated
     by an `omp.yield` instruction without operands. The induction variables,
     represented as entry block arguments to the loop nest operation's single
-    region, match the types of the `loop_lower_bounds`, `loop_upper_bounds` and
-    `loop_steps` arguments.
+    region, match the types of the `lowerBound`, `upperBound` and `step`
+    arguments.
 
     ```mlir
     omp.loop_nest (%i1, %i2) : i32 = (%c0, %c0) to (%c10, %c10) step (%c1, %c1) {
@@ -334,8 +336,10 @@ def LoopNestOp : OpenMP_Op<"loop_nest", traits = [
     non-perfectly nested loops.
   }];
 
+  let arguments = !con(clausesArgs, (ins UnitAttr:$inclusive));
+
   let builders = [
-    OpBuilder<(ins CArg<"const LoopNestOperands &">:$clauses)>
+    OpBuilder<(ins CArg<"const LoopNestClauseOps &">:$clauses)>
   ];
 
   let extraClassDeclaration = [{
@@ -362,15 +366,14 @@ def WsloopOp : OpenMP_Op<"wsloop", traits = [
     AttrSizedOperandSegments, DeclareOpInterfaceMethods<LoopWrapperInterface>,
     RecursiveMemoryEffects, SingleBlock
   ], clauses = [
+    // TODO: Complete clause list (allocate, private).
     // TODO: Sort clauses alphabetically.
     OpenMP_LinearClauseSkip<assemblyFormat = true>,
     OpenMP_ReductionClauseSkip<assemblyFormat = true>,
     OpenMP_ScheduleClauseSkip<assemblyFormat = true>,
     OpenMP_NowaitClauseSkip<assemblyFormat = true>,
     OpenMP_OrderedClauseSkip<assemblyFormat = true>,
-    OpenMP_OrderClauseSkip<assemblyFormat = true>,
-    OpenMP_AllocateClauseSkip<assemblyFormat = true>,
-    OpenMP_PrivateClauseSkip<assemblyFormat = true>
+    OpenMP_OrderClauseSkip<assemblyFormat = true>
   ], singleRegion = true> {
   let summary = "worksharing-loop construct";
   let description = [{
@@ -399,7 +402,7 @@ def WsloopOp : OpenMP_Op<"wsloop", traits = [
 
   let builders = [
     OpBuilder<(ins CArg<"ArrayRef<NamedAttribute>", "{}">:$attributes)>,
-    OpBuilder<(ins CArg<"const WsloopOperands &">:$clauses)>
+    OpBuilder<(ins CArg<"const WsloopClauseOps &">:$clauses)>
   ];
 
   // TODO: Use default assembly format inherited from OpenMP_Op once printing
@@ -412,20 +415,13 @@ def WsloopOp : OpenMP_Op<"wsloop", traits = [
                                    $linear_step_vars) `)`
           |`schedule` `(`
               custom<ScheduleClause>(
-                $schedule_kind, $schedule_mod, $schedule_simd,
-                $schedule_chunk, type($schedule_chunk)) `)`
+                $schedule_val, $schedule_modifier, $simd_modifier,
+                $schedule_chunk_var, type($schedule_chunk_var)) `)`
           |`nowait` $nowait
-          |`ordered` `(` $ordered `)`
-          |`order` `(` custom<OrderClause>($order, $order_mod) `)`
-          |`allocate` `(`
-                custom<AllocateAndAllocator>(
-                  $allocate_vars, type($allocate_vars), $allocator_vars,
-                  type($allocator_vars)) `)`
-          |`private` `(`
-                custom<PrivateList>(
-                  $private_vars, type($private_vars), $private_syms) `)`
+          |`ordered` `(` $ordered_val `)`
+          |`order` `(` custom<OrderClause>($order_val, $order_mod) `)`
     ) custom<Wsloop>($region, $reduction_vars, type($reduction_vars),
-                     $reduction_byref, $reduction_syms) attr-dict
+                     $reduction_vars_byref, $reductions) attr-dict
   }];
 
   let hasVerifier = 1;
@@ -439,9 +435,9 @@ def SimdOp : OpenMP_Op<"simd", traits = [
     AttrSizedOperandSegments, DeclareOpInterfaceMethods<LoopWrapperInterface>,
     RecursiveMemoryEffects, SingleBlock
   ], clauses = [
-    OpenMP_AlignedClause, OpenMP_IfClause, OpenMP_LinearClause,
-    OpenMP_NontemporalClause, OpenMP_OrderClause, OpenMP_PrivateClause,
-    OpenMP_ReductionClause, OpenMP_SafelenClause, OpenMP_SimdlenClause
+    // TODO: Complete clause list (linear, private, reduction).
+    OpenMP_AlignedClause, OpenMP_IfClause, OpenMP_NontemporalClause,
+    OpenMP_OrderClause, OpenMP_SafelenClause, OpenMP_SimdlenClause
   ], singleRegion = true> {
   let summary = "simd construct";
   let description = [{
@@ -472,7 +468,7 @@ def SimdOp : OpenMP_Op<"simd", traits = [
   }] # clausesDescription;
 
   let builders = [
-    OpBuilder<(ins CArg<"const SimdOperands &">:$clauses)>
+    OpBuilder<(ins CArg<"const SimdClauseOps &">:$clauses)>
   ];
 
   let hasVerifier = 1;
@@ -506,9 +502,9 @@ def DistributeOp : OpenMP_Op<"distribute", traits = [
     AttrSizedOperandSegments, DeclareOpInterfaceMethods<LoopWrapperInterface>,
     RecursiveMemoryEffects, SingleBlock
   ], clauses = [
+    // TODO: Complete clause list (private).
     // TODO: Sort clauses alphabetically.
-    OpenMP_DistScheduleClause, OpenMP_AllocateClause, OpenMP_OrderClause,
-    OpenMP_PrivateClause
+    OpenMP_DistScheduleClause, OpenMP_AllocateClause, OpenMP_OrderClause
   ], singleRegion = true> {
   let summary = "distribute construct";
   let description = [{
@@ -545,7 +541,7 @@ def DistributeOp : OpenMP_Op<"distribute", traits = [
   }] # clausesDescription;
 
   let builders = [
-    OpBuilder<(ins CArg<"const DistributeOperands &">:$clauses)>
+    OpBuilder<(ins CArg<"const DistributeClauseOps &">:$clauses)>
   ];
 
   let hasVerifier = 1;
@@ -559,12 +555,11 @@ def TaskOp : OpenMP_Op<"task", traits = [
     AttrSizedOperandSegments, AutomaticAllocationScope,
     OutlineableOpenMPOpInterface
   ], clauses = [
-    // TODO: Complete clause list (affinity, detach).
+    // TODO: Complete clause list (affinity, detach, private).
     // TODO: Sort clauses alphabetically.
     OpenMP_IfClause, OpenMP_FinalClause, OpenMP_UntiedClause,
     OpenMP_MergeableClause, OpenMP_InReductionClause,
-    OpenMP_PriorityClause, OpenMP_DependClause, OpenMP_AllocateClause,
-    OpenMP_PrivateClause
+    OpenMP_PriorityClause, OpenMP_DependClause, OpenMP_AllocateClause
   ], singleRegion = true> {
   let summary = "task construct";
   let description = [{
@@ -581,12 +576,12 @@ def TaskOp : OpenMP_Op<"task", traits = [
 
     The `in_reduction` clause specifies that this particular task (among all the
     tasks in current taskgroup, if any) participates in a reduction.
-    `in_reduction_byref` indicates whether each reduction variable should
+    `in_reduction_vars_byref` indicates whether each reduction variable should
     be passed by value or by reference.
   }] # clausesDescription;
 
   let builders = [
-    OpBuilder<(ins CArg<"const TaskOperands &">:$clauses)>
+    OpBuilder<(ins CArg<"const TaskClauseOps &">:$clauses)>
   ];
 
   let hasVerifier = 1;
@@ -597,13 +592,14 @@ def TaskloopOp : OpenMP_Op<"taskloop", traits = [
     DeclareOpInterfaceMethods<LoopWrapperInterface>, RecursiveMemoryEffects,
     SingleBlock
   ], clauses = [
+    // TODO: Complete clause list (private).
     // TODO: Sort clauses alphabetically.
     OpenMP_IfClause, OpenMP_FinalClause, OpenMP_UntiedClause,
     OpenMP_MergeableClause,
     OpenMP_InReductionClauseSkip<extraClassDeclaration = true>,
     OpenMP_ReductionClauseSkip<extraClassDeclaration = true>,
     OpenMP_PriorityClause, OpenMP_AllocateClause, OpenMP_GrainsizeClause,
-    OpenMP_NumTasksClause, OpenMP_NogroupClause, OpenMP_PrivateClause
+    OpenMP_NumTasksClause, OpenMP_NogroupClause
   ], singleRegion = true> {
   let summary = "taskloop construct";
   let description = [{
@@ -643,7 +639,7 @@ def TaskloopOp : OpenMP_Op<"taskloop", traits = [
     items is present. Thus, the generated tasks are participants of a reduction
     previously defined by a reduction scoping clause. In this case, accumulator
     variables are specified in `in_reduction_vars`, symbols referring to
-    reduction declarations in `in_reduction_syms` and `in_reduction_byref`
+    reduction declarations in `in_reductions` and `in_reduction_vars_byref`
     indicate for each reduction variable whether it should be passed by value or
     by reference.
 
@@ -658,7 +654,7 @@ def TaskloopOp : OpenMP_Op<"taskloop", traits = [
   }];
 
   let builders = [
-    OpBuilder<(ins CArg<"const TaskloopOperands &">:$clauses)>
+    OpBuilder<(ins CArg<"const TaskloopClauseOps &">:$clauses)>
   ];
 
   let extraClassDeclaration = [{
@@ -692,7 +688,7 @@ def TaskgroupOp : OpenMP_Op<"taskgroup", traits = [
   }] # clausesDescription;
 
   let builders = [
-    OpBuilder<(ins CArg<"const TaskgroupOperands &">:$clauses)>
+    OpBuilder<(ins CArg<"const TaskgroupClauseOps &">:$clauses)>
   ];
 
   let hasVerifier = 1;
@@ -969,13 +965,14 @@ def TargetDataOp: OpenMP_Op<"target_data", traits = [
     to and from the offloading device when multiple target regions are using
     the same data.
 
-    The optional `if_expr` parameter specifies a boolean result of a conditional
-    check. If this value is 1 or is not provided then the target region runs on
-    a device, if it is 0 then the target region is executed on the host device.
+    The optional `if_expr` parameter specifies a boolean result of a
+    conditional check. If this value is 1 or is not provided then the target
+    region runs on a device, if it is 0 then the target region is executed
+    on the host device.
   }] # clausesDescription;
 
   let builders = [
-    OpBuilder<(ins CArg<"const TargetDataOperands &">:$clauses)>
+    OpBuilder<(ins CArg<"const TargetDataClauseOps &">:$clauses)>
   ];
 
   let hasVerifier = 1;
@@ -998,13 +995,14 @@ def TargetEnterDataOp: OpenMP_Op<"target_enter_data", traits = [
     a device data environment. The target enter data directive is a
     stand-alone directive.
 
-    The optional `if_expr` parameter specifies a boolean result of a conditional
-    check. If this value is 1 or is not provided then the target region runs on
-    a device, if it is 0 then the target region is executed on the host device.
+    The optional `if_expr` parameter specifies a boolean result of a
+    conditional check. If this value is 1 or is not provided then the target
+    region runs on a device, if it is 0 then the target region is executed on
+    the host device.
   }] # clausesDescription;
 
   let builders = [
-    OpBuilder<(ins CArg<"const TargetEnterExitUpdateDataOperands &">:$clauses)>
+    OpBuilder<(ins CArg<"const TargetEnterExitUpdateDataClauseOps &">:$clauses)>
   ];
 
   let hasVerifier = 1;
@@ -1027,13 +1025,14 @@ def TargetExitDataOp: OpenMP_Op<"target_exit_data", traits = [
     device data environment. The target exit data directive is
     a stand-alone directive.
 
-    The optional `if_expr` parameter specifies a boolean result of a conditional
-    check. If this value is 1 or is not provided then the target region runs on
-    a device, if it is 0 then the target region is executed on the host device.
+    The optional `if_expr` parameter specifies a boolean result of a
+    conditional check. If this value is 1 or is not provided then the target
+    region runs on a device, if it is 0 then the target region is executed
+    on the host device.
   }] # clausesDescription;
 
   let builders = [
-    OpBuilder<(ins CArg<"const TargetEnterExitUpdateDataOperands &">:$clauses)>
+    OpBuilder<(ins CArg<"const TargetEnterExitUpdateDataClauseOps &">:$clauses)>
   ];
 
   let hasVerifier = 1;
@@ -1057,9 +1056,10 @@ def TargetUpdateOp: OpenMP_Op<"target_update", traits = [
     specified motion clauses. The target update construct is a stand-alone
     directive.
 
-    The optional `if_expr` parameter specifies a boolean result of a conditional
-    check. If this value is 1 or is not provided then the target region runs on
-    a device, if it is 0 then the target region is executed on the host device.
+    The optional `if_expr` parameter specifies a boolean result of a
+    conditional check. If this value is 1 or is not provided then the target
+    region runs on a device, if it is 0 then the target region is executed
+    on the host device.
 
     We use `MapInfoOp` to model the motion clauses and their modifiers. Even
     though the spec differentiates between map-types & map-type-modifiers vs.
@@ -1070,7 +1070,7 @@ def TargetUpdateOp: OpenMP_Op<"target_update", traits = [
   }] # clausesDescription;
 
   let builders = [
-    OpBuilder<(ins CArg<"const TargetEnterExitUpdateDataOperands &">:$clauses)>
+    OpBuilder<(ins CArg<"const TargetEnterExitUpdateDataClauseOps &">:$clauses)>
   ];
 
   let hasVerifier = 1;
@@ -1083,25 +1083,26 @@ def TargetUpdateOp: OpenMP_Op<"target_update", traits = [
 def TargetOp : OpenMP_Op<"target", traits = [
     AttrSizedOperandSegments, IsolatedFromAbove, OutlineableOpenMPOpInterface
   ], clauses = [
-    // TODO: Complete clause list (defaultmap, uses_allocators).
+    // TODO: Complete clause list (allocate, defaultmap, in_reduction,
+    // uses_allocators).
     // TODO: Sort clauses alphabetically.
     OpenMP_IfClause, OpenMP_DeviceClause, OpenMP_ThreadLimitClause,
     OpenMP_DependClause, OpenMP_NowaitClause, OpenMP_IsDevicePtrClause,
-    OpenMP_HasDeviceAddrClause, OpenMP_MapClause, OpenMP_PrivateClause,
-    OpenMP_AllocateClause, OpenMP_InReductionClause
+    OpenMP_HasDeviceAddrClause, OpenMP_MapClause, OpenMP_PrivateClause
   ], singleRegion = true> {
   let summary = "target construct";
   let description = [{
     The target construct includes a region of code which is to be executed
     on a device.
 
-    The optional `if_expr` parameter specifies a boolean result of a conditional
-    check. If this value is 1 or is not provided then the target region runs on
-    a device, if it is 0 then the target region is executed on the host device.
+    The optional `if_expr` parameter specifies a boolean result of a
+    conditional check. If this value is 1 or is not provided then the target
+    region runs on a device, if it is 0 then the target region is executed on the
+    host device.
   }] # clausesDescription;
 
   let builders = [
-    OpBuilder<(ins CArg<"const TargetOperands &">:$clauses)>
+    OpBuilder<(ins CArg<"const TargetClauseOps &">:$clauses)>
   ];
 
   let hasVerifier = 1;
@@ -1124,7 +1125,9 @@ def MasterOp : OpenMP_Op<"master", singleRegion = true> {
 //===----------------------------------------------------------------------===//
 // 2.17.1 critical Construct
 //===----------------------------------------------------------------------===//
-def CriticalDeclareOp : OpenMP_Op<"critical.declare", clauses = [
+def CriticalDeclareOp : OpenMP_Op<"critical.declare", traits = [
+    Symbol
+  ], clauses = [
     OpenMP_CriticalNameClause, OpenMP_HintClause
   ]> {
   let summary = "declares a named critical section.";
@@ -1133,7 +1136,7 @@ def CriticalDeclareOp : OpenMP_Op<"critical.declare", clauses = [
   }] # clausesDescription;
 
   let builders = [
-    OpBuilder<(ins CArg<"const CriticalDeclareOperands &">:$clauses)>
+    OpBuilder<(ins CArg<"const CriticalClauseOps &">:$clauses)>
   ];
 
   let hasVerifier = 1;
@@ -1186,7 +1189,7 @@ def OrderedOp : OpenMP_Op<"ordered", clauses = [OpenMP_DoacrossClause]> {
   }] # clausesDescription;
 
   let builders = [
-    OpBuilder<(ins CArg<"const OrderedOperands &">:$clauses)>
+    OpBuilder<(ins CArg<"const OrderedOpClauseOps &">:$clauses)>
   ];
 
   let hasVerifier = 1;
@@ -1203,7 +1206,7 @@ def OrderedRegionOp : OpenMP_Op<"ordered.region", clauses = [
   }] # clausesDescription;
 
   let builders = [
-    OpBuilder<(ins CArg<"const OrderedRegionOperands &">:$clauses)>
+    OpBuilder<(ins CArg<"const OrderedRegionClauseOps &">:$clauses)>
   ];
 
   let hasVerifier = 1;
@@ -1214,7 +1217,7 @@ def OrderedRegionOp : OpenMP_Op<"ordered.region", clauses = [
 //===----------------------------------------------------------------------===//
 
 def TaskwaitOp : OpenMP_Op<"taskwait", clauses = [
-    OpenMP_DependClause, OpenMP_NowaitClause
+    // TODO: Complete clause list (depend, nowait).
   ]> {
   let summary = "taskwait construct";
   let description = [{
@@ -1223,8 +1226,11 @@ def TaskwaitOp : OpenMP_Op<"taskwait", clauses = [
   }] # clausesDescription;
 
   let builders = [
-    OpBuilder<(ins CArg<"const TaskwaitOperands &">:$clauses)>
+    OpBuilder<(ins CArg<"const TaskwaitClauseOps &">:$clauses)>
   ];
+
+  // TODO: Remove overriden `assemblyFormat` once a clause is added.
+  let assemblyFormat = "attr-dict";
 }
 
 //===----------------------------------------------------------------------===//
@@ -1258,8 +1264,8 @@ def AtomicReadOp : OpenMP_Op<"atomic.read", traits = [
   // Override clause-based assemblyFormat.
   let assemblyFormat = [{
     $v `=` $x
-    oilist( `memory_order` `(` custom<ClauseAttr>($memory_order) `)`
-          | `hint` `(` custom<SynchronizationHint>($hint) `)`)
+    oilist( `memory_order` `(` custom<ClauseAttr>($memory_order_val) `)`
+          | `hint` `(` custom<SynchronizationHint>($hint_val) `)`)
     `:` type($x) `,` $element_type attr-dict
   }];
 
@@ -1302,8 +1308,8 @@ def AtomicWriteOp : OpenMP_Op<"atomic.write", traits = [
   // Override clause-based assemblyFormat.
   let assemblyFormat = [{
     $x `=` $expr
-    oilist( `hint` `(` custom<SynchronizationHint>($hint) `)`
-          | `memory_order` `(` custom<ClauseAttr>($memory_order) `)`)
+    oilist( `hint` `(` custom<SynchronizationHint>($hint_val) `)`
+          | `memory_order` `(` custom<ClauseAttr>($memory_order_val) `)`)
     `:` type($x) `,` type($expr)
     attr-dict
   }];
@@ -1365,8 +1371,8 @@ def AtomicUpdateOp : OpenMP_Op<"atomic.update", traits = [
 
   // Override clause-based assemblyFormat.
   let assemblyFormat = [{
-    oilist( `memory_order` `(` custom<ClauseAttr>($memory_order) `)`
-          | `hint` `(` custom<SynchronizationHint>($hint) `)`)
+    oilist( `memory_order` `(` custom<ClauseAttr>($memory_order_val) `)`
+          | `hint` `(` custom<SynchronizationHint>($hint_val) `)`)
     $x `:` type($x) $region attr-dict
   }];
 
@@ -1499,7 +1505,7 @@ def CancelOp : OpenMP_Op<"cancel", clauses = [
   }] # clausesDescription;
 
   let builders = [
-    OpBuilder<(ins CArg<"const CancelOperands &">:$clauses)>
+    OpBuilder<(ins CArg<"const CancelClauseOps &">:$clauses)>
   ];
 
   let hasVerifier = 1;
@@ -1519,7 +1525,7 @@ def CancellationPointOp : OpenMP_Op<"cancellation_point", clauses = [
   }] # clausesDescription;
 
   let builders = [
-    OpBuilder<(ins CArg<"const CancellationPointOperands &">:$clauses)>
+    OpBuilder<(ins CArg<"const CancellationPointClauseOps &">:$clauses)>
   ];
 
   let hasVerifier = 1;
@@ -1599,7 +1605,7 @@ def MaskedOp : OpenMP_Op<"masked", clauses = [
   }] # clausesDescription;
 
   let builders = [
-    OpBuilder<(ins CArg<"const MaskedOperands &">:$clauses)>
+    OpBuilder<(ins CArg<"const MaskedClauseOps &">:$clauses)>
   ];
 }
 

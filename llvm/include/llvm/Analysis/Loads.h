@@ -69,7 +69,8 @@ bool isDereferenceableAndAlignedPointer(const Value *V, Align Alignment,
 /// quick local scan of the basic block containing ScanFrom, to determine if
 /// the address is already accessed.
 bool isSafeToLoadUnconditionally(Value *V, Align Alignment, const APInt &Size,
-                                 const DataLayout &DL, Instruction *ScanFrom,
+                                 const DataLayout &DL,
+                                 Instruction *ScanFrom = nullptr,
                                  AssumptionCache *AC = nullptr,
                                  const DominatorTree *DT = nullptr,
                                  const TargetLibraryInfo *TLI = nullptr);
@@ -99,17 +100,11 @@ bool isDereferenceableReadOnlyLoop(Loop *L, ScalarEvolution *SE,
 /// quick local scan of the basic block containing ScanFrom, to determine if
 /// the address is already accessed.
 bool isSafeToLoadUnconditionally(Value *V, Type *Ty, Align Alignment,
-                                 const DataLayout &DL, Instruction *ScanFrom,
+                                 const DataLayout &DL,
+                                 Instruction *ScanFrom = nullptr,
                                  AssumptionCache *AC = nullptr,
                                  const DominatorTree *DT = nullptr,
                                  const TargetLibraryInfo *TLI = nullptr);
-
-/// Return true if speculation of the given load must be suppressed to avoid
-/// ordering or interfering with an active sanitizer.  If not suppressed,
-/// dereferenceability and alignment must be proven separately.  Note: This
-/// is only needed for raw reasoning; if you use the interface below
-/// (isSafeToSpeculativelyExecute), this is handled internally.
-bool mustSuppressSpeculation(const LoadInst &LI);
 
 /// The default number of maximum instructions to scan in the block, used by
 /// FindAvailableLoadedValue().

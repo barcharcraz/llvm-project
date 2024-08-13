@@ -1,4 +1,6 @@
-executable("llvm-ctxprof-util") {
+import("//llvm/utils/gn/build/driver_executable.gni")
+
+driver_executable("llvm-ctxprof-util") {
   deps = [
     "//llvm/lib/IR",
     "//llvm/lib/Object",

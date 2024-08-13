@@ -33,7 +33,6 @@
 #include "llvm/MC/MCSymbol.h"
 #include "llvm/Support/Alignment.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/xxhash.h"
 
 #define DEBUG_TYPE "machine-stable-hash"
 
@@ -101,7 +100,8 @@ stable_hash llvm::stableHashValue(const MachineOperand &MO) {
   case MachineOperand::MO_TargetIndex: {
     if (const char *Name = MO.getTargetIndexName())
       return stable_hash_combine(MO.getType(), MO.getTargetFlags(),
-                                 xxh3_64bits(Name), MO.getOffset());
+                                 stable_hash_combine_string(Name),
+                                 MO.getOffset());
     StableHashBailingTargetIndexNoName++;
     return 0;
   }
@@ -113,7 +113,7 @@ stable_hash llvm::stableHashValue(const MachineOperand &MO) {
 
   case MachineOperand::MO_ExternalSymbol:
     return hash_combine(MO.getType(), MO.getTargetFlags(), MO.getOffset(),
-                        xxh3_64bits(MO.getSymbolName()));
+                        stable_hash_combine_string(MO.getSymbolName()));
 
   case MachineOperand::MO_RegisterMask:
   case MachineOperand::MO_RegisterLiveOut: {
@@ -151,7 +151,7 @@ stable_hash llvm::stableHashValue(const MachineOperand &MO) {
   case MachineOperand::MO_MCSymbol: {
     auto SymbolName = MO.getMCSymbol()->getName();
     return hash_combine(MO.getType(), MO.getTargetFlags(),
-                        xxh3_64bits(SymbolName));
+                        stable_hash_combine_string(SymbolName));
   }
   case MachineOperand::MO_CFIIndex:
     return stable_hash_combine(MO.getType(), MO.getTargetFlags(),

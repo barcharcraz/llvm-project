@@ -91,6 +91,7 @@ private:
   bool selectG_TRUNC(MachineInstr &I) const;
   bool selectG_SZA_EXT(MachineInstr &I) const;
   bool selectG_FPEXT(MachineInstr &I) const;
+  bool selectG_CONSTANT(MachineInstr &I) const;
   bool selectG_FNEG(MachineInstr &I) const;
   bool selectG_FABS(MachineInstr &I) const;
   bool selectG_AND_OR_XOR(MachineInstr &I) const;
@@ -332,17 +333,8 @@ private:
   void renderNegateImm(MachineInstrBuilder &MIB, const MachineInstr &MI,
                        int OpIdx) const;
 
-  void renderBitcastFPImm(MachineInstrBuilder &MIB, const MachineInstr &MI,
-                          int OpIdx) const;
-
-  void renderBitcastFPImm32(MachineInstrBuilder &MIB, const MachineInstr &MI,
-                            int OpIdx) const {
-    renderBitcastFPImm(MIB, MI, OpIdx);
-  }
-  void renderBitcastFPImm64(MachineInstrBuilder &MIB, const MachineInstr &MI,
-                            int OpIdx) const {
-    renderBitcastFPImm(MIB, MI, OpIdx);
-  }
+  void renderBitcastImm(MachineInstrBuilder &MIB, const MachineInstr &MI,
+                        int OpIdx) const;
 
   void renderPopcntImm(MachineInstrBuilder &MIB, const MachineInstr &MI,
                        int OpIdx) const;

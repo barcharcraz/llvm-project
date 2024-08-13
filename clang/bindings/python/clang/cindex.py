@@ -43,7 +43,7 @@ The major indexing objects are:
 Most object information is exposed using properties, when the underlying API
 call is efficient.
 """
-from __future__ import annotations
+from __future__ import absolute_import, division, print_function
 
 # TODO
 # ====
@@ -64,80 +64,48 @@ from __future__ import annotations
 
 from ctypes import *
 
+import collections.abc
 import os
-import sys
 from enum import Enum
-
-from typing import (
-    Any,
-    Callable,
-    Generic,
-    Optional,
-    Type as TType,
-    TypeVar,
-    TYPE_CHECKING,
-    Union as TUnion,
-)
-
-if TYPE_CHECKING:
-    from ctypes import _Pointer
-    from typing_extensions import Protocol, TypeAlias
-
-    StrPath: TypeAlias = TUnion[str, os.PathLike[str]]
-    LibFunc: TypeAlias = TUnion[
-        "tuple[str, Optional[list[Any]]]",
-        "tuple[str, Optional[list[Any]], Any]",
-        "tuple[str, Optional[list[Any]], Any, Callable[..., Any]]",
-    ]
-
-    TSeq = TypeVar("TSeq", covariant=True)
-
-    class NoSliceSequence(Protocol[TSeq]):
-        def __len__(self) -> int:
-            ...
-
-        def __getitem__(self, key: int) -> TSeq:
-            ...
 
 
 # Python 3 strings are unicode, translate them to/from utf8 for C-interop.
 class c_interop_string(c_char_p):
-    def __init__(self, p: str | bytes | None = None):
+    def __init__(self, p=None):
         if p is None:
             p = ""
         if isinstance(p, str):
             p = p.encode("utf8")
         super(c_char_p, self).__init__(p)
 
-    def __str__(self) -> str:
-        return self.value or ""
+    def __str__(self):
+        return self.value
 
     @property
-    def value(self) -> str | None:  # type: ignore [override]
-        val = super(c_char_p, self).value
-        if val is None:
+    def value(self):
+        if super(c_char_p, self).value is None:
             return None
-        return val.decode("utf8")
+        return super(c_char_p, self).value.decode("utf8")
 
     @classmethod
-    def from_param(cls, param: str | bytes | None) -> c_interop_string:
+    def from_param(cls, param):
         if isinstance(param, str):
             return cls(param)
         if isinstance(param, bytes):
             return cls(param)
         if param is None:
             # Support passing null to C functions expecting char arrays
-            return cls(param)
+            return None
         raise TypeError(
             "Cannot convert '{}' to '{}'".format(type(param).__name__, cls.__name__)
         )
 
     @staticmethod
-    def to_python_string(x: c_interop_string, *args: Any) -> str | None:
+    def to_python_string(x, *args):
         return x.value
 
 
-def b(x: str | bytes) -> bytes:
+def b(x):
     if isinstance(x, bytes):
         return x
     return x.encode("utf8")
@@ -147,7 +115,9 @@ def b(x: str | bytes) -> bytes:
 # object. This is a problem, because it means that from_parameter will see an
 # integer and pass the wrong value on platforms where int != void*. Work around
 # this by marshalling object arguments as void**.
-c_object_p: TType[_Pointer[Any]] = POINTER(c_void_p)
+c_object_p = POINTER(c_void_p)
+
+callbacks = {}
 
 ### Exception Classes ###
 
@@ -199,11 +169,8 @@ class TranslationUnitSaveError(Exception):
 
 ### Structures and Utility Classes ###
 
-TInstance = TypeVar("TInstance")
-TResult = TypeVar("TResult")
 
-
-class CachedProperty(Generic[TInstance, TResult]):
+class CachedProperty:
     """Decorator that lazy-loads the value of a property.
 
     The first time the property is accessed, the original property function is
@@ -211,20 +178,16 @@ class CachedProperty(Generic[TInstance, TResult]):
     property, replacing the original method.
     """
 
-    def __init__(self, wrapped: Callable[[TInstance], TResult]):
+    def __init__(self, wrapped):
         self.wrapped = wrapped
         try:
             self.__doc__ = wrapped.__doc__
         except:
             pass
 
-    def __get__(self, instance: TInstance, instance_type: Any = None) -> TResult:
+    def __get__(self, instance, instance_type=None):
         if instance is None:
-            property_name = self.wrapped.__name__
-            class_name = instance_type.__name__
-            raise TypeError(
-                f"'{property_name}' is not a static attribute of '{class_name}'"
-            )
+            return self
 
         value = self.wrapped(instance)
         setattr(instance, self.wrapped.__name__, value)
@@ -237,16 +200,13 @@ class _CXString(Structure):
 
     _fields_ = [("spelling", c_char_p), ("free", c_int)]
 
-    def __del__(self) -> None:
+    def __del__(self):
         conf.lib.clang_disposeString(self)
 
     @staticmethod
-    def from_result(res: _CXString, fn: Any = None, args: Any = None) -> str:
+    def from_result(res, fn=None, args=None):
         assert isinstance(res, _CXString)
-        pystr: str | None = conf.lib.clang_getCString(res)
-        if pystr is None:
-            return ""
-        return pystr
+        return conf.lib.clang_getCString(res)
 
 
 class SourceLocation(Structure):
@@ -440,15 +400,15 @@ class Diagnostic:
         return conf.lib.clang_getDiagnosticSpelling(self)
 
     @property
-    def ranges(self) -> NoSliceSequence[SourceRange]:
+    def ranges(self):
         class RangeIterator:
-            def __init__(self, diag: Diagnostic):
+            def __init__(self, diag):
                 self.diag = diag
 
-            def __len__(self) -> int:
+            def __len__(self):
                 return int(conf.lib.clang_getDiagnosticNumRanges(self.diag))
 
-            def __getitem__(self, key: int) -> SourceRange:
+            def __getitem__(self, key):
                 if key >= len(self):
                     raise IndexError
                 return conf.lib.clang_getDiagnosticRange(self.diag, key)
@@ -456,15 +416,15 @@ class Diagnostic:
         return RangeIterator(self)
 
     @property
-    def fixits(self) -> NoSliceSequence[FixIt]:
+    def fixits(self):
         class FixItIterator:
-            def __init__(self, diag: Diagnostic):
+            def __init__(self, diag):
                 self.diag = diag
 
-            def __len__(self) -> int:
+            def __len__(self):
                 return int(conf.lib.clang_getDiagnosticNumFixIts(self.diag))
 
-            def __getitem__(self, key: int) -> FixIt:
+            def __getitem__(self, key):
                 range = SourceRange()
                 value = conf.lib.clang_getDiagnosticFixIt(self.diag, key, byref(range))
                 if len(value) == 0:
@@ -475,15 +435,15 @@ class Diagnostic:
         return FixItIterator(self)
 
     @property
-    def children(self) -> NoSliceSequence[Diagnostic]:
+    def children(self):
         class ChildDiagnosticsIterator:
-            def __init__(self, diag: Diagnostic):
+            def __init__(self, diag):
                 self.diag_set = conf.lib.clang_getChildDiagnostics(diag)
 
-            def __len__(self) -> int:
+            def __len__(self):
                 return int(conf.lib.clang_getNumDiagnosticsInSet(self.diag_set))
 
-            def __getitem__(self, key: int) -> Diagnostic:
+            def __getitem__(self, key):
                 diag = conf.lib.clang_getDiagnosticInSet(self.diag_set, key)
                 if not diag:
                     raise IndexError
@@ -2082,8 +2042,8 @@ class Cursor(Structure):
             children.append(child)
             return 1  # continue
 
-        children: list[Cursor] = []
-        conf.lib.clang_visitChildren(self, cursor_visit_callback(visitor), children)
+        children = []
+        conf.lib.clang_visitChildren(self, callbacks["cursor_visit"](visitor), children)
         return iter(children)
 
     def walk_preorder(self):
@@ -2419,25 +2379,25 @@ class Type(Structure):
         """Return the kind of this type."""
         return TypeKind.from_id(self._kind_id)
 
-    def argument_types(self) -> NoSliceSequence[Type]:
+    def argument_types(self):
         """Retrieve a container for the non-variadic arguments for this type.
 
         The returned object is iterable and indexable. Each item in the
         container is a Type instance.
         """
 
-        class ArgumentsIterator:
-            def __init__(self, parent: Type):
+        class ArgumentsIterator(collections.abc.Sequence):
+            def __init__(self, parent):
                 self.parent = parent
-                self.length: int | None = None
+                self.length = None
 
-            def __len__(self) -> int:
+            def __len__(self):
                 if self.length is None:
                     self.length = conf.lib.clang_getNumArgTypes(self.parent)
 
                 return self.length
 
-            def __getitem__(self, key: int) -> Type:
+            def __getitem__(self, key):
                 # FIXME Support slice objects.
                 if not isinstance(key, int):
                     raise TypeError("Must supply a non-negative int.")
@@ -2451,7 +2411,7 @@ class Type(Structure):
                         "%d > %d" % (key, len(self))
                     )
 
-                result: Type = conf.lib.clang_getArgType(self.parent, key)
+                result = conf.lib.clang_getArgType(self.parent, key)
                 if result.kind == TypeKind.INVALID:
                     raise IndexError("Argument could not be retrieved.")
 
@@ -2644,8 +2604,10 @@ class Type(Structure):
             fields.append(field)
             return 1  # continue
 
-        fields: list[Cursor] = []
-        conf.lib.clang_Type_visitFields(self, fields_visit_callback(visitor), fields)
+        fields = []
+        conf.lib.clang_Type_visitFields(
+            self, callbacks["fields_visit"](visitor), fields
+        )
         return iter(fields)
 
     def get_exception_specification_kind(self):
@@ -2919,15 +2881,15 @@ class CodeCompletionResults(ClangObject):
         return self.ptr.contents
 
     @property
-    def diagnostics(self) -> NoSliceSequence[Diagnostic]:
+    def diagnostics(self):
         class DiagnosticsItr:
-            def __init__(self, ccr: CodeCompletionResults):
+            def __init__(self, ccr):
                 self.ccr = ccr
 
-            def __len__(self) -> int:
+            def __len__(self):
                 return int(conf.lib.clang_codeCompleteGetNumDiagnostics(self.ccr))
 
-            def __getitem__(self, key: int) -> Diagnostic:
+            def __getitem__(self, key):
                 return conf.lib.clang_codeCompleteGetDiagnostic(self.ccr, key)
 
         return DiagnosticsItr(self)
@@ -3157,7 +3119,7 @@ class TranslationUnit(ClangObject):
         # Automatically adapt CIndex/ctype pointers to python objects
         includes = []
         conf.lib.clang_getInclusions(
-            self, translation_unit_includes_callback(visitor), includes
+            self, callbacks["translation_unit_includes"](visitor), includes
         )
 
         return iter(includes)
@@ -3225,19 +3187,19 @@ class TranslationUnit(ClangObject):
         return SourceRange.from_locations(start_location, end_location)
 
     @property
-    def diagnostics(self) -> NoSliceSequence[Diagnostic]:
+    def diagnostics(self):
         """
         Return an iterable (and indexable) object containing the diagnostics.
         """
 
         class DiagIterator:
-            def __init__(self, tu: TranslationUnit):
+            def __init__(self, tu):
                 self.tu = tu
 
-            def __len__(self) -> int:
+            def __len__(self):
                 return int(conf.lib.clang_getNumDiagnostics(self.tu))
 
-            def __getitem__(self, key: int) -> Diagnostic:
+            def __getitem__(self, key):
                 diag = conf.lib.clang_getDiagnostic(self.tu, key)
                 if not diag:
                     raise IndexError
@@ -3669,15 +3631,15 @@ class Rewriter(ClangObject):
 
 # Now comes the plumbing to hook up the C library.
 
-# Register callback types
-translation_unit_includes_callback = CFUNCTYPE(
+# Register callback types in common container.
+callbacks["translation_unit_includes"] = CFUNCTYPE(
     None, c_object_p, POINTER(SourceLocation), c_uint, py_object
 )
-cursor_visit_callback = CFUNCTYPE(c_int, Cursor, Cursor, py_object)
-fields_visit_callback = CFUNCTYPE(c_int, Cursor, py_object)
+callbacks["cursor_visit"] = CFUNCTYPE(c_int, Cursor, Cursor, py_object)
+callbacks["fields_visit"] = CFUNCTYPE(c_int, Cursor, py_object)
 
 # Functions strictly alphabetical order.
-functionList: list[LibFunc] = [
+functionList = [
     (
         "clang_annotateTokens",
         [TranslationUnit, POINTER(Token), c_uint, POINTER(Cursor)],
@@ -3847,7 +3809,7 @@ functionList: list[LibFunc] = [
     ("clang_getIncludedFile", [Cursor], c_object_p, File.from_result),
     (
         "clang_getInclusions",
-        [TranslationUnit, translation_unit_includes_callback, py_object],
+        [TranslationUnit, callbacks["translation_unit_includes"], py_object],
     ),
     (
         "clang_getInstantiationLocation",
@@ -3932,7 +3894,7 @@ functionList: list[LibFunc] = [
         "clang_tokenize",
         [TranslationUnit, SourceRange, POINTER(POINTER(Token)), POINTER(c_uint)],
     ),
-    ("clang_visitChildren", [Cursor, cursor_visit_callback, py_object], c_uint),
+    ("clang_visitChildren", [Cursor, callbacks["cursor_visit"], py_object], c_uint),
     ("clang_Cursor_getNumArguments", [Cursor], c_int),
     ("clang_Cursor_getArgument", [Cursor, c_uint], Cursor, Cursor.from_result),
     ("clang_Cursor_getNumTemplateArguments", [Cursor], c_int),
@@ -3959,19 +3921,19 @@ functionList: list[LibFunc] = [
     ("clang_Type_getSizeOf", [Type], c_longlong),
     ("clang_Type_getCXXRefQualifier", [Type], c_uint),
     ("clang_Type_getNamedType", [Type], Type, Type.from_result),
-    ("clang_Type_visitFields", [Type, fields_visit_callback, py_object], c_uint),
+    ("clang_Type_visitFields", [Type, callbacks["fields_visit"], py_object], c_uint),
 ]
 
 
 class LibclangError(Exception):
-    def __init__(self, message: str):
+    def __init__(self, message):
         self.m = message
 
-    def __str__(self) -> str:
+    def __str__(self):
         return self.m
 
 
-def register_function(lib: CDLL, item: LibFunc, ignore_errors: bool) -> None:
+def register_function(lib, item, ignore_errors):
     # A function may not exist, if these bindings are used with an older or
     # incompatible version of libclang.so.
     try:
@@ -3995,15 +3957,15 @@ def register_function(lib: CDLL, item: LibFunc, ignore_errors: bool) -> None:
         func.errcheck = item[3]
 
 
-def register_functions(lib: CDLL, ignore_errors: bool) -> None:
+def register_functions(lib, ignore_errors):
     """Register function prototypes with a libclang library instance.
 
     This must be called as part of library instantiation so Python knows how
     to call out to the shared library.
     """
 
-    def register(item: LibFunc) -> None:
-        register_function(lib, item, ignore_errors)
+    def register(item):
+        return register_function(lib, item, ignore_errors)
 
     for f in functionList:
         register(f)
@@ -4011,12 +3973,12 @@ def register_functions(lib: CDLL, ignore_errors: bool) -> None:
 
 class Config:
     library_path = None
-    library_file: str | None = None
+    library_file = None
     compatibility_check = True
     loaded = False
 
     @staticmethod
-    def set_library_path(path: StrPath) -> None:
+    def set_library_path(path):
         """Set the path in which to search for libclang"""
         if Config.loaded:
             raise Exception(
@@ -4027,7 +3989,7 @@ class Config:
         Config.library_path = os.fspath(path)
 
     @staticmethod
-    def set_library_file(filename: StrPath) -> None:
+    def set_library_file(filename):
         """Set the exact location of libclang"""
         if Config.loaded:
             raise Exception(
@@ -4038,7 +4000,7 @@ class Config:
         Config.library_file = os.fspath(filename)
 
     @staticmethod
-    def set_compatibility_check(check_status: bool) -> None:
+    def set_compatibility_check(check_status):
         """Perform compatibility check when loading libclang
 
         The python bindings are only tested and evaluated with the version of
@@ -4064,13 +4026,13 @@ class Config:
         Config.compatibility_check = check_status
 
     @CachedProperty
-    def lib(self) -> CDLL:
+    def lib(self):
         lib = self.get_cindex_library()
         register_functions(lib, not Config.compatibility_check)
         Config.loaded = True
         return lib
 
-    def get_filename(self) -> str:
+    def get_filename(self):
         if Config.library_file:
             return Config.library_file
 
@@ -4090,7 +4052,7 @@ class Config:
 
         return file
 
-    def get_cindex_library(self) -> CDLL:
+    def get_cindex_library(self):
         try:
             library = cdll.LoadLibrary(self.get_filename())
         except OSError as e:
@@ -4103,7 +4065,7 @@ class Config:
 
         return library
 
-    def function_exists(self, name: str) -> bool:
+    def function_exists(self, name):
         try:
             getattr(self.lib, name)
         except AttributeError:
@@ -4115,7 +4077,6 @@ class Config:
 conf = Config()
 
 __all__ = [
-    "AccessSpecifier",
     "AvailabilityKind",
     "BinaryOperator",
     "Config",
@@ -4126,16 +4087,12 @@ __all__ = [
     "CursorKind",
     "Cursor",
     "Diagnostic",
-    "ExceptionSpecificationKind",
     "File",
     "FixIt",
     "Index",
     "LinkageKind",
-    "RefQualifierKind",
     "SourceLocation",
     "SourceRange",
-    "StorageClass",
-    "TemplateArgumentKind",
     "TLSKind",
     "TokenKind",
     "Token",

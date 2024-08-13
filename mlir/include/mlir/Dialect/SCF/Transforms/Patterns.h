@@ -85,9 +85,6 @@ void populateSCFForLoopCanonicalizationPatterns(RewritePatternSet &patterns);
 ///  * `after` block containing arith.addi
 void populateUpliftWhileToForPatterns(RewritePatternSet &patterns);
 
-/// Populate patterns to rotate `scf.while` ops, constructing `do-while` loops
-/// from `while` loops.
-void populateSCFRotateWhileLoopPatterns(RewritePatternSet &patterns);
 } // namespace scf
 } // namespace mlir
 

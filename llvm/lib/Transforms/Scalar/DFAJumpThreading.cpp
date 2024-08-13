@@ -149,7 +149,9 @@ private:
   unfoldSelectInstrs(DominatorTree *DT,
                      const SmallVector<SelectInstToUnfold, 4> &SelectInsts) {
     DomTreeUpdater DTU(DT, DomTreeUpdater::UpdateStrategy::Eager);
-    SmallVector<SelectInstToUnfold, 4> Stack(SelectInsts);
+    SmallVector<SelectInstToUnfold, 4> Stack;
+    for (SelectInstToUnfold SIToUnfold : SelectInsts)
+      Stack.push_back(SIToUnfold);
 
     while (!Stack.empty()) {
       SelectInstToUnfold SIToUnfold = Stack.pop_back_val();

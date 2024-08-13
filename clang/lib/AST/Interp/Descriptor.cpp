@@ -33,8 +33,7 @@ static void dtorTy(Block *, std::byte *Ptr, const Descriptor *) {
 template <typename T>
 static void moveTy(Block *, const std::byte *Src, std::byte *Dst,
                    const Descriptor *) {
-  // FIXME: Get rid of the const_cast.
-  auto *SrcPtr = reinterpret_cast<T *>(const_cast<std::byte *>(Src));
+  const auto *SrcPtr = reinterpret_cast<const T *>(Src);
   auto *DstPtr = reinterpret_cast<T *>(Dst);
   new (DstPtr) T(std::move(*SrcPtr));
 }

@@ -22,7 +22,6 @@ define void @st2_8b(<8 x i8> %A, <8 x i8> %B, ptr %P) nounwind sanitize_memory {
 ; CHECK-NEXT:    [[TMP4:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP5:%.*]] = xor i64 [[TMP4]], 193514046488576
 ; CHECK-NEXT:    [[TMP6:%.*]] = inttoptr i64 [[TMP5]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st2.v8i8.p0(<8 x i8> [[TMP2]], <8 x i8> [[TMP3]], ptr [[TMP6]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP7:%.*]], label [[TMP8:%.*]], !prof [[PROF0:![0-9]+]]
 ; CHECK:       7:
@@ -30,6 +29,7 @@ define void @st2_8b(<8 x i8> %A, <8 x i8> %B, ptr %P) nounwind sanitize_memory {
 ; CHECK-NEXT:    unreachable
 ; CHECK:       8:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st2.v8i8.p0(<8 x i8> [[A]], <8 x i8> [[B]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st2.v8i8.p0(<8 x i8> [[TMP2]], <8 x i8> [[TMP3]], ptr [[TMP6]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st2.v8i8.p0(<8 x i8> %A, <8 x i8> %B, ptr %P)
@@ -47,7 +47,6 @@ define void @st2_8b_undefA(<8 x i8> %A, <8 x i8> %B, ptr %P) nounwind sanitize_m
 ; CHECK-NEXT:    [[TMP3:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP4:%.*]] = xor i64 [[TMP3]], 193514046488576
 ; CHECK-NEXT:    [[TMP5:%.*]] = inttoptr i64 [[TMP4]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st2.v8i8.p0(<8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> [[TMP2]], ptr [[TMP5]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP6:%.*]], label [[TMP7:%.*]], !prof [[PROF0]]
 ; CHECK:       6:
@@ -55,6 +54,7 @@ define void @st2_8b_undefA(<8 x i8> %A, <8 x i8> %B, ptr %P) nounwind sanitize_m
 ; CHECK-NEXT:    unreachable
 ; CHECK:       7:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st2.v8i8.p0(<8 x i8> undef, <8 x i8> [[B]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st2.v8i8.p0(<8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> [[TMP2]], ptr [[TMP5]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st2.v8i8.p0(<8 x i8> undef, <8 x i8> %B, ptr %P)
@@ -72,7 +72,6 @@ define void @st2_8b_undefB(<8 x i8> %A, <8 x i8> %B, ptr %P) nounwind sanitize_m
 ; CHECK-NEXT:    [[TMP3:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP4:%.*]] = xor i64 [[TMP3]], 193514046488576
 ; CHECK-NEXT:    [[TMP5:%.*]] = inttoptr i64 [[TMP4]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st2.v8i8.p0(<8 x i8> [[TMP2]], <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, ptr [[TMP5]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP6:%.*]], label [[TMP7:%.*]], !prof [[PROF0]]
 ; CHECK:       6:
@@ -80,6 +79,7 @@ define void @st2_8b_undefB(<8 x i8> %A, <8 x i8> %B, ptr %P) nounwind sanitize_m
 ; CHECK-NEXT:    unreachable
 ; CHECK:       7:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st2.v8i8.p0(<8 x i8> [[A]], <8 x i8> undef, ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st2.v8i8.p0(<8 x i8> [[TMP2]], <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, ptr [[TMP5]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st2.v8i8.p0(<8 x i8> %A, <8 x i8> undef, ptr %P)
@@ -96,7 +96,6 @@ define void @st2_8b_undefAB(<8 x i8> %A, <8 x i8> %B, ptr %P) nounwind sanitize_
 ; CHECK-NEXT:    [[TMP2:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP3:%.*]] = xor i64 [[TMP2]], 193514046488576
 ; CHECK-NEXT:    [[TMP4:%.*]] = inttoptr i64 [[TMP3]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st2.v8i8.p0(<8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, ptr [[TMP4]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP5:%.*]], label [[TMP6:%.*]], !prof [[PROF0]]
 ; CHECK:       5:
@@ -104,6 +103,7 @@ define void @st2_8b_undefAB(<8 x i8> %A, <8 x i8> %B, ptr %P) nounwind sanitize_
 ; CHECK-NEXT:    unreachable
 ; CHECK:       6:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st2.v8i8.p0(<8 x i8> undef, <8 x i8> undef, ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st2.v8i8.p0(<8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, ptr [[TMP4]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st2.v8i8.p0(<8 x i8> undef, <8 x i8> undef, ptr %P)
@@ -123,7 +123,6 @@ define void @st3_8b(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, ptr %P) nounwind sani
 ; CHECK-NEXT:    [[TMP5:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP6:%.*]] = xor i64 [[TMP5]], 193514046488576
 ; CHECK-NEXT:    [[TMP7:%.*]] = inttoptr i64 [[TMP6]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v8i8.p0(<8 x i8> [[TMP2]], <8 x i8> [[TMP3]], <8 x i8> [[TMP4]], ptr [[TMP7]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP8:%.*]], label [[TMP9:%.*]], !prof [[PROF0]]
 ; CHECK:       8:
@@ -131,6 +130,7 @@ define void @st3_8b(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, ptr %P) nounwind sani
 ; CHECK-NEXT:    unreachable
 ; CHECK:       9:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v8i8.p0(<8 x i8> [[A]], <8 x i8> [[B]], <8 x i8> [[C]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v8i8.p0(<8 x i8> [[TMP2]], <8 x i8> [[TMP3]], <8 x i8> [[TMP4]], ptr [[TMP7]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st3.v8i8.p0(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, ptr %P)
@@ -149,7 +149,6 @@ define void @st3_8b_undefA(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, ptr %P) nounwi
 ; CHECK-NEXT:    [[TMP4:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP5:%.*]] = xor i64 [[TMP4]], 193514046488576
 ; CHECK-NEXT:    [[TMP6:%.*]] = inttoptr i64 [[TMP5]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v8i8.p0(<8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> [[TMP2]], <8 x i8> [[TMP3]], ptr [[TMP6]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP7:%.*]], label [[TMP8:%.*]], !prof [[PROF0]]
 ; CHECK:       7:
@@ -157,6 +156,7 @@ define void @st3_8b_undefA(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, ptr %P) nounwi
 ; CHECK-NEXT:    unreachable
 ; CHECK:       8:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v8i8.p0(<8 x i8> undef, <8 x i8> [[B]], <8 x i8> [[C]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v8i8.p0(<8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> [[TMP2]], <8 x i8> [[TMP3]], ptr [[TMP6]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st3.v8i8.p0(<8 x i8> undef, <8 x i8> %B, <8 x i8> %C, ptr %P)
@@ -175,7 +175,6 @@ define void @st3_8b_undefB(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, ptr %P) nounwi
 ; CHECK-NEXT:    [[TMP4:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP5:%.*]] = xor i64 [[TMP4]], 193514046488576
 ; CHECK-NEXT:    [[TMP6:%.*]] = inttoptr i64 [[TMP5]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v8i8.p0(<8 x i8> [[TMP2]], <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> [[TMP3]], ptr [[TMP6]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP7:%.*]], label [[TMP8:%.*]], !prof [[PROF0]]
 ; CHECK:       7:
@@ -183,6 +182,7 @@ define void @st3_8b_undefB(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, ptr %P) nounwi
 ; CHECK-NEXT:    unreachable
 ; CHECK:       8:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v8i8.p0(<8 x i8> [[A]], <8 x i8> undef, <8 x i8> [[C]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v8i8.p0(<8 x i8> [[TMP2]], <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> [[TMP3]], ptr [[TMP6]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st3.v8i8.p0(<8 x i8> %A, <8 x i8> undef, <8 x i8> %C, ptr %P)
@@ -201,7 +201,6 @@ define void @st3_8b_undefC(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, ptr %P) nounwi
 ; CHECK-NEXT:    [[TMP4:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP5:%.*]] = xor i64 [[TMP4]], 193514046488576
 ; CHECK-NEXT:    [[TMP6:%.*]] = inttoptr i64 [[TMP5]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v8i8.p0(<8 x i8> [[TMP2]], <8 x i8> [[TMP3]], <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, ptr [[TMP6]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP7:%.*]], label [[TMP8:%.*]], !prof [[PROF0]]
 ; CHECK:       7:
@@ -209,6 +208,7 @@ define void @st3_8b_undefC(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, ptr %P) nounwi
 ; CHECK-NEXT:    unreachable
 ; CHECK:       8:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v8i8.p0(<8 x i8> [[A]], <8 x i8> [[B]], <8 x i8> undef, ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v8i8.p0(<8 x i8> [[TMP2]], <8 x i8> [[TMP3]], <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, ptr [[TMP6]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st3.v8i8.p0(<8 x i8> %A, <8 x i8> %B, <8 x i8> undef, ptr %P)
@@ -226,7 +226,6 @@ define void @st3_8b_undefAB(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, ptr %P) nounw
 ; CHECK-NEXT:    [[TMP3:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP4:%.*]] = xor i64 [[TMP3]], 193514046488576
 ; CHECK-NEXT:    [[TMP5:%.*]] = inttoptr i64 [[TMP4]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v8i8.p0(<8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> [[TMP2]], ptr [[TMP5]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP6:%.*]], label [[TMP7:%.*]], !prof [[PROF0]]
 ; CHECK:       6:
@@ -234,6 +233,7 @@ define void @st3_8b_undefAB(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, ptr %P) nounw
 ; CHECK-NEXT:    unreachable
 ; CHECK:       7:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v8i8.p0(<8 x i8> undef, <8 x i8> undef, <8 x i8> [[C]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v8i8.p0(<8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> [[TMP2]], ptr [[TMP5]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st3.v8i8.p0(<8 x i8> undef, <8 x i8> undef, <8 x i8> %C, ptr %P)
@@ -251,7 +251,6 @@ define void @st3_8b_undefAC(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, ptr %P) nounw
 ; CHECK-NEXT:    [[TMP3:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP4:%.*]] = xor i64 [[TMP3]], 193514046488576
 ; CHECK-NEXT:    [[TMP5:%.*]] = inttoptr i64 [[TMP4]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v8i8.p0(<8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> [[TMP2]], <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, ptr [[TMP5]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP6:%.*]], label [[TMP7:%.*]], !prof [[PROF0]]
 ; CHECK:       6:
@@ -259,6 +258,7 @@ define void @st3_8b_undefAC(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, ptr %P) nounw
 ; CHECK-NEXT:    unreachable
 ; CHECK:       7:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v8i8.p0(<8 x i8> undef, <8 x i8> [[B]], <8 x i8> undef, ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v8i8.p0(<8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> [[TMP2]], <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, ptr [[TMP5]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st3.v8i8.p0(<8 x i8> undef, <8 x i8> %B, <8 x i8> undef, ptr %P)
@@ -276,7 +276,6 @@ define void @st3_8b_undefBC(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, ptr %P) nounw
 ; CHECK-NEXT:    [[TMP3:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP4:%.*]] = xor i64 [[TMP3]], 193514046488576
 ; CHECK-NEXT:    [[TMP5:%.*]] = inttoptr i64 [[TMP4]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v8i8.p0(<8 x i8> [[TMP2]], <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, ptr [[TMP5]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP6:%.*]], label [[TMP7:%.*]], !prof [[PROF0]]
 ; CHECK:       6:
@@ -284,6 +283,7 @@ define void @st3_8b_undefBC(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, ptr %P) nounw
 ; CHECK-NEXT:    unreachable
 ; CHECK:       7:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v8i8.p0(<8 x i8> [[A]], <8 x i8> undef, <8 x i8> undef, ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v8i8.p0(<8 x i8> [[TMP2]], <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, ptr [[TMP5]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st3.v8i8.p0(<8 x i8> %A, <8 x i8> undef, <8 x i8> undef, ptr %P)
@@ -300,7 +300,6 @@ define void @st3_8b_undefABC(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, ptr %P) noun
 ; CHECK-NEXT:    [[TMP2:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP3:%.*]] = xor i64 [[TMP2]], 193514046488576
 ; CHECK-NEXT:    [[TMP4:%.*]] = inttoptr i64 [[TMP3]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v8i8.p0(<8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, ptr [[TMP4]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP5:%.*]], label [[TMP6:%.*]], !prof [[PROF0]]
 ; CHECK:       5:
@@ -308,6 +307,7 @@ define void @st3_8b_undefABC(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, ptr %P) noun
 ; CHECK-NEXT:    unreachable
 ; CHECK:       6:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v8i8.p0(<8 x i8> undef, <8 x i8> undef, <8 x i8> undef, ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v8i8.p0(<8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, ptr [[TMP4]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st3.v8i8.p0(<8 x i8> undef, <8 x i8> undef, <8 x i8> undef, ptr %P)
@@ -328,7 +328,6 @@ define void @st4_8b(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, <8 x i8> %D, ptr %P) 
 ; CHECK-NEXT:    [[TMP6:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP7:%.*]] = xor i64 [[TMP6]], 193514046488576
 ; CHECK-NEXT:    [[TMP8:%.*]] = inttoptr i64 [[TMP7]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> [[TMP2]], <8 x i8> [[TMP3]], <8 x i8> [[TMP4]], <8 x i8> [[TMP5]], ptr [[TMP8]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP9:%.*]], label [[TMP10:%.*]], !prof [[PROF0]]
 ; CHECK:       9:
@@ -336,6 +335,7 @@ define void @st4_8b(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, <8 x i8> %D, ptr %P) 
 ; CHECK-NEXT:    unreachable
 ; CHECK:       10:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> [[A]], <8 x i8> [[B]], <8 x i8> [[C]], <8 x i8> [[D]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> [[TMP2]], <8 x i8> [[TMP3]], <8 x i8> [[TMP4]], <8 x i8> [[TMP5]], ptr [[TMP8]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, <8 x i8> %D, ptr %P)
@@ -355,7 +355,6 @@ define void @st4_8b_undefA(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, <8 x i8> %D, p
 ; CHECK-NEXT:    [[TMP5:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP6:%.*]] = xor i64 [[TMP5]], 193514046488576
 ; CHECK-NEXT:    [[TMP7:%.*]] = inttoptr i64 [[TMP6]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> [[TMP2]], <8 x i8> [[TMP3]], <8 x i8> [[TMP4]], ptr [[TMP7]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP8:%.*]], label [[TMP9:%.*]], !prof [[PROF0]]
 ; CHECK:       8:
@@ -363,6 +362,7 @@ define void @st4_8b_undefA(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, <8 x i8> %D, p
 ; CHECK-NEXT:    unreachable
 ; CHECK:       9:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> undef, <8 x i8> [[B]], <8 x i8> [[C]], <8 x i8> [[D]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> [[TMP2]], <8 x i8> [[TMP3]], <8 x i8> [[TMP4]], ptr [[TMP7]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> undef, <8 x i8> %B, <8 x i8> %C, <8 x i8> %D, ptr %P)
@@ -382,7 +382,6 @@ define void @st4_8b_undefB(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, <8 x i8> %D, p
 ; CHECK-NEXT:    [[TMP5:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP6:%.*]] = xor i64 [[TMP5]], 193514046488576
 ; CHECK-NEXT:    [[TMP7:%.*]] = inttoptr i64 [[TMP6]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> [[TMP2]], <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> [[TMP3]], <8 x i8> [[TMP4]], ptr [[TMP7]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP8:%.*]], label [[TMP9:%.*]], !prof [[PROF0]]
 ; CHECK:       8:
@@ -390,6 +389,7 @@ define void @st4_8b_undefB(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, <8 x i8> %D, p
 ; CHECK-NEXT:    unreachable
 ; CHECK:       9:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> [[A]], <8 x i8> undef, <8 x i8> [[C]], <8 x i8> [[D]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> [[TMP2]], <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> [[TMP3]], <8 x i8> [[TMP4]], ptr [[TMP7]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> %A, <8 x i8> undef, <8 x i8> %C, <8 x i8> %D, ptr %P)
@@ -409,7 +409,6 @@ define void @st4_8b_undefC(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, <8 x i8> %D, p
 ; CHECK-NEXT:    [[TMP5:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP6:%.*]] = xor i64 [[TMP5]], 193514046488576
 ; CHECK-NEXT:    [[TMP7:%.*]] = inttoptr i64 [[TMP6]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> [[TMP2]], <8 x i8> [[TMP3]], <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> [[TMP4]], ptr [[TMP7]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP8:%.*]], label [[TMP9:%.*]], !prof [[PROF0]]
 ; CHECK:       8:
@@ -417,6 +416,7 @@ define void @st4_8b_undefC(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, <8 x i8> %D, p
 ; CHECK-NEXT:    unreachable
 ; CHECK:       9:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> [[A]], <8 x i8> [[B]], <8 x i8> undef, <8 x i8> [[D]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> [[TMP2]], <8 x i8> [[TMP3]], <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> [[TMP4]], ptr [[TMP7]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> %A, <8 x i8> %B, <8 x i8> undef, <8 x i8> %D, ptr %P)
@@ -436,7 +436,6 @@ define void @st4_8b_undefD(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, <8 x i8> %D, p
 ; CHECK-NEXT:    [[TMP5:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP6:%.*]] = xor i64 [[TMP5]], 193514046488576
 ; CHECK-NEXT:    [[TMP7:%.*]] = inttoptr i64 [[TMP6]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> [[TMP2]], <8 x i8> [[TMP3]], <8 x i8> [[TMP4]], <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, ptr [[TMP7]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP8:%.*]], label [[TMP9:%.*]], !prof [[PROF0]]
 ; CHECK:       8:
@@ -444,6 +443,7 @@ define void @st4_8b_undefD(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, <8 x i8> %D, p
 ; CHECK-NEXT:    unreachable
 ; CHECK:       9:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> [[A]], <8 x i8> [[B]], <8 x i8> [[C]], <8 x i8> undef, ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> [[TMP2]], <8 x i8> [[TMP3]], <8 x i8> [[TMP4]], <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, ptr [[TMP7]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, <8 x i8> undef, ptr %P)
@@ -462,7 +462,6 @@ define void @st4_8b_undefAB(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, <8 x i8> %D, 
 ; CHECK-NEXT:    [[TMP4:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP5:%.*]] = xor i64 [[TMP4]], 193514046488576
 ; CHECK-NEXT:    [[TMP6:%.*]] = inttoptr i64 [[TMP5]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> [[TMP2]], <8 x i8> [[TMP3]], ptr [[TMP6]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP7:%.*]], label [[TMP8:%.*]], !prof [[PROF0]]
 ; CHECK:       7:
@@ -470,6 +469,7 @@ define void @st4_8b_undefAB(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, <8 x i8> %D, 
 ; CHECK-NEXT:    unreachable
 ; CHECK:       8:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> undef, <8 x i8> undef, <8 x i8> [[C]], <8 x i8> [[D]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> [[TMP2]], <8 x i8> [[TMP3]], ptr [[TMP6]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> undef, <8 x i8> undef, <8 x i8> %C, <8 x i8> %D, ptr %P)
@@ -488,7 +488,6 @@ define void @st4_8b_undefAC(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, <8 x i8> %D, 
 ; CHECK-NEXT:    [[TMP4:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP5:%.*]] = xor i64 [[TMP4]], 193514046488576
 ; CHECK-NEXT:    [[TMP6:%.*]] = inttoptr i64 [[TMP5]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> [[TMP2]], <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> [[TMP3]], ptr [[TMP6]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP7:%.*]], label [[TMP8:%.*]], !prof [[PROF0]]
 ; CHECK:       7:
@@ -496,6 +495,7 @@ define void @st4_8b_undefAC(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, <8 x i8> %D, 
 ; CHECK-NEXT:    unreachable
 ; CHECK:       8:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> undef, <8 x i8> [[B]], <8 x i8> undef, <8 x i8> [[D]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> [[TMP2]], <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> [[TMP3]], ptr [[TMP6]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> undef, <8 x i8> %B, <8 x i8> undef, <8 x i8> %D, ptr %P)
@@ -514,7 +514,6 @@ define void @st4_8b_undefBC(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, <8 x i8> %D, 
 ; CHECK-NEXT:    [[TMP4:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP5:%.*]] = xor i64 [[TMP4]], 193514046488576
 ; CHECK-NEXT:    [[TMP6:%.*]] = inttoptr i64 [[TMP5]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> [[TMP2]], <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> [[TMP3]], ptr [[TMP6]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP7:%.*]], label [[TMP8:%.*]], !prof [[PROF0]]
 ; CHECK:       7:
@@ -522,6 +521,7 @@ define void @st4_8b_undefBC(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, <8 x i8> %D, 
 ; CHECK-NEXT:    unreachable
 ; CHECK:       8:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> [[A]], <8 x i8> undef, <8 x i8> undef, <8 x i8> [[D]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> [[TMP2]], <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> [[TMP3]], ptr [[TMP6]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> %A, <8 x i8> undef, <8 x i8> undef, <8 x i8> %D, ptr %P)
@@ -540,7 +540,6 @@ define void @st4_8b_undefBD(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, <8 x i8> %D, 
 ; CHECK-NEXT:    [[TMP4:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP5:%.*]] = xor i64 [[TMP4]], 193514046488576
 ; CHECK-NEXT:    [[TMP6:%.*]] = inttoptr i64 [[TMP5]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> [[TMP2]], <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> [[TMP3]], <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, ptr [[TMP6]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP7:%.*]], label [[TMP8:%.*]], !prof [[PROF0]]
 ; CHECK:       7:
@@ -548,6 +547,7 @@ define void @st4_8b_undefBD(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, <8 x i8> %D, 
 ; CHECK-NEXT:    unreachable
 ; CHECK:       8:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> [[A]], <8 x i8> undef, <8 x i8> [[C]], <8 x i8> undef, ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> [[TMP2]], <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> [[TMP3]], <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, ptr [[TMP6]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> %A, <8 x i8> undef, <8 x i8> %C, <8 x i8> undef, ptr %P)
@@ -565,7 +565,6 @@ define void @st4_8b_undefABC(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, <8 x i8> %D,
 ; CHECK-NEXT:    [[TMP3:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP4:%.*]] = xor i64 [[TMP3]], 193514046488576
 ; CHECK-NEXT:    [[TMP5:%.*]] = inttoptr i64 [[TMP4]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> [[TMP2]], ptr [[TMP5]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP6:%.*]], label [[TMP7:%.*]], !prof [[PROF0]]
 ; CHECK:       6:
@@ -573,6 +572,7 @@ define void @st4_8b_undefABC(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, <8 x i8> %D,
 ; CHECK-NEXT:    unreachable
 ; CHECK:       7:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> undef, <8 x i8> undef, <8 x i8> undef, <8 x i8> [[D]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> [[TMP2]], ptr [[TMP5]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> undef, <8 x i8> undef, <8 x i8> undef, <8 x i8> %D, ptr %P)
@@ -590,7 +590,6 @@ define void @st4_8b_undefABD(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, <8 x i8> %D,
 ; CHECK-NEXT:    [[TMP3:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP4:%.*]] = xor i64 [[TMP3]], 193514046488576
 ; CHECK-NEXT:    [[TMP5:%.*]] = inttoptr i64 [[TMP4]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> [[TMP2]], <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, ptr [[TMP5]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP6:%.*]], label [[TMP7:%.*]], !prof [[PROF0]]
 ; CHECK:       6:
@@ -598,6 +597,7 @@ define void @st4_8b_undefABD(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, <8 x i8> %D,
 ; CHECK-NEXT:    unreachable
 ; CHECK:       7:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> undef, <8 x i8> undef, <8 x i8> [[C]], <8 x i8> undef, ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> [[TMP2]], <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, ptr [[TMP5]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> undef, <8 x i8> undef, <8 x i8> %C, <8 x i8> undef, ptr %P)
@@ -615,7 +615,6 @@ define void @st4_8b_undefACD(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, <8 x i8> %D,
 ; CHECK-NEXT:    [[TMP3:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP4:%.*]] = xor i64 [[TMP3]], 193514046488576
 ; CHECK-NEXT:    [[TMP5:%.*]] = inttoptr i64 [[TMP4]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> [[TMP2]], <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, ptr [[TMP5]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP6:%.*]], label [[TMP7:%.*]], !prof [[PROF0]]
 ; CHECK:       6:
@@ -623,6 +622,7 @@ define void @st4_8b_undefACD(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, <8 x i8> %D,
 ; CHECK-NEXT:    unreachable
 ; CHECK:       7:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> undef, <8 x i8> [[B]], <8 x i8> undef, <8 x i8> undef, ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> [[TMP2]], <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, ptr [[TMP5]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> undef, <8 x i8> %B, <8 x i8> undef, <8 x i8> undef, ptr %P)
@@ -640,7 +640,6 @@ define void @st4_8b_undefBCD(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, <8 x i8> %D,
 ; CHECK-NEXT:    [[TMP3:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP4:%.*]] = xor i64 [[TMP3]], 193514046488576
 ; CHECK-NEXT:    [[TMP5:%.*]] = inttoptr i64 [[TMP4]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> [[TMP2]], <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, ptr [[TMP5]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP6:%.*]], label [[TMP7:%.*]], !prof [[PROF0]]
 ; CHECK:       6:
@@ -648,6 +647,7 @@ define void @st4_8b_undefBCD(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, <8 x i8> %D,
 ; CHECK-NEXT:    unreachable
 ; CHECK:       7:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> [[A]], <8 x i8> undef, <8 x i8> undef, <8 x i8> undef, ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> [[TMP2]], <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, ptr [[TMP5]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> %A, <8 x i8> undef, <8 x i8> undef, <8 x i8> undef, ptr %P)
@@ -664,7 +664,6 @@ define void @st4_8b_undefABCD(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, <8 x i8> %D
 ; CHECK-NEXT:    [[TMP2:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP3:%.*]] = xor i64 [[TMP2]], 193514046488576
 ; CHECK-NEXT:    [[TMP4:%.*]] = inttoptr i64 [[TMP3]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, ptr [[TMP4]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP5:%.*]], label [[TMP6:%.*]], !prof [[PROF0]]
 ; CHECK:       5:
@@ -672,6 +671,7 @@ define void @st4_8b_undefABCD(<8 x i8> %A, <8 x i8> %B, <8 x i8> %C, <8 x i8> %D
 ; CHECK-NEXT:    unreachable
 ; CHECK:       6:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> undef, <8 x i8> undef, <8 x i8> undef, <8 x i8> undef, ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, <8 x i8> <i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1, i8 -1>, ptr [[TMP4]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st4.v8i8.p0(<8 x i8> undef, <8 x i8> undef, <8 x i8> undef, <8 x i8> undef, ptr %P)
@@ -696,7 +696,6 @@ define void @st2_16b(<16 x i8> %A, <16 x i8> %B, ptr %P) nounwind sanitize_memor
 ; CHECK-NEXT:    [[TMP4:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP5:%.*]] = xor i64 [[TMP4]], 193514046488576
 ; CHECK-NEXT:    [[TMP6:%.*]] = inttoptr i64 [[TMP5]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st2.v16i8.p0(<16 x i8> [[TMP2]], <16 x i8> [[TMP3]], ptr [[TMP6]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP7:%.*]], label [[TMP8:%.*]], !prof [[PROF0]]
 ; CHECK:       7:
@@ -704,6 +703,7 @@ define void @st2_16b(<16 x i8> %A, <16 x i8> %B, ptr %P) nounwind sanitize_memor
 ; CHECK-NEXT:    unreachable
 ; CHECK:       8:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st2.v16i8.p0(<16 x i8> [[A]], <16 x i8> [[B]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st2.v16i8.p0(<16 x i8> [[TMP2]], <16 x i8> [[TMP3]], ptr [[TMP6]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st2.v16i8.p0(<16 x i8> %A, <16 x i8> %B, ptr %P)
@@ -723,7 +723,6 @@ define void @st3_16b(<16 x i8> %A, <16 x i8> %B, <16 x i8> %C, ptr %P) nounwind 
 ; CHECK-NEXT:    [[TMP5:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP6:%.*]] = xor i64 [[TMP5]], 193514046488576
 ; CHECK-NEXT:    [[TMP7:%.*]] = inttoptr i64 [[TMP6]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v16i8.p0(<16 x i8> [[TMP2]], <16 x i8> [[TMP3]], <16 x i8> [[TMP4]], ptr [[TMP7]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP8:%.*]], label [[TMP9:%.*]], !prof [[PROF0]]
 ; CHECK:       8:
@@ -731,6 +730,7 @@ define void @st3_16b(<16 x i8> %A, <16 x i8> %B, <16 x i8> %C, ptr %P) nounwind 
 ; CHECK-NEXT:    unreachable
 ; CHECK:       9:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v16i8.p0(<16 x i8> [[A]], <16 x i8> [[B]], <16 x i8> [[C]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v16i8.p0(<16 x i8> [[TMP2]], <16 x i8> [[TMP3]], <16 x i8> [[TMP4]], ptr [[TMP7]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st3.v16i8.p0(<16 x i8> %A, <16 x i8> %B, <16 x i8> %C, ptr %P)
@@ -751,7 +751,6 @@ define void @st4_16b(<16 x i8> %A, <16 x i8> %B, <16 x i8> %C, <16 x i8> %D, ptr
 ; CHECK-NEXT:    [[TMP6:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP7:%.*]] = xor i64 [[TMP6]], 193514046488576
 ; CHECK-NEXT:    [[TMP8:%.*]] = inttoptr i64 [[TMP7]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v16i8.p0(<16 x i8> [[TMP2]], <16 x i8> [[TMP3]], <16 x i8> [[TMP4]], <16 x i8> [[TMP5]], ptr [[TMP8]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP9:%.*]], label [[TMP10:%.*]], !prof [[PROF0]]
 ; CHECK:       9:
@@ -759,6 +758,7 @@ define void @st4_16b(<16 x i8> %A, <16 x i8> %B, <16 x i8> %C, <16 x i8> %D, ptr
 ; CHECK-NEXT:    unreachable
 ; CHECK:       10:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v16i8.p0(<16 x i8> [[A]], <16 x i8> [[B]], <16 x i8> [[C]], <16 x i8> [[D]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v16i8.p0(<16 x i8> [[TMP2]], <16 x i8> [[TMP3]], <16 x i8> [[TMP4]], <16 x i8> [[TMP5]], ptr [[TMP8]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st4.v16i8.p0(<16 x i8> %A, <16 x i8> %B, <16 x i8> %C, <16 x i8> %D, ptr %P)
@@ -783,7 +783,6 @@ define void @st2_4h(<4 x i16> %A, <4 x i16> %B, ptr %P) nounwind sanitize_memory
 ; CHECK-NEXT:    [[TMP4:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP5:%.*]] = xor i64 [[TMP4]], 193514046488576
 ; CHECK-NEXT:    [[TMP6:%.*]] = inttoptr i64 [[TMP5]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st2.v4i16.p0(<4 x i16> [[TMP2]], <4 x i16> [[TMP3]], ptr [[TMP6]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP7:%.*]], label [[TMP8:%.*]], !prof [[PROF0]]
 ; CHECK:       7:
@@ -791,6 +790,7 @@ define void @st2_4h(<4 x i16> %A, <4 x i16> %B, ptr %P) nounwind sanitize_memory
 ; CHECK-NEXT:    unreachable
 ; CHECK:       8:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st2.v4i16.p0(<4 x i16> [[A]], <4 x i16> [[B]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st2.v4i16.p0(<4 x i16> [[TMP2]], <4 x i16> [[TMP3]], ptr [[TMP6]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st2.v4i16.p0(<4 x i16> %A, <4 x i16> %B, ptr %P)
@@ -810,7 +810,6 @@ define void @st3_4h(<4 x i16> %A, <4 x i16> %B, <4 x i16> %C, ptr %P) nounwind s
 ; CHECK-NEXT:    [[TMP5:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP6:%.*]] = xor i64 [[TMP5]], 193514046488576
 ; CHECK-NEXT:    [[TMP7:%.*]] = inttoptr i64 [[TMP6]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v4i16.p0(<4 x i16> [[TMP2]], <4 x i16> [[TMP3]], <4 x i16> [[TMP4]], ptr [[TMP7]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP8:%.*]], label [[TMP9:%.*]], !prof [[PROF0]]
 ; CHECK:       8:
@@ -818,6 +817,7 @@ define void @st3_4h(<4 x i16> %A, <4 x i16> %B, <4 x i16> %C, ptr %P) nounwind s
 ; CHECK-NEXT:    unreachable
 ; CHECK:       9:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v4i16.p0(<4 x i16> [[A]], <4 x i16> [[B]], <4 x i16> [[C]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v4i16.p0(<4 x i16> [[TMP2]], <4 x i16> [[TMP3]], <4 x i16> [[TMP4]], ptr [[TMP7]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st3.v4i16.p0(<4 x i16> %A, <4 x i16> %B, <4 x i16> %C, ptr %P)
@@ -838,7 +838,6 @@ define void @st4_4h(<4 x i16> %A, <4 x i16> %B, <4 x i16> %C, <4 x i16> %D, ptr 
 ; CHECK-NEXT:    [[TMP6:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP7:%.*]] = xor i64 [[TMP6]], 193514046488576
 ; CHECK-NEXT:    [[TMP8:%.*]] = inttoptr i64 [[TMP7]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v4i16.p0(<4 x i16> [[TMP2]], <4 x i16> [[TMP3]], <4 x i16> [[TMP4]], <4 x i16> [[TMP5]], ptr [[TMP8]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP9:%.*]], label [[TMP10:%.*]], !prof [[PROF0]]
 ; CHECK:       9:
@@ -846,6 +845,7 @@ define void @st4_4h(<4 x i16> %A, <4 x i16> %B, <4 x i16> %C, <4 x i16> %D, ptr 
 ; CHECK-NEXT:    unreachable
 ; CHECK:       10:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v4i16.p0(<4 x i16> [[A]], <4 x i16> [[B]], <4 x i16> [[C]], <4 x i16> [[D]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v4i16.p0(<4 x i16> [[TMP2]], <4 x i16> [[TMP3]], <4 x i16> [[TMP4]], <4 x i16> [[TMP5]], ptr [[TMP8]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st4.v4i16.p0(<4 x i16> %A, <4 x i16> %B, <4 x i16> %C, <4 x i16> %D, ptr %P)
@@ -870,7 +870,6 @@ define void @st2_8h(<8 x i16> %A, <8 x i16> %B, ptr %P) nounwind sanitize_memory
 ; CHECK-NEXT:    [[TMP4:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP5:%.*]] = xor i64 [[TMP4]], 193514046488576
 ; CHECK-NEXT:    [[TMP6:%.*]] = inttoptr i64 [[TMP5]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st2.v8i16.p0(<8 x i16> [[TMP2]], <8 x i16> [[TMP3]], ptr [[TMP6]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP7:%.*]], label [[TMP8:%.*]], !prof [[PROF0]]
 ; CHECK:       7:
@@ -878,6 +877,7 @@ define void @st2_8h(<8 x i16> %A, <8 x i16> %B, ptr %P) nounwind sanitize_memory
 ; CHECK-NEXT:    unreachable
 ; CHECK:       8:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st2.v8i16.p0(<8 x i16> [[A]], <8 x i16> [[B]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st2.v8i16.p0(<8 x i16> [[TMP2]], <8 x i16> [[TMP3]], ptr [[TMP6]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st2.v8i16.p0(<8 x i16> %A, <8 x i16> %B, ptr %P)
@@ -897,7 +897,6 @@ define void @st3_8h(<8 x i16> %A, <8 x i16> %B, <8 x i16> %C, ptr %P) nounwind s
 ; CHECK-NEXT:    [[TMP5:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP6:%.*]] = xor i64 [[TMP5]], 193514046488576
 ; CHECK-NEXT:    [[TMP7:%.*]] = inttoptr i64 [[TMP6]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v8i16.p0(<8 x i16> [[TMP2]], <8 x i16> [[TMP3]], <8 x i16> [[TMP4]], ptr [[TMP7]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP8:%.*]], label [[TMP9:%.*]], !prof [[PROF0]]
 ; CHECK:       8:
@@ -905,6 +904,7 @@ define void @st3_8h(<8 x i16> %A, <8 x i16> %B, <8 x i16> %C, ptr %P) nounwind s
 ; CHECK-NEXT:    unreachable
 ; CHECK:       9:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v8i16.p0(<8 x i16> [[A]], <8 x i16> [[B]], <8 x i16> [[C]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v8i16.p0(<8 x i16> [[TMP2]], <8 x i16> [[TMP3]], <8 x i16> [[TMP4]], ptr [[TMP7]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st3.v8i16.p0(<8 x i16> %A, <8 x i16> %B, <8 x i16> %C, ptr %P)
@@ -925,7 +925,6 @@ define void @st4_8h(<8 x i16> %A, <8 x i16> %B, <8 x i16> %C, <8 x i16> %D, ptr 
 ; CHECK-NEXT:    [[TMP6:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP7:%.*]] = xor i64 [[TMP6]], 193514046488576
 ; CHECK-NEXT:    [[TMP8:%.*]] = inttoptr i64 [[TMP7]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i16.p0(<8 x i16> [[TMP2]], <8 x i16> [[TMP3]], <8 x i16> [[TMP4]], <8 x i16> [[TMP5]], ptr [[TMP8]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP9:%.*]], label [[TMP10:%.*]], !prof [[PROF0]]
 ; CHECK:       9:
@@ -933,6 +932,7 @@ define void @st4_8h(<8 x i16> %A, <8 x i16> %B, <8 x i16> %C, <8 x i16> %D, ptr 
 ; CHECK-NEXT:    unreachable
 ; CHECK:       10:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i16.p0(<8 x i16> [[A]], <8 x i16> [[B]], <8 x i16> [[C]], <8 x i16> [[D]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v8i16.p0(<8 x i16> [[TMP2]], <8 x i16> [[TMP3]], <8 x i16> [[TMP4]], <8 x i16> [[TMP5]], ptr [[TMP8]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st4.v8i16.p0(<8 x i16> %A, <8 x i16> %B, <8 x i16> %C, <8 x i16> %D, ptr %P)
@@ -957,7 +957,6 @@ define void @st2_2s(<2 x i32> %A, <2 x i32> %B, ptr %P) nounwind sanitize_memory
 ; CHECK-NEXT:    [[TMP4:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP5:%.*]] = xor i64 [[TMP4]], 193514046488576
 ; CHECK-NEXT:    [[TMP6:%.*]] = inttoptr i64 [[TMP5]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st2.v2i32.p0(<2 x i32> [[TMP2]], <2 x i32> [[TMP3]], ptr [[TMP6]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP7:%.*]], label [[TMP8:%.*]], !prof [[PROF0]]
 ; CHECK:       7:
@@ -965,6 +964,7 @@ define void @st2_2s(<2 x i32> %A, <2 x i32> %B, ptr %P) nounwind sanitize_memory
 ; CHECK-NEXT:    unreachable
 ; CHECK:       8:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st2.v2i32.p0(<2 x i32> [[A]], <2 x i32> [[B]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st2.v2i32.p0(<2 x i32> [[TMP2]], <2 x i32> [[TMP3]], ptr [[TMP6]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st2.v2i32.p0(<2 x i32> %A, <2 x i32> %B, ptr %P)
@@ -984,7 +984,6 @@ define void @st3_2s(<2 x i32> %A, <2 x i32> %B, <2 x i32> %C, ptr %P) nounwind s
 ; CHECK-NEXT:    [[TMP5:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP6:%.*]] = xor i64 [[TMP5]], 193514046488576
 ; CHECK-NEXT:    [[TMP7:%.*]] = inttoptr i64 [[TMP6]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v2i32.p0(<2 x i32> [[TMP2]], <2 x i32> [[TMP3]], <2 x i32> [[TMP4]], ptr [[TMP7]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP8:%.*]], label [[TMP9:%.*]], !prof [[PROF0]]
 ; CHECK:       8:
@@ -992,6 +991,7 @@ define void @st3_2s(<2 x i32> %A, <2 x i32> %B, <2 x i32> %C, ptr %P) nounwind s
 ; CHECK-NEXT:    unreachable
 ; CHECK:       9:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v2i32.p0(<2 x i32> [[A]], <2 x i32> [[B]], <2 x i32> [[C]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v2i32.p0(<2 x i32> [[TMP2]], <2 x i32> [[TMP3]], <2 x i32> [[TMP4]], ptr [[TMP7]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st3.v2i32.p0(<2 x i32> %A, <2 x i32> %B, <2 x i32> %C, ptr %P)
@@ -1012,7 +1012,6 @@ define void @st4_2s(<2 x i32> %A, <2 x i32> %B, <2 x i32> %C, <2 x i32> %D, ptr 
 ; CHECK-NEXT:    [[TMP6:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP7:%.*]] = xor i64 [[TMP6]], 193514046488576
 ; CHECK-NEXT:    [[TMP8:%.*]] = inttoptr i64 [[TMP7]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i32.p0(<2 x i32> [[TMP2]], <2 x i32> [[TMP3]], <2 x i32> [[TMP4]], <2 x i32> [[TMP5]], ptr [[TMP8]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP9:%.*]], label [[TMP10:%.*]], !prof [[PROF0]]
 ; CHECK:       9:
@@ -1020,6 +1019,7 @@ define void @st4_2s(<2 x i32> %A, <2 x i32> %B, <2 x i32> %C, <2 x i32> %D, ptr 
 ; CHECK-NEXT:    unreachable
 ; CHECK:       10:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i32.p0(<2 x i32> [[A]], <2 x i32> [[B]], <2 x i32> [[C]], <2 x i32> [[D]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i32.p0(<2 x i32> [[TMP2]], <2 x i32> [[TMP3]], <2 x i32> [[TMP4]], <2 x i32> [[TMP5]], ptr [[TMP8]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st4.v2i32.p0(<2 x i32> %A, <2 x i32> %B, <2 x i32> %C, <2 x i32> %D, ptr %P)
@@ -1042,7 +1042,6 @@ define void @st2_4s(<4 x i32> %A, <4 x i32> %B, ptr %P) nounwind sanitize_memory
 ; CHECK-NEXT:    [[TMP4:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP5:%.*]] = xor i64 [[TMP4]], 193514046488576
 ; CHECK-NEXT:    [[TMP6:%.*]] = inttoptr i64 [[TMP5]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st2.v4i32.p0(<4 x i32> [[TMP2]], <4 x i32> [[TMP3]], ptr [[TMP6]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP7:%.*]], label [[TMP8:%.*]], !prof [[PROF0]]
 ; CHECK:       7:
@@ -1050,6 +1049,7 @@ define void @st2_4s(<4 x i32> %A, <4 x i32> %B, ptr %P) nounwind sanitize_memory
 ; CHECK-NEXT:    unreachable
 ; CHECK:       8:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st2.v4i32.p0(<4 x i32> [[A]], <4 x i32> [[B]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st2.v4i32.p0(<4 x i32> [[TMP2]], <4 x i32> [[TMP3]], ptr [[TMP6]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st2.v4i32.p0(<4 x i32> %A, <4 x i32> %B, ptr %P)
@@ -1069,7 +1069,6 @@ define void @st3_4s(<4 x i32> %A, <4 x i32> %B, <4 x i32> %C, ptr %P) nounwind s
 ; CHECK-NEXT:    [[TMP5:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP6:%.*]] = xor i64 [[TMP5]], 193514046488576
 ; CHECK-NEXT:    [[TMP7:%.*]] = inttoptr i64 [[TMP6]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v4i32.p0(<4 x i32> [[TMP2]], <4 x i32> [[TMP3]], <4 x i32> [[TMP4]], ptr [[TMP7]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP8:%.*]], label [[TMP9:%.*]], !prof [[PROF0]]
 ; CHECK:       8:
@@ -1077,6 +1076,7 @@ define void @st3_4s(<4 x i32> %A, <4 x i32> %B, <4 x i32> %C, ptr %P) nounwind s
 ; CHECK-NEXT:    unreachable
 ; CHECK:       9:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v4i32.p0(<4 x i32> [[A]], <4 x i32> [[B]], <4 x i32> [[C]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v4i32.p0(<4 x i32> [[TMP2]], <4 x i32> [[TMP3]], <4 x i32> [[TMP4]], ptr [[TMP7]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st3.v4i32.p0(<4 x i32> %A, <4 x i32> %B, <4 x i32> %C, ptr %P)
@@ -1097,7 +1097,6 @@ define void @st4_4s(<4 x i32> %A, <4 x i32> %B, <4 x i32> %C, <4 x i32> %D, ptr 
 ; CHECK-NEXT:    [[TMP6:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP7:%.*]] = xor i64 [[TMP6]], 193514046488576
 ; CHECK-NEXT:    [[TMP8:%.*]] = inttoptr i64 [[TMP7]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v4i32.p0(<4 x i32> [[TMP2]], <4 x i32> [[TMP3]], <4 x i32> [[TMP4]], <4 x i32> [[TMP5]], ptr [[TMP8]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP9:%.*]], label [[TMP10:%.*]], !prof [[PROF0]]
 ; CHECK:       9:
@@ -1105,6 +1104,7 @@ define void @st4_4s(<4 x i32> %A, <4 x i32> %B, <4 x i32> %C, <4 x i32> %D, ptr 
 ; CHECK-NEXT:    unreachable
 ; CHECK:       10:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v4i32.p0(<4 x i32> [[A]], <4 x i32> [[B]], <4 x i32> [[C]], <4 x i32> [[D]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v4i32.p0(<4 x i32> [[TMP2]], <4 x i32> [[TMP3]], <4 x i32> [[TMP4]], <4 x i32> [[TMP5]], ptr [[TMP8]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st4.v4i32.p0(<4 x i32> %A, <4 x i32> %B, <4 x i32> %C, <4 x i32> %D, ptr %P)
@@ -1130,7 +1130,6 @@ define void @st2_1d(<1 x i64> %A, <1 x i64> %B, ptr %P) nounwind sanitize_memory
 ; CHECK-NEXT:    [[TMP4:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP5:%.*]] = xor i64 [[TMP4]], 193514046488576
 ; CHECK-NEXT:    [[TMP6:%.*]] = inttoptr i64 [[TMP5]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st2.v1i64.p0(<1 x i64> [[TMP2]], <1 x i64> [[TMP3]], ptr [[TMP6]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP7:%.*]], label [[TMP8:%.*]], !prof [[PROF0]]
 ; CHECK:       7:
@@ -1138,6 +1137,7 @@ define void @st2_1d(<1 x i64> %A, <1 x i64> %B, ptr %P) nounwind sanitize_memory
 ; CHECK-NEXT:    unreachable
 ; CHECK:       8:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st2.v1i64.p0(<1 x i64> [[A]], <1 x i64> [[B]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st2.v1i64.p0(<1 x i64> [[TMP2]], <1 x i64> [[TMP3]], ptr [[TMP6]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st2.v1i64.p0(<1 x i64> %A, <1 x i64> %B, ptr %P)
@@ -1157,7 +1157,6 @@ define void @st3_1d(<1 x i64> %A, <1 x i64> %B, <1 x i64> %C, ptr %P) nounwind s
 ; CHECK-NEXT:    [[TMP5:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP6:%.*]] = xor i64 [[TMP5]], 193514046488576
 ; CHECK-NEXT:    [[TMP7:%.*]] = inttoptr i64 [[TMP6]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v1i64.p0(<1 x i64> [[TMP2]], <1 x i64> [[TMP3]], <1 x i64> [[TMP4]], ptr [[TMP7]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP8:%.*]], label [[TMP9:%.*]], !prof [[PROF0]]
 ; CHECK:       8:
@@ -1165,6 +1164,7 @@ define void @st3_1d(<1 x i64> %A, <1 x i64> %B, <1 x i64> %C, ptr %P) nounwind s
 ; CHECK-NEXT:    unreachable
 ; CHECK:       9:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v1i64.p0(<1 x i64> [[A]], <1 x i64> [[B]], <1 x i64> [[C]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v1i64.p0(<1 x i64> [[TMP2]], <1 x i64> [[TMP3]], <1 x i64> [[TMP4]], ptr [[TMP7]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st3.v1i64.p0(<1 x i64> %A, <1 x i64> %B, <1 x i64> %C, ptr %P)
@@ -1185,7 +1185,6 @@ define void @st4_1d(<1 x i64> %A, <1 x i64> %B, <1 x i64> %C, <1 x i64> %D, ptr 
 ; CHECK-NEXT:    [[TMP6:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP7:%.*]] = xor i64 [[TMP6]], 193514046488576
 ; CHECK-NEXT:    [[TMP8:%.*]] = inttoptr i64 [[TMP7]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v1i64.p0(<1 x i64> [[TMP2]], <1 x i64> [[TMP3]], <1 x i64> [[TMP4]], <1 x i64> [[TMP5]], ptr [[TMP8]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP9:%.*]], label [[TMP10:%.*]], !prof [[PROF0]]
 ; CHECK:       9:
@@ -1193,6 +1192,7 @@ define void @st4_1d(<1 x i64> %A, <1 x i64> %B, <1 x i64> %C, <1 x i64> %D, ptr 
 ; CHECK-NEXT:    unreachable
 ; CHECK:       10:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v1i64.p0(<1 x i64> [[A]], <1 x i64> [[B]], <1 x i64> [[C]], <1 x i64> [[D]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v1i64.p0(<1 x i64> [[TMP2]], <1 x i64> [[TMP3]], <1 x i64> [[TMP4]], <1 x i64> [[TMP5]], ptr [[TMP8]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st4.v1i64.p0(<1 x i64> %A, <1 x i64> %B, <1 x i64> %C, <1 x i64> %D, ptr %P)
@@ -1217,7 +1217,6 @@ define void @st2_2d(<2 x i64> %A, <2 x i64> %B, ptr %P) nounwind sanitize_memory
 ; CHECK-NEXT:    [[TMP4:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP5:%.*]] = xor i64 [[TMP4]], 193514046488576
 ; CHECK-NEXT:    [[TMP6:%.*]] = inttoptr i64 [[TMP5]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st2.v2i64.p0(<2 x i64> [[TMP2]], <2 x i64> [[TMP3]], ptr [[TMP6]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP7:%.*]], label [[TMP8:%.*]], !prof [[PROF0]]
 ; CHECK:       7:
@@ -1225,6 +1224,7 @@ define void @st2_2d(<2 x i64> %A, <2 x i64> %B, ptr %P) nounwind sanitize_memory
 ; CHECK-NEXT:    unreachable
 ; CHECK:       8:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st2.v2i64.p0(<2 x i64> [[A]], <2 x i64> [[B]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st2.v2i64.p0(<2 x i64> [[TMP2]], <2 x i64> [[TMP3]], ptr [[TMP6]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st2.v2i64.p0(<2 x i64> %A, <2 x i64> %B, ptr %P)
@@ -1242,7 +1242,6 @@ define void @st2_2d_undefA(<2 x i64> %A, <2 x i64> %B, ptr %P) nounwind sanitize
 ; CHECK-NEXT:    [[TMP3:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP4:%.*]] = xor i64 [[TMP3]], 193514046488576
 ; CHECK-NEXT:    [[TMP5:%.*]] = inttoptr i64 [[TMP4]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st2.v2i64.p0(<2 x i64> <i64 -1, i64 -1>, <2 x i64> [[TMP2]], ptr [[TMP5]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP6:%.*]], label [[TMP7:%.*]], !prof [[PROF0]]
 ; CHECK:       6:
@@ -1250,6 +1249,7 @@ define void @st2_2d_undefA(<2 x i64> %A, <2 x i64> %B, ptr %P) nounwind sanitize
 ; CHECK-NEXT:    unreachable
 ; CHECK:       7:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st2.v2i64.p0(<2 x i64> undef, <2 x i64> [[B]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st2.v2i64.p0(<2 x i64> <i64 -1, i64 -1>, <2 x i64> [[TMP2]], ptr [[TMP5]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st2.v2i64.p0(<2 x i64> undef, <2 x i64> %B, ptr %P)
@@ -1267,7 +1267,6 @@ define void @st2_2d_undefB(<2 x i64> %A, <2 x i64> %B, ptr %P) nounwind sanitize
 ; CHECK-NEXT:    [[TMP3:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP4:%.*]] = xor i64 [[TMP3]], 193514046488576
 ; CHECK-NEXT:    [[TMP5:%.*]] = inttoptr i64 [[TMP4]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st2.v2i64.p0(<2 x i64> [[TMP2]], <2 x i64> <i64 -1, i64 -1>, ptr [[TMP5]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP6:%.*]], label [[TMP7:%.*]], !prof [[PROF0]]
 ; CHECK:       6:
@@ -1275,6 +1274,7 @@ define void @st2_2d_undefB(<2 x i64> %A, <2 x i64> %B, ptr %P) nounwind sanitize
 ; CHECK-NEXT:    unreachable
 ; CHECK:       7:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st2.v2i64.p0(<2 x i64> [[A]], <2 x i64> undef, ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st2.v2i64.p0(<2 x i64> [[TMP2]], <2 x i64> <i64 -1, i64 -1>, ptr [[TMP5]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st2.v2i64.p0(<2 x i64> %A, <2 x i64> undef, ptr %P)
@@ -1291,7 +1291,6 @@ define void @st2_2d_undefAB(<2 x i64> %A, <2 x i64> %B, ptr %P) nounwind sanitiz
 ; CHECK-NEXT:    [[TMP2:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP3:%.*]] = xor i64 [[TMP2]], 193514046488576
 ; CHECK-NEXT:    [[TMP4:%.*]] = inttoptr i64 [[TMP3]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st2.v2i64.p0(<2 x i64> <i64 -1, i64 -1>, <2 x i64> <i64 -1, i64 -1>, ptr [[TMP4]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP5:%.*]], label [[TMP6:%.*]], !prof [[PROF0]]
 ; CHECK:       5:
@@ -1299,6 +1298,7 @@ define void @st2_2d_undefAB(<2 x i64> %A, <2 x i64> %B, ptr %P) nounwind sanitiz
 ; CHECK-NEXT:    unreachable
 ; CHECK:       6:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st2.v2i64.p0(<2 x i64> undef, <2 x i64> undef, ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st2.v2i64.p0(<2 x i64> <i64 -1, i64 -1>, <2 x i64> <i64 -1, i64 -1>, ptr [[TMP4]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st2.v2i64.p0(<2 x i64> undef, <2 x i64> undef, ptr %P)
@@ -1318,7 +1318,6 @@ define void @st3_2d(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, ptr %P) nounwind s
 ; CHECK-NEXT:    [[TMP5:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP6:%.*]] = xor i64 [[TMP5]], 193514046488576
 ; CHECK-NEXT:    [[TMP7:%.*]] = inttoptr i64 [[TMP6]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v2i64.p0(<2 x i64> [[TMP2]], <2 x i64> [[TMP3]], <2 x i64> [[TMP4]], ptr [[TMP7]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP8:%.*]], label [[TMP9:%.*]], !prof [[PROF0]]
 ; CHECK:       8:
@@ -1326,6 +1325,7 @@ define void @st3_2d(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, ptr %P) nounwind s
 ; CHECK-NEXT:    unreachable
 ; CHECK:       9:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v2i64.p0(<2 x i64> [[A]], <2 x i64> [[B]], <2 x i64> [[C]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v2i64.p0(<2 x i64> [[TMP2]], <2 x i64> [[TMP3]], <2 x i64> [[TMP4]], ptr [[TMP7]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st3.v2i64.p0(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, ptr %P)
@@ -1344,7 +1344,6 @@ define void @st3_2d_undefA(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, ptr %P) nou
 ; CHECK-NEXT:    [[TMP4:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP5:%.*]] = xor i64 [[TMP4]], 193514046488576
 ; CHECK-NEXT:    [[TMP6:%.*]] = inttoptr i64 [[TMP5]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v2i64.p0(<2 x i64> <i64 -1, i64 -1>, <2 x i64> [[TMP2]], <2 x i64> [[TMP3]], ptr [[TMP6]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP7:%.*]], label [[TMP8:%.*]], !prof [[PROF0]]
 ; CHECK:       7:
@@ -1352,6 +1351,7 @@ define void @st3_2d_undefA(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, ptr %P) nou
 ; CHECK-NEXT:    unreachable
 ; CHECK:       8:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v2i64.p0(<2 x i64> undef, <2 x i64> [[B]], <2 x i64> [[C]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v2i64.p0(<2 x i64> <i64 -1, i64 -1>, <2 x i64> [[TMP2]], <2 x i64> [[TMP3]], ptr [[TMP6]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st3.v2i64.p0(<2 x i64> undef, <2 x i64> %B, <2 x i64> %C, ptr %P)
@@ -1370,7 +1370,6 @@ define void @st3_2d_undefB(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, ptr %P) nou
 ; CHECK-NEXT:    [[TMP4:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP5:%.*]] = xor i64 [[TMP4]], 193514046488576
 ; CHECK-NEXT:    [[TMP6:%.*]] = inttoptr i64 [[TMP5]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v2i64.p0(<2 x i64> [[TMP2]], <2 x i64> <i64 -1, i64 -1>, <2 x i64> [[TMP3]], ptr [[TMP6]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP7:%.*]], label [[TMP8:%.*]], !prof [[PROF0]]
 ; CHECK:       7:
@@ -1378,6 +1377,7 @@ define void @st3_2d_undefB(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, ptr %P) nou
 ; CHECK-NEXT:    unreachable
 ; CHECK:       8:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v2i64.p0(<2 x i64> [[A]], <2 x i64> undef, <2 x i64> [[C]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v2i64.p0(<2 x i64> [[TMP2]], <2 x i64> <i64 -1, i64 -1>, <2 x i64> [[TMP3]], ptr [[TMP6]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st3.v2i64.p0(<2 x i64> %A, <2 x i64> undef, <2 x i64> %C, ptr %P)
@@ -1396,7 +1396,6 @@ define void @st3_2d_undefC(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, ptr %P) nou
 ; CHECK-NEXT:    [[TMP4:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP5:%.*]] = xor i64 [[TMP4]], 193514046488576
 ; CHECK-NEXT:    [[TMP6:%.*]] = inttoptr i64 [[TMP5]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v2i64.p0(<2 x i64> [[TMP2]], <2 x i64> [[TMP3]], <2 x i64> <i64 -1, i64 -1>, ptr [[TMP6]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP7:%.*]], label [[TMP8:%.*]], !prof [[PROF0]]
 ; CHECK:       7:
@@ -1404,6 +1403,7 @@ define void @st3_2d_undefC(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, ptr %P) nou
 ; CHECK-NEXT:    unreachable
 ; CHECK:       8:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v2i64.p0(<2 x i64> [[A]], <2 x i64> [[B]], <2 x i64> undef, ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v2i64.p0(<2 x i64> [[TMP2]], <2 x i64> [[TMP3]], <2 x i64> <i64 -1, i64 -1>, ptr [[TMP6]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st3.v2i64.p0(<2 x i64> %A, <2 x i64> %B, <2 x i64> undef, ptr %P)
@@ -1421,7 +1421,6 @@ define void @st3_2d_undefAB(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, ptr %P) no
 ; CHECK-NEXT:    [[TMP3:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP4:%.*]] = xor i64 [[TMP3]], 193514046488576
 ; CHECK-NEXT:    [[TMP5:%.*]] = inttoptr i64 [[TMP4]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v2i64.p0(<2 x i64> <i64 -1, i64 -1>, <2 x i64> <i64 -1, i64 -1>, <2 x i64> [[TMP2]], ptr [[TMP5]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP6:%.*]], label [[TMP7:%.*]], !prof [[PROF0]]
 ; CHECK:       6:
@@ -1429,6 +1428,7 @@ define void @st3_2d_undefAB(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, ptr %P) no
 ; CHECK-NEXT:    unreachable
 ; CHECK:       7:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v2i64.p0(<2 x i64> undef, <2 x i64> undef, <2 x i64> [[C]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v2i64.p0(<2 x i64> <i64 -1, i64 -1>, <2 x i64> <i64 -1, i64 -1>, <2 x i64> [[TMP2]], ptr [[TMP5]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st3.v2i64.p0(<2 x i64> undef, <2 x i64> undef, <2 x i64> %C, ptr %P)
@@ -1446,7 +1446,6 @@ define void @st3_2d_undefAC(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, ptr %P) no
 ; CHECK-NEXT:    [[TMP3:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP4:%.*]] = xor i64 [[TMP3]], 193514046488576
 ; CHECK-NEXT:    [[TMP5:%.*]] = inttoptr i64 [[TMP4]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v2i64.p0(<2 x i64> <i64 -1, i64 -1>, <2 x i64> [[TMP2]], <2 x i64> <i64 -1, i64 -1>, ptr [[TMP5]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP6:%.*]], label [[TMP7:%.*]], !prof [[PROF0]]
 ; CHECK:       6:
@@ -1454,6 +1453,7 @@ define void @st3_2d_undefAC(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, ptr %P) no
 ; CHECK-NEXT:    unreachable
 ; CHECK:       7:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v2i64.p0(<2 x i64> undef, <2 x i64> [[B]], <2 x i64> undef, ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v2i64.p0(<2 x i64> <i64 -1, i64 -1>, <2 x i64> [[TMP2]], <2 x i64> <i64 -1, i64 -1>, ptr [[TMP5]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st3.v2i64.p0(<2 x i64> undef, <2 x i64> %B, <2 x i64> undef, ptr %P)
@@ -1471,7 +1471,6 @@ define void @st3_2d_undefBC(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, ptr %P) no
 ; CHECK-NEXT:    [[TMP3:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP4:%.*]] = xor i64 [[TMP3]], 193514046488576
 ; CHECK-NEXT:    [[TMP5:%.*]] = inttoptr i64 [[TMP4]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v2i64.p0(<2 x i64> [[TMP2]], <2 x i64> <i64 -1, i64 -1>, <2 x i64> <i64 -1, i64 -1>, ptr [[TMP5]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP6:%.*]], label [[TMP7:%.*]], !prof [[PROF0]]
 ; CHECK:       6:
@@ -1479,6 +1478,7 @@ define void @st3_2d_undefBC(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, ptr %P) no
 ; CHECK-NEXT:    unreachable
 ; CHECK:       7:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v2i64.p0(<2 x i64> [[A]], <2 x i64> undef, <2 x i64> undef, ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v2i64.p0(<2 x i64> [[TMP2]], <2 x i64> <i64 -1, i64 -1>, <2 x i64> <i64 -1, i64 -1>, ptr [[TMP5]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st3.v2i64.p0(<2 x i64> %A, <2 x i64> undef, <2 x i64> undef, ptr %P)
@@ -1495,7 +1495,6 @@ define void @st3_2d_undefABC(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, ptr %P) n
 ; CHECK-NEXT:    [[TMP2:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP3:%.*]] = xor i64 [[TMP2]], 193514046488576
 ; CHECK-NEXT:    [[TMP4:%.*]] = inttoptr i64 [[TMP3]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v2i64.p0(<2 x i64> <i64 -1, i64 -1>, <2 x i64> <i64 -1, i64 -1>, <2 x i64> <i64 -1, i64 -1>, ptr [[TMP4]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP5:%.*]], label [[TMP6:%.*]], !prof [[PROF0]]
 ; CHECK:       5:
@@ -1503,6 +1502,7 @@ define void @st3_2d_undefABC(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, ptr %P) n
 ; CHECK-NEXT:    unreachable
 ; CHECK:       6:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v2i64.p0(<2 x i64> undef, <2 x i64> undef, <2 x i64> undef, ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st3.v2i64.p0(<2 x i64> <i64 -1, i64 -1>, <2 x i64> <i64 -1, i64 -1>, <2 x i64> <i64 -1, i64 -1>, ptr [[TMP4]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st3.v2i64.p0(<2 x i64> undef, <2 x i64> undef, <2 x i64> undef, ptr %P)
@@ -1523,7 +1523,6 @@ define void @st4_2d(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, <2 x i64> %D, ptr 
 ; CHECK-NEXT:    [[TMP6:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP7:%.*]] = xor i64 [[TMP6]], 193514046488576
 ; CHECK-NEXT:    [[TMP8:%.*]] = inttoptr i64 [[TMP7]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> [[TMP2]], <2 x i64> [[TMP3]], <2 x i64> [[TMP4]], <2 x i64> [[TMP5]], ptr [[TMP8]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP9:%.*]], label [[TMP10:%.*]], !prof [[PROF0]]
 ; CHECK:       9:
@@ -1531,6 +1530,7 @@ define void @st4_2d(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, <2 x i64> %D, ptr 
 ; CHECK-NEXT:    unreachable
 ; CHECK:       10:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> [[A]], <2 x i64> [[B]], <2 x i64> [[C]], <2 x i64> [[D]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> [[TMP2]], <2 x i64> [[TMP3]], <2 x i64> [[TMP4]], <2 x i64> [[TMP5]], ptr [[TMP8]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, <2 x i64> %D, ptr %P)
@@ -1554,7 +1554,6 @@ define void @st4_2d_undefA(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, <2 x i64> %
 ; CHECK-NEXT:    [[TMP5:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP6:%.*]] = xor i64 [[TMP5]], 193514046488576
 ; CHECK-NEXT:    [[TMP7:%.*]] = inttoptr i64 [[TMP6]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> <i64 -1, i64 -1>, <2 x i64> [[TMP2]], <2 x i64> [[TMP3]], <2 x i64> [[TMP4]], ptr [[TMP7]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP8:%.*]], label [[TMP9:%.*]], !prof [[PROF0]]
 ; CHECK:       8:
@@ -1562,6 +1561,7 @@ define void @st4_2d_undefA(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, <2 x i64> %
 ; CHECK-NEXT:    unreachable
 ; CHECK:       9:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> undef, <2 x i64> [[B]], <2 x i64> [[C]], <2 x i64> [[D]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> <i64 -1, i64 -1>, <2 x i64> [[TMP2]], <2 x i64> [[TMP3]], <2 x i64> [[TMP4]], ptr [[TMP7]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> undef, <2 x i64> %B, <2 x i64> %C, <2 x i64> %D, ptr %P)
@@ -1581,7 +1581,6 @@ define void @st4_2d_undefB(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, <2 x i64> %
 ; CHECK-NEXT:    [[TMP5:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP6:%.*]] = xor i64 [[TMP5]], 193514046488576
 ; CHECK-NEXT:    [[TMP7:%.*]] = inttoptr i64 [[TMP6]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> [[TMP2]], <2 x i64> <i64 -1, i64 -1>, <2 x i64> [[TMP3]], <2 x i64> [[TMP4]], ptr [[TMP7]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP8:%.*]], label [[TMP9:%.*]], !prof [[PROF0]]
 ; CHECK:       8:
@@ -1589,6 +1588,7 @@ define void @st4_2d_undefB(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, <2 x i64> %
 ; CHECK-NEXT:    unreachable
 ; CHECK:       9:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> [[A]], <2 x i64> undef, <2 x i64> [[C]], <2 x i64> [[D]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> [[TMP2]], <2 x i64> <i64 -1, i64 -1>, <2 x i64> [[TMP3]], <2 x i64> [[TMP4]], ptr [[TMP7]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> %A, <2 x i64> undef, <2 x i64> %C, <2 x i64> %D, ptr %P)
@@ -1608,7 +1608,6 @@ define void @st4_2d_undefC(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, <2 x i64> %
 ; CHECK-NEXT:    [[TMP5:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP6:%.*]] = xor i64 [[TMP5]], 193514046488576
 ; CHECK-NEXT:    [[TMP7:%.*]] = inttoptr i64 [[TMP6]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> [[TMP2]], <2 x i64> [[TMP3]], <2 x i64> <i64 -1, i64 -1>, <2 x i64> [[TMP4]], ptr [[TMP7]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP8:%.*]], label [[TMP9:%.*]], !prof [[PROF0]]
 ; CHECK:       8:
@@ -1616,6 +1615,7 @@ define void @st4_2d_undefC(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, <2 x i64> %
 ; CHECK-NEXT:    unreachable
 ; CHECK:       9:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> [[A]], <2 x i64> [[B]], <2 x i64> undef, <2 x i64> [[D]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> [[TMP2]], <2 x i64> [[TMP3]], <2 x i64> <i64 -1, i64 -1>, <2 x i64> [[TMP4]], ptr [[TMP7]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> %A, <2 x i64> %B, <2 x i64> undef, <2 x i64> %D, ptr %P)
@@ -1635,7 +1635,6 @@ define void @st4_2d_undefD(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, <2 x i64> %
 ; CHECK-NEXT:    [[TMP5:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP6:%.*]] = xor i64 [[TMP5]], 193514046488576
 ; CHECK-NEXT:    [[TMP7:%.*]] = inttoptr i64 [[TMP6]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> [[TMP2]], <2 x i64> [[TMP3]], <2 x i64> [[TMP4]], <2 x i64> <i64 -1, i64 -1>, ptr [[TMP7]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP8:%.*]], label [[TMP9:%.*]], !prof [[PROF0]]
 ; CHECK:       8:
@@ -1643,6 +1642,7 @@ define void @st4_2d_undefD(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, <2 x i64> %
 ; CHECK-NEXT:    unreachable
 ; CHECK:       9:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> [[A]], <2 x i64> [[B]], <2 x i64> [[C]], <2 x i64> undef, ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> [[TMP2]], <2 x i64> [[TMP3]], <2 x i64> [[TMP4]], <2 x i64> <i64 -1, i64 -1>, ptr [[TMP7]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, <2 x i64> undef, ptr %P)
@@ -1661,7 +1661,6 @@ define void @st4_2d_undefAB(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, <2 x i64> 
 ; CHECK-NEXT:    [[TMP4:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP5:%.*]] = xor i64 [[TMP4]], 193514046488576
 ; CHECK-NEXT:    [[TMP6:%.*]] = inttoptr i64 [[TMP5]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> <i64 -1, i64 -1>, <2 x i64> <i64 -1, i64 -1>, <2 x i64> [[TMP2]], <2 x i64> [[TMP3]], ptr [[TMP6]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP7:%.*]], label [[TMP8:%.*]], !prof [[PROF0]]
 ; CHECK:       7:
@@ -1669,6 +1668,7 @@ define void @st4_2d_undefAB(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, <2 x i64> 
 ; CHECK-NEXT:    unreachable
 ; CHECK:       8:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> undef, <2 x i64> undef, <2 x i64> [[C]], <2 x i64> [[D]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> <i64 -1, i64 -1>, <2 x i64> <i64 -1, i64 -1>, <2 x i64> [[TMP2]], <2 x i64> [[TMP3]], ptr [[TMP6]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> undef, <2 x i64> undef, <2 x i64> %C, <2 x i64> %D, ptr %P)
@@ -1687,7 +1687,6 @@ define void @st4_2d_undefAC(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, <2 x i64> 
 ; CHECK-NEXT:    [[TMP4:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP5:%.*]] = xor i64 [[TMP4]], 193514046488576
 ; CHECK-NEXT:    [[TMP6:%.*]] = inttoptr i64 [[TMP5]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> <i64 -1, i64 -1>, <2 x i64> [[TMP2]], <2 x i64> <i64 -1, i64 -1>, <2 x i64> [[TMP3]], ptr [[TMP6]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP7:%.*]], label [[TMP8:%.*]], !prof [[PROF0]]
 ; CHECK:       7:
@@ -1695,6 +1694,7 @@ define void @st4_2d_undefAC(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, <2 x i64> 
 ; CHECK-NEXT:    unreachable
 ; CHECK:       8:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> undef, <2 x i64> [[B]], <2 x i64> undef, <2 x i64> [[D]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> <i64 -1, i64 -1>, <2 x i64> [[TMP2]], <2 x i64> <i64 -1, i64 -1>, <2 x i64> [[TMP3]], ptr [[TMP6]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> undef, <2 x i64> %B, <2 x i64> undef, <2 x i64> %D, ptr %P)
@@ -1713,7 +1713,6 @@ define void @st4_2d_undefAD(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, <2 x i64> 
 ; CHECK-NEXT:    [[TMP4:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP5:%.*]] = xor i64 [[TMP4]], 193514046488576
 ; CHECK-NEXT:    [[TMP6:%.*]] = inttoptr i64 [[TMP5]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> <i64 -1, i64 -1>, <2 x i64> [[TMP2]], <2 x i64> [[TMP3]], <2 x i64> <i64 -1, i64 -1>, ptr [[TMP6]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP7:%.*]], label [[TMP8:%.*]], !prof [[PROF0]]
 ; CHECK:       7:
@@ -1721,6 +1720,7 @@ define void @st4_2d_undefAD(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, <2 x i64> 
 ; CHECK-NEXT:    unreachable
 ; CHECK:       8:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> undef, <2 x i64> [[B]], <2 x i64> [[C]], <2 x i64> undef, ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> <i64 -1, i64 -1>, <2 x i64> [[TMP2]], <2 x i64> [[TMP3]], <2 x i64> <i64 -1, i64 -1>, ptr [[TMP6]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> undef, <2 x i64> %B, <2 x i64> %C, <2 x i64> undef, ptr %P)
@@ -1739,7 +1739,6 @@ define void @st4_2d_undefBC(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, <2 x i64> 
 ; CHECK-NEXT:    [[TMP4:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP5:%.*]] = xor i64 [[TMP4]], 193514046488576
 ; CHECK-NEXT:    [[TMP6:%.*]] = inttoptr i64 [[TMP5]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> [[TMP2]], <2 x i64> <i64 -1, i64 -1>, <2 x i64> <i64 -1, i64 -1>, <2 x i64> [[TMP3]], ptr [[TMP6]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP7:%.*]], label [[TMP8:%.*]], !prof [[PROF0]]
 ; CHECK:       7:
@@ -1747,6 +1746,7 @@ define void @st4_2d_undefBC(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, <2 x i64> 
 ; CHECK-NEXT:    unreachable
 ; CHECK:       8:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> [[A]], <2 x i64> undef, <2 x i64> undef, <2 x i64> [[D]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> [[TMP2]], <2 x i64> <i64 -1, i64 -1>, <2 x i64> <i64 -1, i64 -1>, <2 x i64> [[TMP3]], ptr [[TMP6]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> %A, <2 x i64> undef, <2 x i64> undef, <2 x i64> %D, ptr %P)
@@ -1765,7 +1765,6 @@ define void @st4_2d_undefBD(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, <2 x i64> 
 ; CHECK-NEXT:    [[TMP4:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP5:%.*]] = xor i64 [[TMP4]], 193514046488576
 ; CHECK-NEXT:    [[TMP6:%.*]] = inttoptr i64 [[TMP5]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> [[TMP2]], <2 x i64> <i64 -1, i64 -1>, <2 x i64> [[TMP3]], <2 x i64> <i64 -1, i64 -1>, ptr [[TMP6]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP7:%.*]], label [[TMP8:%.*]], !prof [[PROF0]]
 ; CHECK:       7:
@@ -1773,6 +1772,7 @@ define void @st4_2d_undefBD(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, <2 x i64> 
 ; CHECK-NEXT:    unreachable
 ; CHECK:       8:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> [[A]], <2 x i64> undef, <2 x i64> [[C]], <2 x i64> undef, ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> [[TMP2]], <2 x i64> <i64 -1, i64 -1>, <2 x i64> [[TMP3]], <2 x i64> <i64 -1, i64 -1>, ptr [[TMP6]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> %A, <2 x i64> undef, <2 x i64> %C, <2 x i64> undef, ptr %P)
@@ -1791,7 +1791,6 @@ define void @st4_2d_undefCD(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, <2 x i64> 
 ; CHECK-NEXT:    [[TMP4:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP5:%.*]] = xor i64 [[TMP4]], 193514046488576
 ; CHECK-NEXT:    [[TMP6:%.*]] = inttoptr i64 [[TMP5]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> [[TMP2]], <2 x i64> [[TMP3]], <2 x i64> <i64 -1, i64 -1>, <2 x i64> <i64 -1, i64 -1>, ptr [[TMP6]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP7:%.*]], label [[TMP8:%.*]], !prof [[PROF0]]
 ; CHECK:       7:
@@ -1799,6 +1798,7 @@ define void @st4_2d_undefCD(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, <2 x i64> 
 ; CHECK-NEXT:    unreachable
 ; CHECK:       8:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> [[A]], <2 x i64> [[B]], <2 x i64> undef, <2 x i64> undef, ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> [[TMP2]], <2 x i64> [[TMP3]], <2 x i64> <i64 -1, i64 -1>, <2 x i64> <i64 -1, i64 -1>, ptr [[TMP6]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> %A, <2 x i64> %B, <2 x i64> undef, <2 x i64> undef, ptr %P)
@@ -1816,7 +1816,6 @@ define void @st4_2d_undefABC(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, <2 x i64>
 ; CHECK-NEXT:    [[TMP3:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP4:%.*]] = xor i64 [[TMP3]], 193514046488576
 ; CHECK-NEXT:    [[TMP5:%.*]] = inttoptr i64 [[TMP4]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> <i64 -1, i64 -1>, <2 x i64> <i64 -1, i64 -1>, <2 x i64> <i64 -1, i64 -1>, <2 x i64> [[TMP2]], ptr [[TMP5]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP6:%.*]], label [[TMP7:%.*]], !prof [[PROF0]]
 ; CHECK:       6:
@@ -1824,6 +1823,7 @@ define void @st4_2d_undefABC(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, <2 x i64>
 ; CHECK-NEXT:    unreachable
 ; CHECK:       7:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> undef, <2 x i64> undef, <2 x i64> undef, <2 x i64> [[D]], ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> <i64 -1, i64 -1>, <2 x i64> <i64 -1, i64 -1>, <2 x i64> <i64 -1, i64 -1>, <2 x i64> [[TMP2]], ptr [[TMP5]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> undef, <2 x i64> undef, <2 x i64> undef, <2 x i64> %D, ptr %P)
@@ -1841,7 +1841,6 @@ define void @st4_2d_undefABD(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, <2 x i64>
 ; CHECK-NEXT:    [[TMP3:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP4:%.*]] = xor i64 [[TMP3]], 193514046488576
 ; CHECK-NEXT:    [[TMP5:%.*]] = inttoptr i64 [[TMP4]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> <i64 -1, i64 -1>, <2 x i64> <i64 -1, i64 -1>, <2 x i64> [[TMP2]], <2 x i64> <i64 -1, i64 -1>, ptr [[TMP5]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP6:%.*]], label [[TMP7:%.*]], !prof [[PROF0]]
 ; CHECK:       6:
@@ -1849,6 +1848,7 @@ define void @st4_2d_undefABD(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, <2 x i64>
 ; CHECK-NEXT:    unreachable
 ; CHECK:       7:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> undef, <2 x i64> undef, <2 x i64> [[C]], <2 x i64> undef, ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> <i64 -1, i64 -1>, <2 x i64> <i64 -1, i64 -1>, <2 x i64> [[TMP2]], <2 x i64> <i64 -1, i64 -1>, ptr [[TMP5]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> undef, <2 x i64> undef, <2 x i64> %C, <2 x i64> undef, ptr %P)
@@ -1866,7 +1866,6 @@ define void @st4_2d_undefACD(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, <2 x i64>
 ; CHECK-NEXT:    [[TMP3:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP4:%.*]] = xor i64 [[TMP3]], 193514046488576
 ; CHECK-NEXT:    [[TMP5:%.*]] = inttoptr i64 [[TMP4]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> <i64 -1, i64 -1>, <2 x i64> [[TMP2]], <2 x i64> <i64 -1, i64 -1>, <2 x i64> <i64 -1, i64 -1>, ptr [[TMP5]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP6:%.*]], label [[TMP7:%.*]], !prof [[PROF0]]
 ; CHECK:       6:
@@ -1874,6 +1873,7 @@ define void @st4_2d_undefACD(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, <2 x i64>
 ; CHECK-NEXT:    unreachable
 ; CHECK:       7:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> undef, <2 x i64> [[B]], <2 x i64> undef, <2 x i64> undef, ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> <i64 -1, i64 -1>, <2 x i64> [[TMP2]], <2 x i64> <i64 -1, i64 -1>, <2 x i64> <i64 -1, i64 -1>, ptr [[TMP5]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> undef, <2 x i64> %B, <2 x i64> undef, <2 x i64> undef, ptr %P)
@@ -1891,7 +1891,6 @@ define void @st4_2d_undefBCD(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, <2 x i64>
 ; CHECK-NEXT:    [[TMP3:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP4:%.*]] = xor i64 [[TMP3]], 193514046488576
 ; CHECK-NEXT:    [[TMP5:%.*]] = inttoptr i64 [[TMP4]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> [[TMP2]], <2 x i64> <i64 -1, i64 -1>, <2 x i64> <i64 -1, i64 -1>, <2 x i64> <i64 -1, i64 -1>, ptr [[TMP5]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP6:%.*]], label [[TMP7:%.*]], !prof [[PROF0]]
 ; CHECK:       6:
@@ -1899,6 +1898,7 @@ define void @st4_2d_undefBCD(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, <2 x i64>
 ; CHECK-NEXT:    unreachable
 ; CHECK:       7:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> [[A]], <2 x i64> undef, <2 x i64> undef, <2 x i64> undef, ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> [[TMP2]], <2 x i64> <i64 -1, i64 -1>, <2 x i64> <i64 -1, i64 -1>, <2 x i64> <i64 -1, i64 -1>, ptr [[TMP5]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> %A, <2 x i64> undef, <2 x i64> undef, <2 x i64> undef, ptr %P)
@@ -1915,7 +1915,6 @@ define void @st4_2d_undefABCD(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, <2 x i64
 ; CHECK-NEXT:    [[TMP2:%.*]] = ptrtoint ptr [[P]] to i64
 ; CHECK-NEXT:    [[TMP3:%.*]] = xor i64 [[TMP2]], 193514046488576
 ; CHECK-NEXT:    [[TMP4:%.*]] = inttoptr i64 [[TMP3]] to ptr
-; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> <i64 -1, i64 -1>, <2 x i64> <i64 -1, i64 -1>, <2 x i64> <i64 -1, i64 -1>, <2 x i64> <i64 -1, i64 -1>, ptr [[TMP4]])
 ; CHECK-NEXT:    [[_MSCMP:%.*]] = icmp ne i64 [[TMP1]], 0
 ; CHECK-NEXT:    br i1 [[_MSCMP]], label [[TMP5:%.*]], label [[TMP6:%.*]], !prof [[PROF0]]
 ; CHECK:       5:
@@ -1923,6 +1922,7 @@ define void @st4_2d_undefABCD(<2 x i64> %A, <2 x i64> %B, <2 x i64> %C, <2 x i64
 ; CHECK-NEXT:    unreachable
 ; CHECK:       6:
 ; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> undef, <2 x i64> undef, <2 x i64> undef, <2 x i64> undef, ptr [[P]])
+; CHECK-NEXT:    call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> <i64 -1, i64 -1>, <2 x i64> <i64 -1, i64 -1>, <2 x i64> <i64 -1, i64 -1>, <2 x i64> <i64 -1, i64 -1>, ptr [[TMP4]])
 ; CHECK-NEXT:    ret void
 ;
   call void @llvm.aarch64.neon.st4.v2i64.p0(<2 x i64> undef, <2 x i64> undef, <2 x i64> undef, <2 x i64> undef, ptr %P)

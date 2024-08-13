@@ -24,7 +24,7 @@ void readVersionScript(MemoryBufferRef mb);
 void readDynamicList(MemoryBufferRef mb);
 
 // Parses the defsym expression.
-void readDefsym(MemoryBufferRef mb);
+void readDefsym(StringRef name, MemoryBufferRef mb);
 
 bool hasWildcard(StringRef s);
 

@@ -273,9 +273,8 @@ void DataSharingProcessor::insertLastPrivateCompare(mlir::Operation *op) {
       mlir::Value cmpOp;
       llvm::SmallVector<mlir::Value> vs;
       vs.reserve(loopOp.getIVs().size());
-      for (auto [iv, ub, step] :
-           llvm::zip_equal(loopOp.getIVs(), loopOp.getLoopUpperBounds(),
-                           loopOp.getLoopSteps())) {
+      for (auto [iv, ub, step] : llvm::zip_equal(
+               loopOp.getIVs(), loopOp.getUpperBound(), loopOp.getStep())) {
         // v = iv + step
         // cmp = step < 0 ? v < ub : v > ub
         mlir::Value v = firOpBuilder.create<mlir::arith::AddIOp>(loc, iv, step);
@@ -594,7 +593,7 @@ void DataSharingProcessor::doPrivatize(const semantics::Symbol *sym,
   }();
 
   if (clauseOps) {
-    clauseOps->privateSyms.push_back(mlir::SymbolRefAttr::get(privatizerOp));
+    clauseOps->privatizers.push_back(mlir::SymbolRefAttr::get(privatizerOp));
     clauseOps->privateVars.push_back(hsb.getAddr());
   }
 

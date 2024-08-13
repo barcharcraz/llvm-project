@@ -17,7 +17,7 @@
 #ifndef LLVM_SUPPORT_DXILABI_H
 #define LLVM_SUPPORT_DXILABI_H
 
-#include <cstdint>
+#include "llvm/ADT/StringSwitch.h"
 
 namespace llvm {
 namespace dxil {

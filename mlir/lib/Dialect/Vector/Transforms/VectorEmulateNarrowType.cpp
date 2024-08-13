@@ -83,14 +83,17 @@ static FailureOr<Operation *> getCompressedMaskOp(OpBuilder &rewriter,
     newMask = rewriter.create<vector::CreateMaskOp>(loc, newMaskType,
                                                     newMaskOperands);
   } else if (constantMaskOp) {
-    ArrayRef<int64_t> maskDimSizes = constantMaskOp.getMaskDimSizes();
+    ArrayRef<Attribute> maskDimSizes =
+        constantMaskOp.getMaskDimSizes().getValue();
     size_t numMaskOperands = maskDimSizes.size();
-    int64_t origIndex = maskDimSizes[numMaskOperands - 1];
-    int64_t maskIndex = (origIndex + scale - 1) / scale;
-    SmallVector<int64_t> newMaskDimSizes(maskDimSizes.drop_back());
-    newMaskDimSizes.push_back(maskIndex);
-    newMask = rewriter.create<vector::ConstantMaskOp>(loc, newMaskType,
-                                                      newMaskDimSizes);
+    auto origIndex =
+        cast<IntegerAttr>(maskDimSizes[numMaskOperands - 1]).getInt();
+    IntegerAttr maskIndexAttr =
+        rewriter.getI64IntegerAttr((origIndex + scale - 1) / scale);
+    SmallVector<Attribute> newMaskDimSizes(maskDimSizes.drop_back());
+    newMaskDimSizes.push_back(maskIndexAttr);
+    newMask = rewriter.create<vector::ConstantMaskOp>(
+        loc, newMaskType, rewriter.getArrayAttr(newMaskDimSizes));
   }
 
   while (!extractOps.empty()) {

@@ -10,4 +10,5 @@ llvm-ctxprof-util.cpp
 
   DEPENDS
   intrinsics_gen
+  GENERATE_DRIVER
   )

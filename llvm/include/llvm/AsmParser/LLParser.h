@@ -560,7 +560,8 @@ namespace llvm {
     bool parseExceptionArgs(SmallVectorImpl<Value *> &Args,
                             PerFunctionState &PFS);
 
-    bool resolveFunctionType(Type *RetType, ArrayRef<ParamInfo> ArgList,
+    bool resolveFunctionType(Type *RetType,
+                             const SmallVector<ParamInfo, 16> &ArgList,
                              FunctionType *&FuncTy);
 
     // Constant Parsing.

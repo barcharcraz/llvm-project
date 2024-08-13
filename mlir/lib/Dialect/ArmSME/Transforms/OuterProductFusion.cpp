@@ -479,7 +479,7 @@ struct SwapVectorExtractOfArithExtend
       return rewriter.notifyMatchFailure(extractOp,
                                          "extracted type is not a vector type");
 
-    auto numScalableDims = resultType.getNumScalableDims();
+    auto numScalableDims = llvm::count(resultType.getScalableDims(), true);
     if (numScalableDims != 1)
       return rewriter.notifyMatchFailure(
           extractOp, "extracted type is not a 1-D scalable vector type");

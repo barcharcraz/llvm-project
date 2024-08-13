@@ -109,7 +109,8 @@ public:
 
   /// tblgen'erated driver function for lowering simple MI->MC pseudo
   /// instructions.
-  bool lowerPseudoInstExpansion(const MachineInstr *MI, MCInst &Inst);
+  bool emitPseudoExpansionLowering(MCStreamer &OutStreamer,
+                                   const MachineInstr *MI);
 
   /// Implemented in AMDGPUMCInstLower.cpp
   void emitInstruction(const MachineInstr *MI) override;

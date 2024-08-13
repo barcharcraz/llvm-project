@@ -398,10 +398,8 @@ def gi_as_i1timm : GICustomOperandRenderer<"renderTruncTImm">,
 def gi_NegateImm : GICustomOperandRenderer<"renderNegateImm">,
   GISDNodeXFormEquiv<NegateImm>;
 
-def gi_bitcast_fpimm_to_i32 : GICustomOperandRenderer<"renderBitcastFPImm32">,
+def gi_bitcast_fpimm_to_i32 : GICustomOperandRenderer<"renderBitcastImm">,
   GISDNodeXFormEquiv<bitcast_fpimm_to_i32>;
-def gi_bitcast_fpimm_to_i64 : GICustomOperandRenderer<"renderBitcastFPImm64">,
-  GISDNodeXFormEquiv<bitcast_fpimm_to_i64>;
 
 def gi_IMMPopCount : GICustomOperandRenderer<"renderPopcntImm">,
   GISDNodeXFormEquiv<IMMPopCount>;

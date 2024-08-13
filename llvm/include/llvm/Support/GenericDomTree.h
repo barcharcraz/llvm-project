@@ -90,7 +90,11 @@ template <class NodeT> class DomTreeNodeBase {
   DomTreeNodeBase *getIDom() const { return IDom; }
   unsigned getLevel() const { return Level; }
 
-  void addChild(DomTreeNodeBase *C) { Children.push_back(C); }
+  std::unique_ptr<DomTreeNodeBase> addChild(
+      std::unique_ptr<DomTreeNodeBase> C) {
+    Children.push_back(C.get());
+    return C;
+  }
 
   bool isLeaf() const { return Children.empty(); }
   size_t getNumChildren() const { return Children.size(); }
@@ -632,7 +636,7 @@ protected:
     DomTreeNodeBase<NodeT> *IDomNode = getNode(DomBB);
     assert(IDomNode && "Not immediate dominator specified for block!");
     DFSInfoValid = false;
-    return createNode(BB, IDomNode);
+    return createChild(BB, IDomNode);
   }
 
   /// Add a new node to the forward dominator tree and make it a new root.
@@ -651,8 +655,8 @@ protected:
     } else {
       assert(Roots.size() == 1);
       NodeT *OldRoot = Roots.front();
-      DomTreeNodeBase<NodeT> *OldNode = getNode(OldRoot);
-      NewNode->addChild(OldNode);
+      auto &OldNode = DomTreeNodes[OldRoot];
+      OldNode = NewNode->addChild(std::move(DomTreeNodes[OldRoot]));
       OldNode->IDom = NewNode;
       OldNode->UpdateLevel();
       Roots[0] = BB;
@@ -691,8 +695,7 @@ protected:
       assert(I != IDom->Children.end() &&
              "Not in immediate dominator children set!");
       // I am no longer your child...
-      std::swap(*I, IDom->Children.back());
-      IDom->Children.pop_back();
+      IDom->Children.erase(I);
     }
 
     DomTreeNodes.erase(BB);
@@ -827,14 +830,16 @@ public:
 protected:
   void addRoot(NodeT *BB) { this->Roots.push_back(BB); }
 
-  DomTreeNodeBase<NodeT> *createNode(NodeT *BB,
-                                     DomTreeNodeBase<NodeT> *IDom = nullptr) {
-    auto Node = std::make_unique<DomTreeNodeBase<NodeT>>(BB, IDom);
-    auto *NodePtr = Node.get();
-    DomTreeNodes[BB] = std::move(Node);
-    if (IDom)
-      IDom->addChild(NodePtr);
-    return NodePtr;
+  DomTreeNodeBase<NodeT> *createChild(NodeT *BB, DomTreeNodeBase<NodeT> *IDom) {
+    return (DomTreeNodes[BB] = IDom->addChild(
+                std::make_unique<DomTreeNodeBase<NodeT>>(BB, IDom)))
+        .get();
+  }
+
+  DomTreeNodeBase<NodeT> *createNode(NodeT *BB) {
+    return (DomTreeNodes[BB] =
+                std::make_unique<DomTreeNodeBase<NodeT>>(BB, nullptr))
+        .get();
   }
 
   // NewBB is split and now it has one successor. Update dominator tree to

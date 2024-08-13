@@ -64,12 +64,12 @@ TEST_F(LlvmLibcErffTest, InFloatRange) {
 
     for (uint32_t i = 0, v = START; i <= COUNT; ++i, v += STEP) {
       float x = FPBits(v).get_val();
-      if (FPBits(v).is_nan())
+      if (isnan(x))
         continue;
 
       float result = LIBC_NAMESPACE::erff(x);
       ++cc;
-      if (FPBits(result).is_nan())
+      if (isnan(result))
         continue;
 
       ++count;

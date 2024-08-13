@@ -548,7 +548,7 @@ struct FoldExtractFromVectorOfSMELikeCreateMasks
       return rewriter.notifyMatchFailure(extractOp,
                                          "extracted type is not a vector type");
 
-    auto numScalable = extractedMaskType.getNumScalableDims();
+    auto numScalable = llvm::count(extractedMaskType.getScalableDims(), true);
     if (numScalable != 2)
       return rewriter.notifyMatchFailure(
           extractOp, "expected extracted type to be an SME-like mask");

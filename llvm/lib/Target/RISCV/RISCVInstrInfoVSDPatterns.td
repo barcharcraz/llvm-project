@@ -1430,7 +1430,7 @@ foreach fvtiToFWti = AllWidenableFloatVectors in {
 foreach fvtiToFWti = AllWidenableBFloatToFloatVectors in {
   defvar fvti = fvtiToFWti.Vti;
   defvar fwti = fvtiToFWti.Wti;
-  let Predicates = [HasVInstructionsBF16Minimal] in
+  let Predicates = [HasVInstructionsBF16] in
   def : Pat<(fvti.Vector (fpround (fwti.Vector fwti.RegClass:$rs1))),
             (!cast<Instruction>("PseudoVFNCVTBF16_F_F_W_"#fvti.LMul.MX#"_E"#fvti.SEW)
                 (fvti.Vector (IMPLICIT_DEF)),
@@ -1444,14 +1444,14 @@ foreach fvtiToFWti = AllWidenableBFloatToFloatVectors in {
 //===----------------------------------------------------------------------===//
 // Vector Element Extracts
 //===----------------------------------------------------------------------===//
-foreach vti = NoGroupFloatVectors in {
-  defvar vfmv_f_s_inst = !cast<Instruction>(!strconcat("PseudoVFMV_",
+foreach vti = AllFloatVectors in {
+  defvar vmv_f_s_inst = !cast<Instruction>(!strconcat("PseudoVFMV_",
                                                        vti.ScalarSuffix,
-                                                       "_S"));
+                                                       "_S_", vti.LMul.MX));
   // Only pattern-match extract-element operations where the index is 0. Any
   // other index will have been custom-lowered to slide the vector correctly
   // into place.
   let Predicates = GetVTypePredicates<vti>.Predicates in
   def : Pat<(vti.Scalar (extractelt (vti.Vector vti.RegClass:$rs2), 0)),
-            (vfmv_f_s_inst vti.RegClass:$rs2, vti.Log2SEW)>;
+            (vmv_f_s_inst vti.RegClass:$rs2, vti.Log2SEW)>;
 }

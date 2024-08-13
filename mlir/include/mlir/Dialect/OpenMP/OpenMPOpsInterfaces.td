@@ -41,14 +41,14 @@ def MapClauseOwningOpInterface : OpInterface<"MapClauseOwningOpInterface"> {
   let cppNamespace = "::mlir::omp";
 
   let methods = [
-    InterfaceMethod<"Get map operands", "::mlir::OperandRange", "getMapVars",
+    InterfaceMethod<"Get map operands", "::mlir::OperandRange", "getMapOperands",
       (ins), [{
-        return $_op.getMapVars();
+        return $_op.getMapOperands();
       }]>,
       InterfaceMethod<"Get mutable map operands", "::mlir::MutableOperandRange",
-                      "getMapVarsMutable",
+                      "getMapOperandsMutable",
       (ins), [{
-        return $_op.getMapVarsMutable();
+        return $_op.getMapOperandsMutable();
       }]>,
   ];
 }
