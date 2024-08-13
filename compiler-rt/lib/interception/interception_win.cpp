@@ -217,6 +217,47 @@ UNUSED static uptr RoundUpTo(uptr size, uptr boundary) {
   return (size + boundary - 1) & ~(boundary - 1);
 }
 
+// FIXME: internal_str* and internal_mem* functions should be moved from the
+// ASan sources into interception/.
+
+static size_t _strlen(const char *str) {
+  const char *p = str;
+  while (*p != '\0') ++p;
+  return p - str;
+}
+
+static char *_strchr(char *str, char c) {
+  while (*str) {
+    if (*str == c)
+      return str;
+    ++str;
+  }
+  return nullptr;
+}
+
+static int _strcmp(const char *s1, const char *s2) {
+  while (true) {
+    unsigned c1 = *s1;
+    unsigned c2 = *s2;
+    if (c1 != c2)
+      return (c1 < c2) ? -1 : 1;
+    if (c1 == 0)
+      break;
+    s1++;
+    s2++;
+  }
+  return 0;
+}
+
+static void _memset(void *p, int value, size_t sz) {
+  for (size_t i = 0; i < sz; ++i) ((char *)p)[i] = (char)value;
+}
+
+static void _memcpy(void *dst, void *src, size_t sz) {
+  char *dst_c = (char *)dst, *src_c = (char *)src;
+  for (size_t i = 0; i < sz; ++i) dst_c[i] = src_c[i];
+}
+
 static bool ChangeMemoryProtection(uptr address, uptr size,
                                    DWORD *old_protection) {
   return __sanitizer_virtual_protect((void *)address, size,
@@ -261,7 +302,7 @@ static bool FunctionHasPadding(uptr address, uptr size) {
 }
 
 static void WritePadding(uptr from, uptr size) {
-  internal_memset((void *)from, 0xCC, (size_t)size);
+  _memset((void *)from, 0xCC, (size_t)size);
 }
 
 static void WriteJumpInstruction(uptr from, uptr target) {
@@ -836,7 +877,7 @@ static bool CopyInstructions(uptr to, uptr from, size_t size) {
     size_t instruction_size = GetInstructionSize(from + cursor, &rel_offset);
     if (!instruction_size)
       return false;
-    internal_memcpy((void *)(to + cursor), (void *)(from + cursor),
+    _memcpy((void *)(to + cursor), (void *)(from + cursor),
             (size_t)instruction_size);
     if (rel_offset) {
 #  if SANITIZER_WINDOWS64
@@ -1276,7 +1317,7 @@ uptr InternalGetProcAddress(void *module, const char *func_name) {
 
   for (DWORD i = 0; i < exports->NumberOfNames; i++) {
     RVAPtr<char> name(module, names[i]);
-    if (!internal_strcmp(func_name, name)) {
+    if (!strcmp(func_name, name)) {
       DWORD index = ordinals[i];
       RVAPtr<char> func(module, functions[index]);
 
@@ -1288,13 +1329,13 @@ uptr InternalGetProcAddress(void *module, const char *func_name) {
         // format: "<module> . <function_name>" that is stored into the
         // exported directory.
         char function_name[256];
-        size_t funtion_name_length = internal_strlen(func);
+        size_t funtion_name_length = _strlen(func);
         if (funtion_name_length >= sizeof(function_name) - 1)
           InterceptionFailed();
 
-        internal_memcpy(function_name, func, funtion_name_length);
+        _memcpy(function_name, func, funtion_name_length);
         function_name[funtion_name_length] = '\0';
-        char *separator = internal_strchr(function_name, '.');
+        char *separator = _strchr(function_name, '.');
         if (!separator)
           InterceptionFailed();
         *separator = '\0';
