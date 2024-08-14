@@ -9,6 +9,8 @@
 // Simple access:
 // Make sure that accessing a global in the same TU is safe
 
+// UNSUPPORTED: MSVC
+
 bool condition = true;
 __attribute__((noinline, weak)) int initializeSameTU() {
   return condition ? 0x2a : 052;
