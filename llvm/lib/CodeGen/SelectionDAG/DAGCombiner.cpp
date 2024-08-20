@@ -1939,7 +1939,9 @@ SDValue DAGCombiner::visit(SDNode *N) {
   case ISD::FMINNUM:
   case ISD::FMAXNUM:
   case ISD::FMINIMUM:
-  case ISD::FMAXIMUM:           return visitFMinMax(N);
+  case ISD::FMAXIMUM:
+  case ISD::FMINIMUMNUM:
+  case ISD::FMAXIMUMNUM:       return visitFMinMax(N);
   case ISD::FCEIL:              return visitFCEIL(N);
   case ISD::FTRUNC:             return visitFTRUNC(N);
   case ISD::FFREXP:             return visitFFREXP(N);
@@ -2278,9 +2280,7 @@ SDValue DAGCombiner::visitMERGE_VALUES(SDNode *N) {
   AddUsersToWorklist(N);
   do {
     // Do as a single replacement to avoid rewalking use lists.
-    SmallVector<SDValue, 8> Ops;
-    for (unsigned i = 0, e = N->getNumOperands(); i != e; ++i)
-      Ops.push_back(N->getOperand(i));
+    SmallVector<SDValue, 8> Ops(N->ops());
     DAG.ReplaceAllUsesWith(N, Ops.data());
   } while (!N->use_empty());
   deleteAndRecombine(N);
@@ -6070,6 +6070,7 @@ static bool arebothOperandsNotNan(SDValue Operand1, SDValue Operand2,
   return DAG.isKnownNeverNaN(Operand2) && DAG.isKnownNeverNaN(Operand1);
 }
 
+// FIXME: use FMINIMUMNUM if possible, such as for RISC-V.
 static unsigned getMinMaxOpcodeForFP(SDValue Operand1, SDValue Operand2,
                                      ISD::CondCode CC, unsigned OrAndOpcode,
                                      SelectionDAG &DAG,
@@ -9560,7 +9561,7 @@ SDValue DAGCombiner::visitXOR(SDNode *N) {
   // A rotate left of ~1 is a nice way of achieving the desired result.
   if (TLI.isOperationLegalOrCustom(ISD::ROTL, VT) && N0Opcode == ISD::SHL &&
       isAllOnesConstant(N1) && isOneConstant(N0.getOperand(0))) {
-    return DAG.getNode(ISD::ROTL, DL, VT, DAG.getConstant(~1, DL, VT),
+    return DAG.getNode(ISD::ROTL, DL, VT, DAG.getSignedConstant(~1, DL, VT),
                        N0.getOperand(1));
   }
 
@@ -13200,9 +13201,7 @@ SDValue DAGCombiner::matchVSelectOpSizesWithSetCC(SDNode *Cast) {
   unsigned CastOpcode = Cast->getOpcode();
   assert((CastOpcode == ISD::SIGN_EXTEND || CastOpcode == ISD::ZERO_EXTEND ||
           CastOpcode == ISD::TRUNCATE || CastOpcode == ISD::FP_EXTEND ||
-          CastOpcode == ISD::TRUNCATE_SSAT_S ||
-          CastOpcode == ISD::TRUNCATE_SSAT_U ||
-          CastOpcode == ISD::TRUNCATE_USAT_U || CastOpcode == ISD::FP_ROUND) &&
+          CastOpcode == ISD::FP_ROUND) &&
          "Unexpected opcode for vector select narrowing/widening");
 
   // We only do this transform before legal ops because the pattern may be
@@ -18300,7 +18299,7 @@ SDValue DAGCombiner::visitBRCOND(SDNode *N) {
   // nondeterministic jumps).
   if (N1->getOpcode() == ISD::FREEZE && N1.hasOneUse()) {
     return DAG.getNode(ISD::BRCOND, SDLoc(N), MVT::Other, Chain,
-                       N1->getOperand(0), N2);
+                       N1->getOperand(0), N2, N->getFlags());
   }
 
   // Variant of the previous fold where there is a SETCC in between:
@@ -18349,7 +18348,8 @@ SDValue DAGCombiner::visitBRCOND(SDNode *N) {
     if (Updated)
       return DAG.getNode(
           ISD::BRCOND, SDLoc(N), MVT::Other, Chain,
-          DAG.getSetCC(SDLoc(N1), N1->getValueType(0), S0, S1, Cond), N2);
+          DAG.getSetCC(SDLoc(N1), N1->getValueType(0), S0, S1, Cond), N2,
+          N->getFlags());
   }
 
   // If N is a constant we could fold this into a fallthrough or unconditional
@@ -18374,7 +18374,7 @@ SDValue DAGCombiner::visitBRCOND(SDNode *N) {
     HandleSDNode ChainHandle(Chain);
     if (SDValue NewN1 = rebuildSetCC(N1))
       return DAG.getNode(ISD::BRCOND, SDLoc(N), MVT::Other,
-                         ChainHandle.getValue(), NewN1, N2);
+                         ChainHandle.getValue(), NewN1, N2, N->getFlags());
   }
 
   return SDValue();
@@ -27109,7 +27109,7 @@ SDValue DAGCombiner::XformToShuffleWithZero(SDNode *N) {
 /// If a vector binop is performed on splat values, it may be profitable to
 /// extract, scalarize, and insert/splat.
 static SDValue scalarizeBinOpOfSplats(SDNode *N, SelectionDAG &DAG,
-                                      const SDLoc &DL) {
+                                      const SDLoc &DL, bool LegalTypes) {
   SDValue N0 = N->getOperand(0);
   SDValue N1 = N->getOperand(1);
   unsigned Opcode = N->getOpcode();
@@ -27131,7 +27131,16 @@ static SDValue scalarizeBinOpOfSplats(SDNode *N, SelectionDAG &DAG,
       Src0.getValueType().getVectorElementType() != EltVT ||
       Src1.getValueType().getVectorElementType() != EltVT ||
       !(IsBothSplatVector || TLI.isExtractVecEltCheap(VT, Index0)) ||
-      !TLI.isOperationLegalOrCustom(Opcode, EltVT))
+      // If before type legalization, allow scalar types that will eventually be
+      // made legal.
+      !TLI.isOperationLegalOrCustom(
+          Opcode, LegalTypes
+                      ? EltVT
+                      : TLI.getTypeToTransformTo(*DAG.getContext(), EltVT)))
+    return SDValue();
+
+  // FIXME: Type legalization can't handle illegal MULHS/MULHU.
+  if ((Opcode == ISD::MULHS || Opcode == ISD::MULHU) && !TLI.isTypeLegal(EltVT))
     return SDValue();
 
   SDValue IndexC = DAG.getVectorIdxConstant(Index0, DL);
@@ -27297,7 +27306,7 @@ SDValue DAGCombiner::SimplifyVBinOp(SDNode *N, const SDLoc &DL) {
     }
   }
 
-  if (SDValue V = scalarizeBinOpOfSplats(N, DAG, DL))
+  if (SDValue V = scalarizeBinOpOfSplats(N, DAG, DL, LegalTypes))
     return V;
 
   return SDValue();
