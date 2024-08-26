@@ -65,6 +65,15 @@ static inline uptr MaybeRealStrnlen(const char *s, uptr maxlen) {
   return internal_strnlen(s, maxlen);
 }
 
+static inline uptr MaybeRealWcsnlen(const wchar_t *s, uptr maxlen) {
+#if SANITIZER_INTERCEPT_STRNLEN
+  if (REAL(wcsnlen)) {
+    return REAL(wcsnlen)(s, maxlen);
+  }
+#endif
+  return internal_wcsnlen(s, maxlen);
+}
+
 void SetThreadName(const char *name) {
   AsanThread *t = GetCurrentThread();
   if (t)
@@ -570,6 +579,21 @@ INTERCEPTOR(char *, strcpy, char *to, const char *from) {
   return REAL(strcpy)(to, from);
 }
 
+INTERCEPTOR(wchar_t *, wcscpy, wchar_t *to, const wchar_t *from) {
+  void *ctx;
+  ASAN_INTERCEPTOR_ENTER(ctx, wcscpy);
+  if (!TryAsanInitFromRtl())
+      return REAL(wcscpy)(to, from);
+
+  if (flags()->replace_str) {
+    uptr from_size = (internal_wcslen(from) + 1) * sizeof(wchar_t);
+    CHECK_RANGES_OVERLAP("wcscpy", to, from_size, from, from_size);
+    ASAN_READ_RANGE(ctx, from, from_size);
+    ASAN_WRITE_RANGE(ctx, to, from_size);
+  }
+  return REAL(wcscpy)(to, from);
+}
+
 // Windows doesn't always define the strdup identifier,
 // and when it does it's a macro defined to either _strdup
 // or _strdup_dbg, _strdup_dbg ends up calling _strdup, so
@@ -629,6 +653,19 @@ INTERCEPTOR(char*, strncpy, char *to, const char *from, uptr size) {
     ASAN_WRITE_RANGE(ctx, to, size);
   }
   return REAL(strncpy)(to, from, size);
+}
+
+INTERCEPTOR(wchar_t*, wcsncpy, wchar_t *to, const wchar_t *from, uptr size) {
+  void *ctx;
+  ASAN_INTERCEPTOR_ENTER(ctx, strncpy);
+  AsanInitFromRtl();
+  if (flags()->replace_str) {
+    uptr from_size = Min(size, MaybeRealWcsnlen(from, size) + 1) * sizeof(wchar_t);
+    CHECK_RANGES_OVERLAP("wcsncpy", to, from_size, from, from_size);
+    ASAN_READ_RANGE(ctx, from, from_size);
+    ASAN_WRITE_RANGE(ctx, to, size);
+  }
+  return REAL(wcsncpy)(to, from, size);
 }
 
 template <typename Fn>
@@ -940,6 +977,10 @@ void InitializeAsanInterceptors() {
 #if ASAN_INTERCEPT_INDEX && ASAN_USE_ALIAS_ATTRIBUTE_FOR_INDEX
   ASAN_INTERCEPT_FUNC(index);
 #endif
+
+  // Intercept wcs* functions.
+  ASAN_INTERCEPT_FUNC(wcscpy);
+  ASAN_INTERCEPT_FUNC(wcsncpy);
 
 #if SANITIZER_WINDOWS
   ASAN_INTERCEPT_STRTOL_FAMILY(strtol);
