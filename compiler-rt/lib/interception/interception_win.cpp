@@ -134,6 +134,7 @@
 
 #include "sanitizer_common/sanitizer_common.h"
 #include "sanitizer_common/sanitizer_win.h"
+#include "sanitizer_common/sanitizer_placement_new.h"
 #include "sanitizer_common/sanitizer_win_immortalize.h"
 #include "sanitizer_common/sanitizer_addrhashmap.h"
 
@@ -1187,9 +1188,12 @@ struct AddressInfo
   uptr * realPointer; // for function foo, stores &REAL(foo)
 };
 
-typedef __sanitizer::AddrHashMap<AddressInfo, 11> AddressInfoMap;
-AddressInfoMap addressInfo; // An entry here represents an attempt to intercept a particular function's address.
-                            // The result (success or failure) of that interception is stored.
+// An entry here represents an attempt to intercept a particular function's address.
+// The result (success or failure) of that interception is stored.
+using AsanAddressInfoMap = __sanitizer::AddrHashMap<AddressInfo, 11>;
+// Immortalizing this map ensures that it is initialized prior to first use even if the CRT has not yet been initialized 
+// (which is the case when building vcruntime with ASan).
+AsanAddressInfoMap *GetAsanAddressInfoMap() { return &immortalize<AsanAddressInfoMap>(); }
 
 bool OverrideFunction(uptr old_func, uptr new_func, uptr *orig_old_func,
                       bool guaranteed_hotpatchable) {
@@ -1200,7 +1204,7 @@ bool OverrideFunction(uptr old_func, uptr new_func, uptr *orig_old_func,
   //   if `bar` aliases `foo`, then after `foo` is intercepted, it will get an entry in addressInfo with &REAL(foo)
   //   stored in the `realPointer`. Once `bar` is intercepted, the actual interception work will be skipped
   //   so that we don't re-intercept an already-intercepted address, but REAL(bar) will be set to point to REAL(foo).
-  AddressInfoMap::Handle h_read(&addressInfo, old_func, false, false);
+  AsanAddressInfoMap::Handle h_read(GetAsanAddressInfoMap(), old_func, false, false);
   if (h_read.exists()) {
     if (orig_old_func && h_read->realPointer)
         *orig_old_func = *h_read->realPointer;
@@ -1225,7 +1229,7 @@ bool OverrideFunction(uptr old_func, uptr new_func, uptr *orig_old_func,
     intercepted = true;
 
   // Mark that we have tried intercepting this address.
-  AddressInfoMap::Handle h_write(&addressInfo, old_func, false, true);
+  AsanAddressInfoMap::Handle h_write(GetAsanAddressInfoMap(), old_func, false, true);
   CHECK(h_write.created());
   h_write->intercepted = intercepted;
   h_write->realPointer = orig_old_func;
