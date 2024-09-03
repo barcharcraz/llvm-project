@@ -30,6 +30,11 @@
 #include "sanitizer_common/sanitizer_symbolizer.h"
 #include "asan_continue_on_error.h"
 
+#if SANITIZER_WINDOWS
+#include "sanitizer_common/sanitizer_win.h"
+#include <windows.h>
+#endif
+
 namespace __asan {
 
 // -------------------- User-specified callbacks ----------------- {{{1
@@ -142,6 +147,46 @@ bool ErrorReportInProgress() {
 #endif
 
 // -------------------- Different kinds of reports ----------------- {{{1
+#if SANITIZER_WINDOWS
+// On Windows since this is a weak function, the library that defines this can
+// be unloaded by the time we reach our first error. To guard against that,
+// and since there can be a lingering DLL reference while the function address
+// is no longer valid, we can use structured exception handling.
+static void ExecuteOnErrorCallback() {
+  if (&__asan_on_error)
+    __try {
+      __asan_on_error();
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+      if (GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION) {
+        VReport(1, "__asan_on_error exception: invalid address.\n");
+      } else {
+        VReport(1, "__asan_on_error exception: unknown exception.\n");
+      }
+    }
+}
+
+// Similar to above, except this callback is set by passing in a function
+// pointer. It may be possible to use virtual query to determine whether
+// memory is in MEM_COMMIT state, but error reports should finish completely
+// rather than crash.
+static void ExecuteErrorReportCallback(const char *data) {
+  __try {
+    error_report_callback(data);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    if (GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION) {
+      VReport(1,
+              "Exception in callback registered from "
+              "__asan_set_error_report_callback: "
+              "invalid address.\n");
+    } else {
+      VReport(1,
+              "Exception in callback registered from "
+              "__asan_set_error_report_callback: "
+              "unknown exception.\n");
+    }
+  }
+}
+#endif
 
 // Use ScopedInErrorReport to run common actions just before and
 // immediately after printing error report.
@@ -190,7 +235,11 @@ class ScopedInErrorReport {
         error_message_buffer->clear();
       }
     };
+#if SANITIZER_WINDOWS
+    ExecuteOnErrorCallback();
+#else
     ASAN_ON_ERROR();
+#endif
     if (current_error_.IsValid()) {
       if (!coe.ContinueOnError()) {
         current_error_.Print();
@@ -205,7 +254,11 @@ class ScopedInErrorReport {
         if (error_report_callback) {
           InternalScopedString buffer_copy;
           copyErrorBuffer(buffer_copy);
+#if SANITIZER_WINDOWS
+          ExecuteErrorReportCallback(buffer_copy.data());
+#else
           error_report_callback(buffer_copy.data());
+#endif
         }
         internal_memset(&current_error_, 0, sizeof(current_error_));
         return;
@@ -233,7 +286,11 @@ class ScopedInErrorReport {
     LogFullErrorReport(buffer_copy.data());
 
     if (error_report_callback) {
+#if SANITIZER_WINDOWS
+      ExecuteErrorReportCallback(buffer_copy.data());
+#else
       error_report_callback(buffer_copy.data());
+#endif
     }
 
     if (halt_on_error_ && common_flags()->abort_on_error) {

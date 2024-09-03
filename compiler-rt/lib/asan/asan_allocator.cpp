@@ -200,17 +200,15 @@ class AsanChunk : public ChunkBase {
     return (addr >= Beg()) && (addr < Beg() + UsedSize());
   }
   void Copy(ChunkSafeCopy* smd) {
-    CHECK(REAL(memcpy));
-    REAL(memcpy)(smd, this, sizeof(ChunkHeader));
+    internal_memcpy(smd, this, sizeof(ChunkHeader));
     smd->real_chunk = this;
   }
   void Restore(ChunkSafeCopy* smd) {
-    CHECK(REAL(memcpy));
     // The ChunkHeader does not contain the additional
     // 64-bit free_context_id which is packed into the
     // user's data and used only when chunk_state is
     // CHUNK_QUARANTINE. Same for Copy() above.
-    REAL(memcpy)(this, smd, sizeof(ChunkHeader));
+    internal_memcpy(this, smd, sizeof(ChunkHeader));
   }
 };
 
