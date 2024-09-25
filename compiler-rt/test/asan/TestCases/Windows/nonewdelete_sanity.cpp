@@ -14,7 +14,7 @@ int main() {
 // CHECK: [[ADDR]] is located 4 bytes before 168-byte region
 // CHECK: allocated by thread T0 here:
 // CHECK-NEXT: {{#0 .* calloc }}
-// CHECK-NEXT: {{#1 .* main .*nonewdelete_sanity.cpp}}:[[@LINE-8]]
+// CHECK: {{#[1-3] .* main .*nonewdelete_sanity.cpp}}:[[@LINE-8]]
   free(buffer);
   return 0;
 }

@@ -1,5 +1,5 @@
 // Without ASan's new/delete overrides, the callstack looks slightly different.
-// This testcase matches against this difference. 
+// This testcase matches against this difference.
 // (See testcase `double_operator_delete.cpp` for the version with new/delete overrides)
 // REQUIRES: debug-crt
 
@@ -13,20 +13,20 @@ int main() {
   delete [] x;
   delete [] x;
 // CHECK: AddressSanitizer: attempting double-free on [[ADDR:0x[0-9a-f]+]]
-// CHECK-NEXT: {{#0 .* _free_dbg}}
-// CHECK: {{#[1-2] .* operator delete}}
-// CHECK: {{#[2-3] .* operator delete[[]]}}
-// CHECK: {{#[3-4] .* main .*nonewdelete_callstack_dbg.cpp}}:[[@LINE-5]]
+// CHECK-NEXT: {{#0 .* free}}
+// CHECK: {{#[1-3] .* operator delete}}
+// CHECK: {{#[2-4] .* operator delete[[]]}}
+// CHECK: {{#[3-5] .* main .*nonewdelete_callstack_dbg.cpp}}:[[@LINE-5]]
 // CHECK: [[ADDR]] is located 0 bytes inside of 168-byte region
 // CHECK-LABEL: freed by thread T0 here:
-// CHECK-NEXT: {{#0 .* _free_dbg}}
-// CHECK: {{#[1-2] .* operator delete}}
-// CHECK: {{#[2-3] .* operator delete[[]]}}
-// CHECK: {{#[3-4] .* main .*nonewdelete_callstack_dbg.cpp}}:[[@LINE-12]]
+// CHECK-NEXT: {{#0 .* free}}
+// CHECK: {{#[1-3] .* operator delete}}
+// CHECK: {{#[2-4] .* operator delete[[]]}}
+// CHECK: {{#[3-5] .* main .*nonewdelete_callstack_dbg.cpp}}:[[@LINE-12]]
 // CHECK-LABEL: previously allocated by thread T0 here:
 // CHECK-NEXT: {{#0 .* malloc}}
-// CHECK: {{#[1-2] .* operator new}}
-// CHECK: {{#[2-3] .* operator new[[]]}}
-// CHECK: {{#[3-4] .* main .*nonewdelete_callstack_dbg.cpp}}:[[@LINE-18]]
+// CHECK: {{#[1-3] .* operator new}}
+// CHECK: {{#[2-4] .* operator new[[]]}}
+// CHECK: {{#[3-5] .* main .*nonewdelete_callstack_dbg.cpp}}:[[@LINE-18]]
   return 0;
 }

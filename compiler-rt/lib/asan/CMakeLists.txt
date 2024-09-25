@@ -127,7 +127,13 @@ SET(ASAN_HEADERS
   )
 
 include_directories(..)
-
+if(MSVC)
+  # asan on windows only supports the release dll version of the runtimes, in the interest of
+  # only having one asan dll to support/test. Having asan statically linked
+  # with the runtime might be possible, but it multiplies the number of scenerios to test.
+  # the program USING sanitizers can use whatever version of the runtime it wants to.
+  set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreadedDLL)
+endif()
 set(ASAN_CFLAGS ${SANITIZER_COMMON_CFLAGS})
 
 append_list_if(MSVC /Zl ASAN_CFLAGS)
@@ -163,7 +169,11 @@ append_list_if(WIN32 INTERCEPTION_DYNAMIC_CRT ASAN_DYNAMIC_DEFINITIONS)
 set(ASAN_DYNAMIC_CFLAGS ${ASAN_CFLAGS})
 append_list_if(COMPILER_RT_HAS_FTLS_MODEL_INITIAL_EXEC
   -ftls-model=initial-exec ASAN_DYNAMIC_CFLAGS)
-append_list_if(MSVC /DEBUG ASAN_DYNAMIC_LINK_FLAGS)
+
+# LLVM turns /OPT:ICF back on when LLVM_ENABLE_PDBs is set
+# we _REALLY_ need to turn it back off for ASAN, because the way
+# asan emulates weak functions from DLLs requires NOICF
+append_list_if(MSVC "/DEBUG;/OPT:NOICF" ASAN_DYNAMIC_LINK_FLAGS)
 
 set(ASAN_DYNAMIC_LIBS
   ${COMPILER_RT_UNWINDER_LINK_LIBS}

@@ -1,5 +1,5 @@
 // Without ASan's new/delete overrides, the callstack looks slightly different.
-// This testcase matches against this difference. 
+// This testcase matches against this difference.
 // (See testcase `double_operator_delete.cpp` for the version with new/delete overrides)
 // UNSUPPORTED: debug-crt
 
@@ -21,8 +21,8 @@ int main() {
 // CHECK: {{#[1-2] .* main .*nonewdelete_callstack_rel.cpp}}:[[@LINE-8]]
 // CHECK-LABEL: previously allocated by thread T0 here:
 // CHECK-NEXT: {{#0 .* malloc}}
-// CHECK-NEXT: {{#1 .* operator new}}
-// CHECK-NEXT: {{#2 .* main .*nonewdelete_callstack_rel.cpp}}:[[@LINE-13]]
+// CHECK: {{#[1-2] .* operator new}}
+// CHECK: {{#[2-3] .* main .*nonewdelete_callstack_rel.cpp}}:[[@LINE-13]]
   return 0;
 }
 

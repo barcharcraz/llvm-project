@@ -26,7 +26,7 @@ int main(int argc, char **argv) {
   // CHECK:   {{#0 .* main .*aligned_offset_recalloc_right_oob.cpp}}:[[@LINE-3]]
   // CHECK: [[ADDR]] is located 7 bytes after 1024-byte region
   // CHECK: allocated by thread T0 here:
-  // CHECK:   {{#0 .* _aligned_offset_recalloc}}
-  // CHECK:   {{#[1-2] .* main .*aligned_offset_recalloc_right_oob.cpp}}:[[@LINE-9]]
+  // CHECK:   {{#[0-1] .* _aligned_offset_recalloc}}
+  // CHECK:   {{#[1-3] .* main .*aligned_offset_recalloc_right_oob.cpp}}:[[@LINE-9]]
   return 0;
 }

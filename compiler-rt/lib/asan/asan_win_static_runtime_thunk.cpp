@@ -15,39 +15,42 @@
 //===----------------------------------------------------------------------===//
 
 #ifdef SANITIZER_STATIC_RUNTIME_THUNK
-#include "asan_init_version.h"
-#include "asan_interface_internal.h"
-#include "asan_win_common_runtime_thunk.h"
-#include "sanitizer_common/sanitizer_platform_interceptors.h"
-#include "sanitizer_common/sanitizer_win_defs.h"
-#include "sanitizer_common/sanitizer_win_thunk_interception.h"
-#include "sanitizer_common/sanitizer_common.h"
+#  include "asan_init_version.h"
+#  include "asan_interface_internal.h"
+#  include "asan_win_common_runtime_thunk.h"
+#  include "sanitizer_common/sanitizer_platform_interceptors.h"
+#  include "sanitizer_common/sanitizer_win_defs.h"
+#  include "sanitizer_common/sanitizer_win_thunk_interception.h"
+#  include "sanitizer_common/sanitizer_common.h"
 
-#if defined(_MSC_VER) && !defined(__clang__)
+#  if defined(_MSC_VER) && !defined(__clang__)
 // Disable warnings such as: 'void memchr(void)': incorrect number of arguments
 // for intrinsic function, expected '3' arguments.
-#pragma warning(push)
-#pragma warning(disable : 4392)
-#endif
+#    pragma warning(push)
+#    pragma warning(disable : 4392)
+#  endif
 
 
-#define INTERCEPT_LIBRARY_FUNCTION_ASAN(X) \
-  INTERCEPT_LIBRARY_FUNCTION(X, "__asan_wrap_" #X)
+#  define INTERCEPT_LIBRARY_FUNCTION_ASAN(X) \
+    INTERCEPT_LIBRARY_FUNCTION(X, "__asan_wrap_" #X)
 // If a function has a unique interceptor for its static export, it has the `_static` suffix.
-#define INTERCEPT_LIBRARY_FUNCTION_ASAN_STATIC_INTERCEPTOR(X) \
-  INTERCEPT_LIBRARY_FUNCTION(X, "__asan_wrap_" #X "_static")
+#  define INTERCEPT_LIBRARY_FUNCTION_ASAN_STATIC_INTERCEPTOR(X) \
+    INTERCEPT_LIBRARY_FUNCTION(X, "__asan_wrap_" #X "_static")
 
 INTERCEPT_LIBRARY_FUNCTION_ASAN_STATIC_INTERCEPTOR(atol);
 INTERCEPT_LIBRARY_FUNCTION_ASAN_STATIC_INTERCEPTOR(atoi);
 INTERCEPT_LIBRARY_FUNCTION_ASAN_STATIC_INTERCEPTOR(atoll); 
 INTERCEPT_LIBRARY_FUNCTION_ASAN(frexp);
 INTERCEPT_LIBRARY_FUNCTION_ASAN(longjmp);
-#if SANITIZER_INTERCEPT_MEMCHR
+#  if SANITIZER_INTERCEPT_MEMCHR
 INTERCEPT_LIBRARY_FUNCTION_ASAN(memchr);
-#endif
+#  endif
 INTERCEPT_LIBRARY_FUNCTION_ASAN(memcmp);
-INTERCEPT_LIBRARY_FUNCTION_ASAN(memmove);
 INTERCEPT_LIBRARY_FUNCTION_ASAN(memcpy);
+#  ifndef _WIN64
+// memmove and memcpy share an implementation on amd64
+INTERCEPT_LIBRARY_FUNCTION_ASAN(memmove);
+#  endif
 INTERCEPT_LIBRARY_FUNCTION_ASAN(memset);
 INTERCEPT_LIBRARY_FUNCTION_ASAN(strcat);
 INTERCEPT_LIBRARY_FUNCTION_ASAN(wcscat);
@@ -74,13 +77,13 @@ INTERCEPT_LIBRARY_FUNCTION_ASAN_STATIC_INTERCEPTOR(strtoll);
 INTERCEPT_LIBRARY_FUNCTION_ASAN(wcslen);
 INTERCEPT_LIBRARY_FUNCTION_ASAN(wcsnlen);
 
-#if defined(_MSC_VER) && !defined(__clang__)
-#pragma warning(pop)
-#endif
+#  if defined(_MSC_VER) && !defined(__clang__)
+#    pragma warning(pop)
+#  endif
 
-#ifdef _WIN64
+#  ifdef _WIN64
 INTERCEPT_LIBRARY_FUNCTION_ASAN(__C_specific_handler);
-#else
+#  else
 extern "C" void abort();
 INTERCEPT_LIBRARY_FUNCTION_ASAN(_except_handler3);
 // _except_handler4 checks -GS cookie which is different for each module, so we
@@ -93,7 +96,7 @@ static int intercept_except_handler4(void *a, void *b, void *c, void *d) {
   __asan_handle_no_return();
   return real_except_handler4(a, b, c, d);
 }
-#endif
+#  endif
 
 // Windows specific functions not included in asan_interface.inc.
 // INTERCEPT_WRAP_W_V(__asan_should_detect_stack_use_after_return)
@@ -101,17 +104,17 @@ static int intercept_except_handler4(void *a, void *b, void *c, void *d) {
 // INTERCEPT_WRAP_W_W(__asan_unhandled_exception_filter)
 
 extern "C" void __asan_initialize_static_thunk() {
-#ifndef _WIN64
+#  ifndef _WIN64
   if (real_except_handler4 == &_except_handler4) {
     // Single threaded, no need for synchronization.
     if (!__sanitizer_override_function_by_addr(
             reinterpret_cast<__sanitizer::uptr>(&intercept_except_handler4),
             reinterpret_cast<__sanitizer::uptr>(&_except_handler4),
             reinterpret_cast<__sanitizer::uptr*>(&real_except_handler4))) {
-        abort();
+      abort();
     }
   }
-#endif
+#  endif
 }
 
 #endif  // SANITIZER_DLL_THUNK

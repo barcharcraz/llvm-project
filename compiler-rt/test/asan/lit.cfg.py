@@ -339,7 +339,7 @@ if platform.system() == "Windows" and target_is_msvc:
         [config.compiler_rt_libdir, config.environment.get("LIB", "")]
     )
     config.environment["INCLUDE"] = os.path.pathsep.join(
-        [os.path.join(config.compiler_rt_libdir, "..", "..", "include"), 
+        [os.path.join(config.compiler_rt_libdir, "..", "..", "include"),
          config.environment.get("INCLUDE", "")]
     )
     config.environment["_LINK_"] = " ".join(

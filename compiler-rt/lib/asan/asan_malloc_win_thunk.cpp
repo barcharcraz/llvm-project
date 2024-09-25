@@ -16,109 +16,95 @@
 //===----------------------------------------------------------------------===//
 
 #ifdef SANITIZER_STATIC_RUNTIME_THUNK
-#include "..\sanitizer_common\sanitizer_allocator_interface.h"
-#include "asan_win_thunk_common.h"
+#  include "..\sanitizer_common\sanitizer_allocator_interface.h"
+// #include "asan_win_thunk_common.h"
 
 // Preserve stack traces with noinline.
-#define STATIC_MALLOC_INTERFACE __declspec(noinline)
+#  define STATIC_MALLOC_INTERFACE __declspec(noinline)
 
 extern "C" {
-__declspec(dllimport) size_t
-    __cdecl __asan_msize(void const *ptr, const size_t pc, const size_t bp);
-__declspec(dllimport) size_t
-    __cdecl __asan_aligned_msize(__asan_win_stack_data *const data,
-                                 void *memblock, const size_t alignment,
-                                 const size_t offset);
-__declspec(dllimport) void __cdecl __asan_free(
-    __asan_win_stack_data *const data, void *const ptr);
-__declspec(dllimport) void *__cdecl __asan_malloc(
-    __asan_win_stack_data *const data, const size_t size);
-__declspec(dllimport) void *__cdecl __asan_calloc(
-    __asan_win_stack_data *const data, const size_t nmemb, const size_t size);
-__declspec(dllimport) void *__cdecl __asan_realloc(
-    __asan_win_stack_data *const data, void *const ptr, const size_t size);
-__declspec(dllimport) void *__cdecl __asan_recalloc(
-    __asan_win_stack_data *const data, void *const ptr, const size_t nmemb,
-    const size_t size);
-__declspec(dllimport) void *__cdecl __asan_aligned_malloc(
-    __asan_win_stack_data *const data, const size_t alignment,
-    const size_t size);
-__declspec(dllimport) void *__cdecl __asan_aligned_offset_malloc(
-    __asan_win_stack_data *const data, const size_t size,
-    const size_t alignment, size_t offset);
-__declspec(dllimport) void *__cdecl __asan_aligned_free(
-    __asan_win_stack_data *const data, void *const memblock);
-__declspec(dllimport) void *__cdecl __asan_aligned_realloc(
-    __asan_win_stack_data *const data, void *const memblock,
-    const size_t alignment, const size_t size);
-__declspec(dllimport) void *__cdecl __asan_aligned_offset_realloc(
-    __asan_win_stack_data *const data, void *const memblock, const size_t size,
-    const size_t alignment, const size_t offset);
-__declspec(dllimport) void *__cdecl __asan_aligned_offset_recalloc(
-    __asan_win_stack_data *data, void *memblock, const size_t num,
-    const size_t element_size, const size_t alignment, const size_t offset);
-__declspec(dllimport) void *__cdecl __asan_aligned_recalloc(
-    __asan_win_stack_data *const data, void *const memblock, const size_t num,
-    const size_t element_size, const size_t alignment);
+__declspec(dllimport) size_t __cdecl __asan_msize(void *ptr);
+__declspec(dllimport) size_t __cdecl __asan_aligned_msize(void *memblock,
+                                                          const size_t alignment,
+                                                          const size_t offset);
+__declspec(dllimport) void __cdecl __asan_free(void *const ptr);
+__declspec(dllimport) void *__cdecl __asan_malloc(const size_t size);
+__declspec(dllimport) void *__cdecl __asan_calloc(const size_t nmemb,
+                                                  const size_t size);
+__declspec(dllimport) void *__cdecl __asan_realloc(void *const ptr,
+                                                   const size_t size);
+__declspec(dllimport) void *__cdecl __asan_recalloc(void *const ptr,
+                                                    const size_t nmemb,
+                                                    const size_t size);
+__declspec(dllimport) void *__cdecl __asan_aligned_malloc(const size_t alignment,
+                                                          const size_t size);
+__declspec(dllimport) void *__cdecl __asan_aligned_offset_malloc(const size_t size,
+                                                                 const size_t alignment,
+                                                                 size_t offset);
+__declspec(dllimport) void *__cdecl __asan_aligned_free(void *const memblock);
+__declspec(dllimport) void *__cdecl __asan_aligned_realloc(void *const memblock,
+                                                           const size_t alignment,
+                                                           const size_t size);
+__declspec(dllimport) void *__cdecl __asan_aligned_offset_realloc(void *const memblock,
+                                                                  const size_t size,
+                                                                  const size_t alignment,
+                                                                  const size_t offset);
+__declspec(dllimport) void *__cdecl __asan_aligned_offset_recalloc(void *memblock,
+                                                                   const size_t num,
+                                                                   const size_t element_size,
+                                                                   const size_t alignment,
+                                                                   const size_t offset);
+__declspec(dllimport) void *__cdecl __asan_aligned_recalloc(void *const memblock,
+                                                            const size_t num,
+                                                            const size_t element_size,
+                                                            const size_t alignment);
 
 // Avoid tailcall optimization to preserve stack frames.
-#pragma optimize("", off)
+#  pragma optimize("", off)
 
 // _msize
-STATIC_MALLOC_INTERFACE size_t _msize(void *const ptr) {
-  return __asan_msize(ptr, __asan_GetCurrentPc(), GET_CURRENT_FRAME());
+STATIC_MALLOC_INTERFACE size_t _msize(void *ptr) { return __asan_msize(ptr); }
+
+STATIC_MALLOC_INTERFACE size_t _msize_base(void *ptr) {
+  return __asan_msize(ptr);
 }
 
-STATIC_MALLOC_INTERFACE size_t _msize_base(void *const ptr) {
-  return __asan_msize(ptr, __asan_GetCurrentPc(), GET_CURRENT_FRAME());
-}
-
-STATIC_MALLOC_INTERFACE size_t _msize_dbg(void *const ptr) {
-  return __asan_msize(ptr, __asan_GetCurrentPc(), GET_CURRENT_FRAME());
+STATIC_MALLOC_INTERFACE size_t _msize_dbg(void *ptr, int) {
+  return __asan_msize(ptr);
 }
 
 // free
-STATIC_MALLOC_INTERFACE void free(void *const ptr) {
-  __asan_win_stack_data data{};
-  return __asan_free(&data, ptr);
-}
+STATIC_MALLOC_INTERFACE void free(void *const ptr) { return __asan_free(ptr); }
 
 STATIC_MALLOC_INTERFACE void _free_base(void *const ptr) {
-  __asan_win_stack_data data{};
-  return __asan_free(&data, ptr);
+  return __asan_free(ptr);
 }
 
-STATIC_MALLOC_INTERFACE void _free_dbg(void *const ptr) {
-  __asan_win_stack_data data{};
-  return __asan_free(&data, ptr);
+STATIC_MALLOC_INTERFACE void _free_dbg(void *const ptr, int) {
+  return __asan_free(ptr);
 }
 
 // malloc
 STATIC_MALLOC_INTERFACE void *malloc(const size_t size) {
-  __asan_win_stack_data data{};
-  return __asan_malloc(&data, size);
+  return __asan_malloc(size);
 }
 
 STATIC_MALLOC_INTERFACE void *_malloc_base(const size_t size) {
-  __asan_win_stack_data data{};
-  return __asan_malloc(&data, size);
+  return __asan_malloc(size);
 }
 
-STATIC_MALLOC_INTERFACE void *_malloc_dbg(const size_t size) {
-  __asan_win_stack_data data{};
-  return __asan_malloc(&data, size);
+STATIC_MALLOC_INTERFACE void *_malloc_dbg(const size_t size, int, const char *, int) {
+  return __asan_malloc(size);
 }
 
 // calloc
 STATIC_MALLOC_INTERFACE void *calloc(const size_t nmemb, const size_t size) {
-  __asan_win_stack_data data{};
-  return __asan_calloc(&data, nmemb, size);
+  return __asan_calloc(nmemb, size);
 }
 
 STATIC_MALLOC_INTERFACE void *_calloc_base(const size_t nmemb,
                                            const size_t size) {
-  __asan_win_stack_data data{};
-  return __asan_calloc(&data, nmemb, size);
+  return __asan_calloc(nmemb, size);
 }
 
 STATIC_MALLOC_INTERFACE void *_calloc_impl(const size_t nmemb,
@@ -126,53 +112,46 @@ STATIC_MALLOC_INTERFACE void *_calloc_impl(const size_t nmemb,
                                            int *const errno_tmp) {
   // Provided by legacy msvcrt.
   (void)errno_tmp;
-  __asan_win_stack_data data{};
-  return __asan_calloc(&data, nmemb, size);
+
+  return __asan_calloc(nmemb, size);
 }
 
 STATIC_MALLOC_INTERFACE void *_calloc_dbg(const size_t nmemb, const size_t size,
                                           int, const char *, int) {
-  __asan_win_stack_data data{};
-  return __asan_calloc(&data, nmemb, size);
+  return __asan_calloc(nmemb, size);
 }
 
 // realloc
 STATIC_MALLOC_INTERFACE void *realloc(void *const ptr, const size_t size) {
-  __asan_win_stack_data data{};
-  return __asan_realloc(&data, ptr, size);
+  return __asan_realloc(ptr, size);
 }
 
 STATIC_MALLOC_INTERFACE void *_realloc_base(void *const ptr,
                                             const size_t size) {
-  __asan_win_stack_data data{};
-  return __asan_realloc(&data, ptr, size);
+  return __asan_realloc(ptr, size);
 }
 
 STATIC_MALLOC_INTERFACE void *_realloc_dbg(void *const ptr, const size_t size,
                                            int, const char *, int) {
-  __asan_win_stack_data data{};
-  return __asan_realloc(&data, ptr, size);
+  return __asan_realloc(ptr, size);
 }
 
 // recalloc
 STATIC_MALLOC_INTERFACE void *_recalloc(void *const ptr, const size_t nmemb,
                                         const size_t size) {
-  __asan_win_stack_data data{};
-  return __asan_recalloc(&data, ptr, nmemb, size);
+  return __asan_recalloc(ptr, nmemb, size);
 }
 
 STATIC_MALLOC_INTERFACE void *_recalloc_base(void *const ptr,
                                              const size_t nmemb,
                                              const size_t size) {
-  __asan_win_stack_data data{};
-  return __asan_recalloc(&data, ptr, nmemb, size);
+  return __asan_recalloc(ptr, nmemb, size);
 }
 
 STATIC_MALLOC_INTERFACE void *_recalloc_dbg(void *const ptr, const size_t nmemb,
                                             const size_t size, int,
                                             const char *, int) {
-  __asan_win_stack_data data{};
-  return __asan_recalloc(&data, ptr, nmemb, size);
+  return __asan_recalloc(ptr, nmemb, size);
 }
 
 // expand
@@ -191,87 +170,75 @@ STATIC_MALLOC_INTERFACE void *_expand_dbg(void *, size_t, int, const char *,
 STATIC_MALLOC_INTERFACE size_t _aligned_msize(void *const memblock,
                                               const size_t alignment,
                                               const size_t offset) {
-  __asan_win_stack_data data{};
-  return __asan_aligned_msize(&data, memblock, alignment, offset);
+  return __asan_aligned_msize(memblock, alignment, offset);
 }
 
 STATIC_MALLOC_INTERFACE size_t _aligned_msize_dbg(void *const memblock,
                                                   const size_t alignment,
                                                   const size_t offset) {
-  __asan_win_stack_data data{};
-  return __asan_aligned_msize(&data, memblock, alignment, offset);
+  return __asan_aligned_msize(memblock, alignment, offset);
 }
 
 // aligned_malloc
 STATIC_MALLOC_INTERFACE void *_aligned_malloc(const size_t size,
                                               const size_t alignment) {
-  __asan_win_stack_data data{};
-  return __asan_aligned_malloc(&data, size, alignment);
+  return __asan_aligned_malloc(size, alignment);
 }
 
 STATIC_MALLOC_INTERFACE void *_aligned_malloc_dbg(const size_t size,
                                                   const size_t alignment,
                                                   char const *, int) {
-  __asan_win_stack_data data{};
-  return __asan_aligned_malloc(&data, size, alignment);
+  return __asan_aligned_malloc(size, alignment);
 }
 
 STATIC_MALLOC_INTERFACE void *_aligned_offset_malloc(const size_t size,
                                                      const size_t alignment,
                                                      const size_t offset) {
-  __asan_win_stack_data data{};
-  return __asan_aligned_offset_malloc(&data, size, alignment, offset);
+  return __asan_aligned_offset_malloc(size, alignment, offset);
 }
 
 STATIC_MALLOC_INTERFACE void *_aligned_offset_malloc_dbg(const size_t size,
                                                          const size_t alignment,
                                                          const size_t offset,
                                                          char const *, int) {
-  __asan_win_stack_data data{};
-  return __asan_aligned_offset_malloc(&data, size, alignment, offset);
+  return __asan_aligned_offset_malloc(size, alignment, offset);
 }
 
 // aligned_free
 STATIC_MALLOC_INTERFACE void _aligned_free(void *const memblock) {
-  __asan_win_stack_data data{};
-  __asan_aligned_free(&data, memblock);
+  __asan_aligned_free(memblock);
 }
 
 STATIC_MALLOC_INTERFACE void _aligned_free_dbg(void *const memblock) {
-  __asan_win_stack_data data{};
-  __asan_aligned_free(&data, memblock);
+  __asan_aligned_free(memblock);
 }
 
 // aligned_realloc
 STATIC_MALLOC_INTERFACE void *_aligned_realloc(void *const memblock,
                                                const size_t size,
                                                const size_t alignment) {
-  __asan_win_stack_data data{};
-  return __asan_aligned_realloc(&data, memblock, size, alignment);
+  return __asan_aligned_realloc(memblock, size, alignment);
 }
 
 STATIC_MALLOC_INTERFACE void *_aligned_realloc_dbg(void *const memblock,
                                                    const size_t size,
                                                    const size_t alignment,
                                                    char const *, int) {
-  __asan_win_stack_data data{};
-  return __asan_aligned_realloc(&data, memblock, size, alignment);
+  return __asan_aligned_realloc(memblock, size, alignment);
 }
 
 STATIC_MALLOC_INTERFACE void *_aligned_offset_realloc(void *const memblock,
                                                       const size_t size,
                                                       const size_t alignment,
                                                       const size_t offset) {
-  __asan_win_stack_data data{};
-  return __asan_aligned_offset_realloc(&data, memblock, size, alignment,
+  return __asan_aligned_offset_realloc(memblock, size, alignment,
                                        offset);
 }
 
 STATIC_MALLOC_INTERFACE void *_aligned_offset_realloc_dbg(
     void *const memblock, const size_t size, const size_t alignment,
     const size_t offset, char const *, int) {
-  __asan_win_stack_data data{};
-  return __asan_aligned_offset_realloc(&data, memblock, size, alignment,
+  return __asan_aligned_offset_realloc(memblock, size, alignment,
                                        offset);
 }
 
@@ -280,8 +247,7 @@ STATIC_MALLOC_INTERFACE void *_aligned_recalloc(void *const memblock,
                                                 const size_t num,
                                                 const size_t element_size,
                                                 const size_t alignment) {
-  __asan_win_stack_data data{};
-  return __asan_aligned_recalloc(&data, memblock, num, element_size, alignment);
+  return __asan_aligned_recalloc(memblock, num, element_size, alignment);
 }
 
 STATIC_MALLOC_INTERFACE void *_aligned_recalloc_dbg(void *const memblock,
@@ -289,23 +255,20 @@ STATIC_MALLOC_INTERFACE void *_aligned_recalloc_dbg(void *const memblock,
                                                     const size_t element_size,
                                                     const size_t alignment,
                                                     char const *, int) {
-  __asan_win_stack_data data{};
-  return __asan_aligned_recalloc(&data, memblock, num, element_size, alignment);
+  return __asan_aligned_recalloc(memblock, num, element_size, alignment);
 }
 
 STATIC_MALLOC_INTERFACE void *_aligned_offset_recalloc(
     void *const memblock, const size_t num, const size_t element_size,
     const size_t alignment, const size_t offset) {
-  __asan_win_stack_data data{};
-  return __asan_aligned_offset_recalloc(&data, memblock, num, element_size,
+  return __asan_aligned_offset_recalloc(memblock, num, element_size,
                                         alignment, offset);
 }
 
 STATIC_MALLOC_INTERFACE void *_aligned_offset_recalloc_dbg(
     void *const memblock, const size_t num, const size_t element_size,
     const size_t alignment, const size_t offset, char const *, int) {
-  __asan_win_stack_data data{};
-  return __asan_aligned_offset_recalloc(&data, memblock, num, element_size,
+  return __asan_aligned_offset_recalloc(memblock, num, element_size,
                                         alignment, offset);
 }
 
