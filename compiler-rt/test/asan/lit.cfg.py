@@ -334,7 +334,6 @@ if config.host_os == "Windows":
     )
 
 # msvc needs to be instructed where the compiler-rt libraries are
-if platform.system() == "Windows" and target_is_msvc:
     config.environment["LIB"] = os.path.pathsep.join(
         [config.compiler_rt_libdir, config.environment.get("LIB", "")]
     )
