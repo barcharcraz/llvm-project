@@ -1,6 +1,7 @@
 import lit.formats
 import sys
 import os
+from lit.TestingConfig import SubstituteCaptures
 
 config.name = "libFuzzer" + config.name_suffix
 config.test_format = lit.formats.ShTest(True)
@@ -72,7 +73,7 @@ def generate_compiler_cmd(is_cpp=True, fuzzer_enabled=True, msan_enabled=False):
     compiler_cmd = config.clang
     extra_cmd = config.target_flags
 
-    if is_cpp:
+    if is_cpp and config.compiler_id != "MSVC":
         std_cmd = "--driver-mode=g++"
     else:
         std_cmd = ""
@@ -83,7 +84,10 @@ def generate_compiler_cmd(is_cpp=True, fuzzer_enabled=True, msan_enabled=False):
         sanitizers = ["address"]
     if fuzzer_enabled:
         sanitizers.append("fuzzer")
-    sanitizers_cmd = "-fsanitize=%s" % ",".join(sanitizers)
+    if config.compiler_id == "MSVC":
+        sanitizers_cmd = " ".join(["-fsanitize={}".format(x) for x in sanitizers])
+    else:
+        sanitizers_cmd = "-fsanitize=%s" % ",".join(sanitizers)
 
     # Since clang_rt.fuzzer-x86_64.lib is built without -fsanitize=address and
     # we're building with that flag here, the MSVC STL needs all libs to be
@@ -104,7 +108,8 @@ def generate_compiler_cmd(is_cpp=True, fuzzer_enabled=True, msan_enabled=False):
             compiler_cmd,
             config.target_cflags,
             std_cmd,
-            "-O2 -gline-tables-only",
+            "-O2",
+            " ".join(config.debug_info_flags),
             sanitizers_cmd,
             "-I%s" % libfuzzer_src_root,
             extra_cmd,
@@ -119,6 +124,24 @@ config.substitutions.append(
 config.substitutions.append(
     ("%c_compiler", generate_compiler_cmd(is_cpp=False, fuzzer_enabled=True))
 )
+if config.compiler_id == "MSVC":
+    config.substitutions.append(
+        ("(?<! (-|/)c )-o %t( |)", SubstituteCaptures("/Fe:%t\\g<2>"))
+    )
+    config.substitutions.append(
+        ("(-|/)c -o %t( |)", SubstituteCaptures("/c /Fo:%t\\g<2>"))
+    )
+    config.substitutions.append(("-Wl,-OPT:REF", "/link /OPT:REF"))
+    config.environment["LIB"] = os.path.pathsep.join(
+        [config.compiler_rt_libdir, config.environment.get("LIB", "")]
+    )
+    config.environment["INCLUDE"] = os.path.pathsep.join(
+        [os.path.join(config.compiler_rt_libdir, "..", "..", "include"),
+         config.environment.get("INCLUDE", "")]
+    )
+    config.environment["_LINK_"] = " ".join(
+        ["/debug", "/INCREMENTAL:NO"]
+    )
 
 config.substitutions.append(
     (

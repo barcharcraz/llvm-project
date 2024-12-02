@@ -43,7 +43,7 @@ struct FuzzingOptions {
   int ReloadIntervalSec = 1;
   bool ShuffleAtStartUp = true;
   bool PreferSmall = true;
-  size_t MaxNumberOfRuns = -1L;
+  size_t MaxNumberOfRuns = -1ULL;
   int ReportSlowUnits = 10;
   bool OnlyASCII = false;
   bool Entropic = true;
